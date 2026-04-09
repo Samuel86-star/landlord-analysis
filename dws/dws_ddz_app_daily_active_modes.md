@@ -1,0 +1,70 @@
+# DWS 中间表：APP 端每日活跃用户×玩法表
+
+## 表基本信息
+
+| 项目 | 说明 |
+|------|------|
+| 库名 | `tcy_temp` |
+| 表名 | `dws_ddz_app_daily_active_modes` |
+| 全名 | `tcy_temp.dws_ddz_app_daily_active_modes` |
+| 类型 | DWS 层聚合表（一次性创建） |
+| 描述 | APP 端每日按玩法活跃用户去重清单，**专用于"同玩法留存"flag 计算** |
+| 粒度 | uid × dt × game_mode（一个用户一天一种玩法一行） |
+
+## 与 `dws_ddz_app_daily_active` 的区别
+
+| 表 | 用途 |
+|----|------|
+| `dws_ddz_app_daily_active` | 整体留存（任意玩法有对局即算留存）|
+| `dws_ddz_app_daily_active_modes` | 同玩法留存（需在同一玩法有对局才算该玩法留存）|
+
+## 字段说明
+
+| 字段名 | 类型 | 说明 | 示例值 |
+|--------|------|------|--------|
+| uid | bigint | 玩家唯一标识 | 123456789 |
+| dt | int | 对局日期（YYYYMMDD int 格式） | 20260215 |
+| game_mode | string | 玩法名称：'经典' / '不洗牌' / '癞子' / '其他' | '经典' |
+
+## 构建 SQL
+
+```sql
+-- 时间范围覆盖注册期 + Day30 观测期（20260210 ~ 20260508）
+CREATE TABLE tcy_temp.dws_ddz_app_daily_active_modes
+DISTRIBUTED BY HASH(uid) BUCKETS 32
+PROPERTIES("replication_num" = "1")
+AS
+SELECT
+    uid,
+    dt,
+    CASE
+        WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
+        WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
+        WHEN room_id IN (13176, 13177, 13178)                              THEN '癞子'
+        ELSE '其他'
+    END AS game_mode
+FROM tcy_dwd.dwd_game_combat_si
+WHERE dt BETWEEN 20260210 AND 20260508
+  AND game_id = 53
+  AND robot != 1
+  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+  AND room_id NOT IN (11534, 14238, 15458)
+GROUP BY
+    uid, dt,
+    CASE
+        WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
+        WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
+        WHEN room_id IN (13176, 13177, 13178)                              THEN '癞子'
+        ELSE '其他'
+    END;
+```
+
+## 与其他 DWS 表的关系
+
+```
+tcy_temp.dws_ddz_app_new_user_reg            （新用户基础信息）
+            ↓  LEFT JOIN uid，a.dt > r.reg_date，a.game_mode = target_mode
+tcy_temp.dws_ddz_app_daily_active_modes      （每日活跃×玩法）
+            ↓  用于计算"同玩法留存 flag"
+tcy_temp.ddz_user_mode_first_day_features    （分玩法分析宽表）
+```
