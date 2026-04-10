@@ -80,40 +80,59 @@
 
 ### 2.1 数据表概览
 
-本分析基于以下两张核心日志表：
+本分析基于以下 DWS 层中间表：
 
-#### 表1：`fact_game_reg` — 游戏用户注册表
+#### 表1：`dws_dq_app_daily_reg` — APP 端注册用户宽表
 
 | 字段 | 类型 | 说明 |
 |------|------|------|
-| dt | STRING | 注册日期（分区字段） |
-| uid | BIGINT | 玩家 ID |
+| uid | BIGINT | 玩家唯一标识 |
+| reg_date | INT | 注册日期（YYYYMMDD） |
+| reg_datetime | DATETIME | 注册时间 |
+| reg_group_id | INT | 首次登录分端 ID |
+| reg_channel_id | BIGINT | 首次登录渠道号 |
+| channel_category_id | INT | 渠道分类 ID |
+| channel_category_name | STRING | 渠道分类名称 |
+| channel_category_tag_id | INT | 渠道分类标签：1=官方，2=渠道，3=小游戏 |
+| is_login_log_missing | INT | 是否登录日志缺失：1=缺失，0=正常 |
+| first_day_login_cnt | BIGINT | 首日登录次数 |
 
-#### 表2：`fact_game_combatgains_history` — 游戏对局日志表
+#### 表2：`dws_dq_daily_login` — 每日登录聚合表
+
+| 字段 | 类型 | 说明 |
+|------|------|------|
+| uid | BIGINT | 玩家唯一标识 |
+| app_id | BIGINT | 应用 ID |
+| login_date | DATE | 登录日期 |
+| first_login_time | DATETIME | 当日首次登录时间 |
+| first_channel_id | BIGINT | 当日首次登录渠道号 |
+| first_group_id | INT | 当日首次登录分端 ID |
+| login_count | BIGINT | 当日总登录次数 |
+
+#### 表3：`dws_ddz_daily_game` — 对局战绩统一字段表
 
 | 字段                    | 类型     | 说明                                                                       |
 | --------------------- | ------ | ------------------------------------------------------------------------ |
-| dt                    | STRING | 对局日期（分区字段）                                                               |
-| resultguid            | STRING | 本局战绩 ID（可用于局内排序）                                                         |
+| dt                    | BIGINT | 对局日期（YYYYMMDD）                                                           |
+| time_unix             | BIGINT | 对局时间戳（毫秒级）                                                              |
+| resultguid            | STRING | 本局战绩 ID                                                                  |
 | timecost              | INT    | 对局耗时（秒）                                                                  |
-| room                  | STRING | 房间号                                                                      |
-| room_base             | INT    | 房间底分                                                                     |
-| room_fee              | INT    | 房间服务费                                                                    |
-| room_currency_lower   | BIGINT | 进入房间所需最少携银                                                               |
-| room_currency_upper   | BIGINT | 进入房间最大携银                                                                 |
+| room_id               | INT    | 房间号                                                                      |
+| play_mode             | INT    | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房                                      |
+| room_base             | INT    | 房间底分（统一字段）                                                               |
+| room_fee              | INT    | 房间服务费（统一字段）                                                              |
 | uid                   | BIGINT | 玩家 ID                                                                    |
 | robot                 | INT    | 1=机器人，其他=真人                                                              |
 | role                  | INT    | 1=地主，2=农民                                                                |
-| chairno               | INT    | 座位号（0/1/2），0号位优先叫地主                                                      |
 | result_id             | INT    | 1=获胜，2=失败                                                                |
-| start_money           | BIGINT | 对局前银子数量                                                                  |
-| end_money             | BIGINT | 对局后银子数量                                                                  |
-| diff_money            | BIGINT | 本局输赢银子（不含服务费）                                                            |
-| cut                   | BIGINT | 逃跑罚没银子（<0 代表存在逃跑行为）                                                      |
-| safebox_deposit       | BIGINT | 保险箱存银                                                                    |
-| magnification         | INT    | 该战绩玩家的个人理论总倍数（含公共倍数 + 个人加倍），公共倍数 = magnification / magnification_stacked |
-| grab_landlord_bet     | INT    | 抢地主倍数：3=无人抢 / 6=1人抢 / 12=2人抢                                             |
+| start_money           | BIGINT | 对局前货币数量（统一字段）                                                            |
+| end_money             | BIGINT | 对局后货币数量（统一字段）                                                            |
+| diff_money_pre_tax    | BIGINT | 还原服务费前的对局输赢（统一字段）                                                        |
+| cut                   | BIGINT | 逃跑罚没货币（<0 代表存在逃跑行为）                                                      |
+| magnification         | INT    | 个人理论总倍数                                                                  |
 | magnification_stacked | INT    | 个人加倍：1=不加倍 / 2=加倍 / 4=超级加倍                                               |
+| real_magnification    | DOUBLE | 本局实际输赢倍数（可能为负数，求平均需用 ABS）                                                |
+| grab_landlord_bet     | INT    | 抢地主倍数：3=无人抢 / 6=1人抢 / 12=2人抢                                             |
 | complete_victory_bet  | INT    | 春天/反春标记：2=存在春天或反春                                                        |
 | bomb_bet              | INT    | 炸弹倍数，`bomb_bet/2` = 炸弹个数                                                 |
 
@@ -122,9 +141,9 @@
 1. **过滤机器人**：所有分析需过滤 `robot = 1` 的记录，仅保留真人玩家数据。
 2. **逃跑局处理**：`cut < 0` 的对局为逃跑局，对局结果可能不完整，部分指标（如倍数、胜负）需谨慎使用。
 3. **新手配牌**：首局使用特殊配牌，分析胜率时需单独标注首局数据。
-4. **留存判定（游戏留存口径）**：因无独立登录日志，以用户在 `fact_game_combatgains_history` 中是否存在对局记录作为活跃/留存判定依据。分母为「当日新增**且注册当日有对局**的用户数」，分子为「第 N 日有对局的用户数」。
-5. **magnification 字段含义**：`magnification` 记录的是该战绩玩家的**个人理论总倍数**（已包含公共倍数 + 个人加倍/超级加倍），**不是**公共倍数。公共倍数需通过 `magnification / magnification_stacked` 计算。理论倍数与实际倍数（`ABS(diff_money) / room_base`）的差异在于玩家携银可能不够支付全额输赢。
-6. **保险箱银子**：`safebox_deposit` 中的银子不参与对局，分析实际可用银子时需排除。
+4. **留存判定**：使用 `dws_dq_daily_login` 表判断用户是否有登录，分母为当日注册用户数，分子为第 N 日有登录的用户数。
+5. **实际倍数**：`real_magnification` 字段已预计算，但可能为负数（输局），求平均时需使用 `ABS(real_magnification)`。
+6. **货币统一**：`dws_ddz_daily_game` 已将不同玩法的货币字段统一为 `start_money`、`end_money`、`diff_money_pre_tax`。
 
 ---
 
@@ -134,18 +153,20 @@
 
 | 指标名称           | 定义                       | 计算公式                                 |
 | -------------- | ------------------------ | ------------------------------------ |
-| 游戏次日留存（Day1）   | 注册当日有对局的新用户中，次日仍有对局的比例   | `次日有对局的新用户数 / 当日新增且有对局的用户数 × 100%`   |
-| 游戏3日留存（Day3）   | 注册当日有对局的新用户中，第3天仍有对局的比例  | `第3日有对局的新用户数 / 当日新增且有对局的用户数 × 100%`  |
-| 游戏7日留存（Day7）   | 注册当日有对局的新用户中，第7天仍有对局的比例  | `第7日有对局的新用户数 / 当日新增且有对局的用户数 × 100%`  |
-| 游戏14日留存（Day14） | 注册当日有对局的新用户中，第14天仍有对局的比例 | `第14日有对局的新用户数 / 当日新增且有对局的用户数 × 100%` |
-| 游戏30日留存（Day30） | 注册当日有对局的新用户中，第30天仍有对局的比例 | `第30日有对局的新用户数 / 当日新增且有对局的用户数 × 100%` |
+| 次日留存（Day1）   | 注册用户中，次日仍有登录的比例   | `次日有登录的注册用户数 / 当日注册用户数 × 100%`   |
+| 3日留存（Day3）   | 注册用户中，第3天仍有登录的比例  | `第3日有登录的注册用户数 / 当日注册用户数 × 100%`  |
+| 7日留存（Day7）   | 注册用户中，第7天仍有登录的比例  | `第7日有登录的注册用户数 / 当日注册用户数 × 100%`  |
+| 14日留存（Day14） | 注册用户中，第14天仍有登录的比例 | `第14日有登录的注册用户数 / 当日注册用户数 × 100%` |
+| 30日留存（Day30） | 注册用户中，第30天仍有登录的比例 | `第30日有登录的注册用户数 / 当日注册用户数 × 100%` |
 
 **口径说明：**
 
-- **新增用户**：以 `fact_game_reg` 表中首次出现的 uid 为准，即首次进入斗地主 App 并在服务端生成注册记录的用户。
-- **分母（游戏留存口径）**：因无独立登录日志表，留存统一采用**游戏留存口径**。分母为「注册当日**且在当日有真人对局记录**的新用户数」，而非全部注册用户数。注册但当日未参与任何对局的用户不纳入分母。
-- **分子**：第 N 日在 `fact_game_combatgains_history` 中存在真人对局记录（`robot != 1`）的新用户数。
+- **新增用户**：以 `dws_dq_app_daily_reg` 表中的 uid 为准，即首次进入斗地主 App 并在服务端生成注册记录的用户（仅 APP 端）。
+- **分母**：当日注册的 APP 端用户数，不要求注册当日有对局行为。
+- **分子**：第 N 日在 `dws_dq_daily_login` 中存在登录记录的用户数。
 - **自然日**：以 dt 分区字段为准，北京时间自然日。
+
+> **注意**：本文档分析的是「新增用户留存」，而非「游戏留存」。游戏留存的分母是"注册当日有对局的用户"，新增用户留存的分母是"注册用户"（不要求有对局）。
 
 ### 3.2 留存分层维度
 
@@ -374,13 +395,13 @@
 **漏斗步骤定义（基于现有数据）：**
 
 ```
-游戏注册（fact_game_reg）
+APP 端注册（dws_dq_app_daily_reg）
   → 完成首局对局
     → 完成第 3 局
       → 完成第 5 局
         → 完成第 10 局
-          → 次日有对局（Day1 留存）
-            → 第 7 日有对局（Day7 留存）
+          → 次日有登录（Day1 留存）
+            → 第 7 日有登录（Day7 留存）
 ```
 
 ### 7.6 生存分析
@@ -400,319 +421,288 @@
 
 > 以下 SQL 基于 StarRocks 语法编写。参数化注册日期如 `'20260210'`。
 > 分析时间段：**20260210 至 20260408**。
-> 过滤条件：仅限 APP 端（`group_id` IN (6, 66, 8, 88, 33, 44, 77, 99)），排除积分/比赛房（`room_id` NOT IN (11534, 14238, 15458)）。
+> 过滤条件：仅限 APP 端银子玩法（`play_mode IN (1, 2, 3, 5)`），其中 5 为 APP 端比赛玩法。
 
-### 8.1 基础 DWS 中间表构建（性能优化）
+### 8.1 基础 DWS 中间表构建
 
-为保证在 StarRocks 中的查询性能，避免在所有分析 SQL 中反复对千万级原始日志表进行扫描和计算，我们构建三层 DWS 结构。
+本分析依赖以下 DWS 中间表，详细设计见各表文档：
 
-**数据依赖说明：**
+| 表名 | 说明 | 文档 |
+|------|------|------|
+| `dws_dq_app_daily_reg` | APP 端注册用户宽表 | [dws_dq_app_daily_reg.md](../dws/dws_dq_app_daily_reg.md) |
+| `dws_dq_daily_login` | 每日登录聚合表 | [dws_dq_daily_login.md](../dws/dws_dq_daily_login.md) |
+| `dws_ddz_daily_game` | 对局战绩统一字段表 | [dws_ddz_daily_game.md](../dws/dws_ddz_daily_game.md) |
+| `dws_ddz_user_daily_game` | 用户每日游戏行为聚合表 | [dws_ddz_user_daily_game.md](../dws/dws_ddz_user_daily_game.md) |
 
-- `olap_tcy_userapp_d_p_login1st`：仅含 `uid, app_id, first_login_ts, dt`，**无** `group_id`/`channel_id`，因此无法直接过滤分端，需借助战绩表中的 `group_id` 实现 APP 用户识别。
-- `dwd_game_combat_si`：直接包含 `group_id`、`channel_id` 以及所有倍数字段（`grab_landlord_bet`、`magnification_stacked`、`complete_victory_bet`、`bomb_bet` 均为**独立列**，无需 JSON 解析）。
+### 8.2 新增用户留存分析 SQL
 
-#### 8.1.1 DWS Step1：新增用户基础信息表
-
-> 完整建表设计见 [`dws/dws_ddz_app_new_user_reg.md`](../dws/dws_ddz_app_new_user_reg.md)
+#### 8.2.1 按日期统计新增用户留存率
 
 ```sql
--- 依赖：tcy_temp.dws_channel_category_map
--- 产出：每个新用户一行，包含 reg_date / group_id / device_type / channel_category
-CREATE TABLE tcy_temp.dws_ddz_app_new_user_reg
-DISTRIBUTED BY HASH(uid) BUCKETS 16
-PROPERTIES("replication_num" = "1")
-AS
-WITH
-new_user_base AS (
-    SELECT uid, dt AS reg_date
-    FROM hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st
-    WHERE app_id = 1880053
-      AND dt BETWEEN 20260210 AND 20260408
-),
-first_day_dims AS (
-    SELECT c.uid, c.group_id, c.channel_id, COUNT(*) AS game_cnt
-    FROM tcy_dwd.dwd_game_combat_si c
-    INNER JOIN new_user_base n ON c.uid = n.uid AND c.dt = n.reg_date
-    WHERE c.game_id = 53
-      AND c.robot != 1
-      AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- APP 端
-      AND c.room_id NOT IN (11534, 14238, 15458)
-    GROUP BY c.uid, c.group_id, c.channel_id
-),
-dims_dedup AS (
-    -- 每用户取对局次数最多的 (group_id, channel_id) 组合
-    SELECT uid, group_id, channel_id, game_cnt
-    FROM first_day_dims
-    QUALIFY ROW_NUMBER() OVER (PARTITION BY uid ORDER BY game_cnt DESC) = 1
-),
-first_day_total AS (
-    SELECT uid, SUM(game_cnt) AS first_day_game_cnt
-    FROM first_day_dims
-    GROUP BY uid
-)
+-- 新增用户留存率（按日期）
 SELECT
-    n.uid,
-    n.reg_date,
-    d.group_id,
-    CASE WHEN d.group_id IN (8, 88) THEN 'iOS' ELSE 'Android' END AS device_type,
-    d.channel_id,
-    COALESCE(chn.channel_category_name, '未知')   AS channel_category,
-    COALESCE(chn.channel_category_tag_id, -1)     AS channel_category_tag_id,
-    t.first_day_game_cnt
-FROM new_user_base n
-INNER JOIN dims_dedup d      ON n.uid = d.uid   -- INNER JOIN：天然过滤注册当日无 APP 对局的用户
-LEFT JOIN  tcy_temp.dws_channel_category_map chn ON d.channel_id = chn.channel_id
-LEFT JOIN  first_day_total t ON n.uid = t.uid;
-```
-
-#### 8.1.2 DWS Step2：每日活跃用户表
-
-> 完整建表设计见 [`dws/dws_ddz_app_daily_active.md`](../dws/dws_ddz_app_daily_active.md)
-
-```sql
--- 时间范围覆盖注册期 + Day30 观测期（20260210 ~ 20260508）
--- 产出：uid × dt 去重，用于所有留存 flag 计算
-CREATE TABLE tcy_temp.dws_ddz_app_daily_active
-DISTRIBUTED BY HASH(uid) BUCKETS 32
-PROPERTIES("replication_num" = "1")
-AS
-SELECT uid, dt
-FROM tcy_dwd.dwd_game_combat_si
-WHERE dt BETWEEN 20260210 AND 20260508
-  AND game_id = 53
-  AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-  AND room_id NOT IN (11534, 14238, 15458)
-GROUP BY uid, dt;
-```
-
-#### 8.1.3 分析宽表：新增用户首日对局特征宽表
-
-```sql
--- 依赖：8.1.1 dws_ddz_app_new_user_reg、8.1.2 dws_ddz_app_daily_active
--- 产出：每个新用户一行，包含首日全量行为特征 + 留存标记（核心分析数据集）
-CREATE TABLE tcy_temp.ddz_user_first_day_features
-DISTRIBUTED BY HASH(uid) BUCKETS 16
-PROPERTIES("replication_num" = "1")
-AS
-WITH
--- 1. 从 DWS 基础表获取新用户清单（已完成 APP 过滤、渠道归因、device_type）
-new_user_reg AS (
-    SELECT uid, reg_date, group_id, device_type,
-           channel_id, channel_category, channel_category_tag_id, first_day_game_cnt
-    FROM tcy_temp.dws_ddz_app_new_user_reg
-),
--- 2. 提取新用户注册当日的原始战绩（字段名与 dwd_game_combat_si 保持一致）
-first_day_games_raw AS (
-    SELECT
-        c.uid,
-        c.resultguid,
-        c.timecost,
-        c.room_id,
-        c.role,
-        c.chairno,
-        c.result_id,
-        c.cut,
-        c.magnification,
-        c.magnification_stacked,
-        c.grab_landlord_bet,        -- 独立列，直接使用
-        c.complete_victory_bet,     -- 独立列，直接使用
-        c.bomb_bet,                 -- 独立列，直接使用
-        c.room_base,                -- 正确字段名
-        c.room_fee,                 -- 正确字段名
-        c.start_money,              -- 正确字段名
-        c.end_money,                -- 正确字段名
-        c.diff_money,               -- 正确字段名（不含服务费）
-        ROW_NUMBER() OVER (PARTITION BY c.uid ORDER BY c.time_unix)      AS game_seq,
-        ROW_NUMBER() OVER (PARTITION BY c.uid ORDER BY c.time_unix DESC) AS game_seq_desc
-    FROM tcy_dwd.dwd_game_combat_si c
-    INNER JOIN new_user_reg r ON c.uid = r.uid AND c.dt = r.reg_date
-    WHERE c.game_id = 53
-      AND c.robot != 1
-      AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-      AND c.room_id NOT IN (11534, 14238, 15458)
-),
--- 3. 连胜/连败计算（gaps-and-islands）
-max_streaks AS (
-    SELECT uid,
-           MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
-           MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
-    FROM (
-        SELECT uid, result_id, COUNT(*) AS streak_len
-        FROM (
-            SELECT uid, result_id, game_seq,
-                   game_seq - ROW_NUMBER() OVER (PARTITION BY uid, result_id ORDER BY game_seq) AS grp
-            FROM first_day_games_raw
-        ) t GROUP BY uid, result_id, grp
-    ) t2 GROUP BY uid
-),
--- 4. 留存 flag（只看注册日之后的活跃，a.dt > r.reg_date）
---    Day3 = 注册后第3天，Day7 = 注册后第7天，以此类推
-day_flags AS (
-    SELECT r.uid,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY),  '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day1,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 3 DAY),  '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day3,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY),  '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day7,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 14 DAY), '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day14,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day30
-    FROM new_user_reg r
-    LEFT JOIN tcy_temp.dws_ddz_app_daily_active a ON r.uid = a.uid AND a.dt > r.reg_date
-    GROUP BY r.uid
-)
--- 5. 聚合最终宽表
-SELECT
-    r.uid,
     r.reg_date,
-    r.group_id,
-    r.device_type,
-    r.channel_category,
-    r.channel_category_tag_id,
-    r.first_day_game_cnt                                             AS game_count,
-    SUM(g.timecost)                                                  AS total_play_seconds,
-    ROUND(AVG(g.timecost), 1)                                        AS avg_game_seconds,
-
-    -- 首末局特征
-    MAX(CASE WHEN g.game_seq = 1 THEN g.timecost END)                AS first_game_duration,
-    MAX(CASE WHEN g.game_seq = 1 THEN g.result_id END)               AS first_game_result,
-    MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END)             AS initial_money,
-    MAX(CASE WHEN g.game_seq = 1 THEN g.magnification END)           AS first_game_magnification,
-    MAX(CASE WHEN g.game_seq_desc = 1 THEN g.end_money END)          AS final_money,
-    MAX(CASE WHEN g.game_seq_desc = 1 THEN g.result_id END)          AS last_game_result,
-    MAX(CASE WHEN g.game_seq_desc = 1 THEN (CASE WHEN g.cut < 0 THEN 1 ELSE 0 END) END) AS last_game_escaped,
-
-    -- 胜负指标
-    SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END)                 AS win_count,
-    SUM(CASE WHEN g.result_id = 2 THEN 1 ELSE 0 END)                 AS lose_count,
-    ROUND(SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS win_rate,
-    MAX(ms.max_win_streak)                                           AS max_win_streak,
-    MAX(ms.max_lose_streak)                                          AS max_lose_streak,
-
-    -- 倍数指标
-    ROUND(AVG(g.magnification), 2)                                   AS avg_magnification,
-    MAX(g.magnification)                                             AS max_magnification,
-    ROUND(AVG(g.magnification * 1.0 / NULLIF(g.magnification_stacked, 0)), 2) AS avg_public_multi,
-    SUM(CASE WHEN g.magnification <= 6  THEN 1 ELSE 0 END)           AS low_multi_games,
-    SUM(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 ELSE 0 END) AS mid_multi_games,
-    SUM(CASE WHEN g.magnification > 24  THEN 1 ELSE 0 END) AS high_multi_games,
-    ROUND(AVG(g.grab_landlord_bet), 2) AS avg_grab_bet,
-    SUM(CASE WHEN g.grab_landlord_bet > 3 THEN 1 ELSE 0 END) AS games_with_grab,
-    SUM(CASE WHEN g.magnification_stacked > 1 THEN 1 ELSE 0 END) AS games_player_doubled,
-    SUM(CASE WHEN g.magnification_stacked = 4 THEN 1 ELSE 0 END) AS games_player_super_doubled,
-    SUM(CASE WHEN g.complete_victory_bet = 2 THEN 1 ELSE 0 END) AS games_with_spring,
-    SUM(CAST(g.bomb_bet / 2 AS INT)) AS total_bomb_count,
-    SUM(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 ELSE 0 END) AS high_multi_wins,
-    SUM(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 ELSE 0 END) AS high_multi_losses,
-    ROUND(AVG(ABS(g.diff_money) * 1.0 / NULLIF(g.room_base, 0)), 2) AS avg_realized_multi,
-
-    -- 经济系统指标
-    MAX(g.end_money) AS money_peak,
-    MIN(g.end_money) AS money_valley,
-    MAX(g.end_money) - MIN(g.end_money) AS money_swing,
-    SUM(g.diff_money) AS total_diff_money,
-    SUM(CASE WHEN g.diff_money < 0 THEN ABS(g.diff_money) ELSE 0 END) AS total_money_lost,
-    SUM(CASE WHEN g.diff_money > 0 THEN g.diff_money ELSE 0 END) AS total_money_won,
-    MIN(g.diff_money) AS worst_single_game,
-    MAX(g.diff_money) AS best_single_game,
-    SUM(g.room_fee) AS total_fee_paid,
-    ROUND(SUM(ABS(g.diff_money)) * 1.0 / COUNT(*), 0) AS avg_money_swing_per_game,
-
-    -- 逃跑与房间
-    SUM(CASE WHEN g.cut < 0 THEN 1 ELSE 0 END) AS escape_count,
-    COUNT(DISTINCT g.room_id) AS distinct_rooms,
-
-    -- 留存标记
-    MAX(COALESCE(df.is_retained_day1, 0)) AS is_retained_day1,
-    MAX(COALESCE(df.is_retained_day3, 0)) AS is_retained_day3,
-    MAX(COALESCE(df.is_retained_day7, 0)) AS is_retained_day7,
-    MAX(COALESCE(df.is_retained_day14, 0)) AS is_retained_day14,
-    MAX(COALESCE(df.is_retained_day30, 0)) AS is_retained_day30
-FROM first_day_games_raw g
-INNER JOIN new_user_reg r ON g.uid = r.uid
-LEFT JOIN  max_streaks ms ON g.uid = ms.uid
-LEFT JOIN  day_flags df   ON g.uid = df.uid
-GROUP BY r.uid, r.reg_date, r.group_id, r.device_type, r.channel_category, r.channel_category_tag_id, r.first_day_game_cnt;
+    COUNT(DISTINCT r.uid) AS reg_user_count,
+    -- Day1 留存
+    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) AS day1_retained,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    -- Day3 留存
+    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 3 DAY) THEN r.uid END) AS day3_retained,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 3 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day3_rate,
+    -- Day7 留存
+    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) AS day7_retained,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON r.uid = l.uid
+    AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260215
+GROUP BY r.reg_date
+ORDER BY r.reg_date;
 ```
 
-### 8.2 多维留存分析模型 SQL
+#### 8.2.2 按渠道分类统计留存率
 
-> 所有分析直接基于极简的 `tcy_temp.ddz_user_first_day_features` 宽表执行。极大地提升了 StarRocks 的运行效率。
-
-#### 8.2.1 新增用户多日留存趋势（按渠道类别）
 ```sql
+-- 按渠道分类统计新增用户留存
 SELECT
-    reg_date,
-    channel_category,
-    COUNT(DISTINCT uid) AS new_active_users,
-    ROUND(SUM(is_retained_day1) * 100.0 / COUNT(*), 2) AS day1_rate,
-    ROUND(SUM(is_retained_day3) * 100.0 / COUNT(*), 2) AS day3_rate,
-    ROUND(SUM(is_retained_day7) * 100.0 / COUNT(*), 2) AS day7_rate,
-    ROUND(SUM(is_retained_day14) * 100.0 / COUNT(*), 2) AS day14_rate,
-    ROUND(SUM(is_retained_day30) * 100.0 / COUNT(*), 2) AS day30_rate
-FROM tcy_temp.ddz_user_first_day_features
-GROUP BY reg_date, channel_category
-ORDER BY reg_date, channel_category;
+    r.reg_date,
+    r.channel_category_name,
+    COUNT(DISTINCT r.uid) AS reg_user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON r.uid = l.uid
+    AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260215
+  AND r.is_login_log_missing = 0
+GROUP BY r.reg_date, r.channel_category_name
+ORDER BY r.reg_date, r.channel_category_name;
 ```
 
-#### 8.2.2 倍数维度留存（加入渠道对照）
+#### 8.2.3 按 APP 端类型统计留存率
+
 ```sql
+-- 按 Android/iOS 统计新增用户留存
 SELECT
-    channel_category,
+    r.reg_date,
+    CASE 
+        WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
+        WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
+        ELSE '其他'
+    END AS platform,
+    COUNT(DISTINCT r.uid) AS reg_user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON r.uid = l.uid
+    AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260215
+  AND r.is_login_log_missing = 0
+GROUP BY r.reg_date,
+    CASE 
+        WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
+        WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
+        ELSE '其他'
+    END
+ORDER BY r.reg_date, platform;
+```
+
+### 8.3 首日游戏行为分析 SQL
+
+> 以下 SQL 使用 `dws_ddz_user_daily_game` 中间表，大幅提升查询效率。
+> 分析对象：注册当日有对局的用户（用于理解游戏行为与留存的关系）。
+
+#### 8.3.1 按首日对局数分析留存
+
+```sql
+-- 按首日对局数分组分析留存
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.game_count = 1 OR g.game_count IS NULL THEN 'A: 0-1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN 'B: 2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN 'C: 6-10局'
+        ELSE 'D: 10局以上'
+    END AS game_count_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260215
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.game_count = 1 OR g.game_count IS NULL THEN 'A: 0-1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN 'B: 2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN 'C: 6-10局'
+        ELSE 'D: 10局以上'
+    END
+ORDER BY r.reg_date, game_count_group;
+```
+
+#### 8.3.2 按首日胜率分析留存
+
+```sql
+-- 按首日胜率分组分析留存
+SELECT
+    r.reg_date,
+    r.channel_category_name,
+    CASE 
+        WHEN g.win_rate < 30 OR g.win_rate IS NULL THEN 'A: <30%'
+        WHEN g.win_rate < 50 THEN 'B: 30-50%'
+        WHEN g.win_rate < 70 THEN 'C: 50-70%'
+        ELSE 'D: >=70%'
+    END AS win_rate_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+  AND g.game_count > 0  -- 仅分析有对局的用户
+GROUP BY r.reg_date, r.channel_category_name,
+    CASE 
+        WHEN g.win_rate < 30 OR g.win_rate IS NULL THEN 'A: <30%'
+        WHEN g.win_rate < 50 THEN 'B: 30-50%'
+        WHEN g.win_rate < 70 THEN 'C: 50-70%'
+        ELSE 'D: >=70%'
+    END
+ORDER BY r.reg_date, r.channel_category_name, win_rate_group;
+```
+
+#### 8.3.3 按首日倍数分组分析留存
+
+```sql
+-- 按首日平均倍数分组分析留存
+SELECT
+    r.reg_date,
+    r.channel_category_name,
     CASE
-        WHEN avg_magnification <= 3  THEN 'A: =3 (不加倍)'
-        WHEN avg_magnification <= 6  THEN 'B: 3-6 (低频倍数)'
-        WHEN avg_magnification <= 12 THEN 'C: 6-12 (中频叠加)'
-        WHEN avg_magnification <= 24 THEN 'D: 12-24 (高倍组合)'
-        ELSE                              'E: 24+ (极高倍)'
+        WHEN g.avg_magnification <= 6 OR g.avg_magnification IS NULL THEN 'A: <=6'
+        WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
+        WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
+        ELSE 'D: 24+'
     END AS multi_group,
-    COUNT(*) AS user_count,
-    ROUND(SUM(is_retained_day1) * 100.0 / COUNT(*), 2) AS day1_rate,
-    ROUND(SUM(is_retained_day7) * 100.0 / COUNT(*), 2) AS day7_rate
-FROM tcy_temp.ddz_user_first_day_features
-GROUP BY channel_category,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+GROUP BY r.reg_date, r.channel_category_name,
     CASE
-        WHEN avg_magnification <= 3  THEN 'A: =3 (不加倍)'
-        WHEN avg_magnification <= 6  THEN 'B: 3-6 (低频倍数)'
-        WHEN avg_magnification <= 12 THEN 'C: 6-12 (中频叠加)'
-        WHEN avg_magnification <= 24 THEN 'D: 12-24 (高倍组合)'
-        ELSE                              'E: 24+ (极高倍)'
+        WHEN g.avg_magnification <= 6 OR g.avg_magnification IS NULL THEN 'A: <=6'
+        WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
+        WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
+        ELSE 'D: 24+'
     END
-ORDER BY channel_category, multi_group;
+ORDER BY r.reg_date, r.channel_category_name, multi_group;
 ```
 
-#### 8.2.3 经济维度（按绝对差额计算，体现渠道货币差异）
+#### 8.3.4 按高倍局经历分析留存
+
 ```sql
+-- 分析高倍局经历对留存的影响
 SELECT
-    channel_category,
+    r.reg_date,
+    r.channel_category_name,
     CASE
-        WHEN final_money - initial_money < -50000 THEN 'A: 巨亏 (<-5万)'
-        WHEN final_money - initial_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
-        WHEN final_money - initial_money < 0      THEN 'C: 小亏 (-1万~0)'
-        WHEN final_money - initial_money < 10000  THEN 'D: 小赚 (0~1万)'
-        WHEN final_money - initial_money < 50000  THEN 'E: 大赚 (1万~5万)'
-        ELSE                                           'F: 巨赚 (>5万)'
-    END AS net_money_change_group,
-    COUNT(*) AS user_count,
-    ROUND(SUM(is_retained_day1) * 100.0 / COUNT(*), 2) AS day1_rate,
-    ROUND(SUM(is_retained_day7) * 100.0 / COUNT(*), 2) AS day7_rate
-FROM tcy_temp.ddz_user_first_day_features
-GROUP BY channel_category,
+        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
+        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
+        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
+        ELSE 'D: 有赢有输'
+    END AS high_multi_exp,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+GROUP BY r.reg_date, r.channel_category_name,
     CASE
-        WHEN final_money - initial_money < -50000 THEN 'A: 巨亏 (<-5万)'
-        WHEN final_money - initial_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
-        WHEN final_money - initial_money < 0      THEN 'C: 小亏 (-1万~0)'
-        WHEN final_money - initial_money < 10000  THEN 'D: 小赚 (0~1万)'
-        WHEN final_money - initial_money < 50000  THEN 'E: 大赚 (1万~5万)'
-        ELSE                                           'F: 巨赚 (>5万)'
+        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
+        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
+        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
+        ELSE 'D: 有赢有输'
     END
-ORDER BY channel_category, net_money_change_group;
+ORDER BY r.reg_date, r.channel_category_name, high_multi_exp;
 ```
 
-#### 8.2.4 高倍局经历与留存
+#### 8.3.5 按首日经济变化分析留存
+
 ```sql
+-- 分析首日经济变化对留存的影响
 SELECT
-    channel_category,
+    r.reg_date,
+    r.channel_category_name,
     CASE
-        WHEN high_multi_games = 0 THEN 'A: 未经历高倍局'
+        WHEN g.total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
+        WHEN g.total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
+        WHEN g.total_diff_money < 0 THEN 'C: 小亏 (-1万~0)'
+        WHEN g.total_diff_money < 10000 THEN 'D: 小赚 (0~1万)'
+        WHEN g.total_diff_money < 50000 THEN 'E: 大赚 (1万~5万)'
+        ELSE 'F: 巨赚 (>5万)'
+    END AS money_change_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+GROUP BY r.reg_date, r.channel_category_name,
+    CASE
+        WHEN g.total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
+        WHEN g.total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
+        WHEN g.total_diff_money < 0 THEN 'C: 小亏 (-1万~0)'
+        WHEN g.total_diff_money < 10000 THEN 'D: 小赚 (0~1万)'
+        WHEN g.total_diff_money < 50000 THEN 'E: 大赚 (1万~5万)'
+        ELSE 'F: 巨赚 (>5万)'
+    END
+ORDER BY r.reg_date, r.channel_category_name, money_change_group;
+```
+
+#### 8.3.6 按首日连胜连败分析留存
+
+```sql
+-- 分析首日连胜连败对留存的影响
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
+        WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
+        WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
+        WHEN g.max_lose_streak >= 3 THEN 'D: 连败3+'
+        WHEN g.max_lose_streak = 2 THEN 'E: 连败2'
+        ELSE 'F: 无连胜连败'
+    END AS streak_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+  AND g.game_count > 0
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
+        WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
+        WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
+        WHEN g.max_lose_streak >= 3 THEN 'D: 连败3+'
+        WHEN g.max_lose_streak = 2 THEN 'E: 连败2'
+        ELSE 'F: 无连胜连败'
+    END
+ORDER BY r.reg_date, streak_group;
+```
         WHEN high_multi_wins > 0 AND high_multi_losses = 0 THEN 'B: 仅赢高倍'
         WHEN high_multi_wins = 0 AND high_multi_losses > 0 THEN 'C: 仅输高倍'
         ELSE 'D: 有赢有输'
@@ -902,15 +892,18 @@ ORDER BY device_type, channel_category;
 
 ---
 
-> **文档版本**：v3.0
+> **文档版本**：v4.0
 > **创建日期**：2026-03-23
 > **更新说明**：
-> - v2.0：整合同城游平台业务背景、斗地主具体玩法规则、数据表结构及 15 条取数 SQL
+> - v2.0：整合同城游平台业务背景、斗地主具体玩法规则、数据表结构及取数 SQL
 > - v2.1：修正 magnification 字段含义；留存口径统一为游戏留存
-> - v3.0：重构 DWS 层架构（三层结构）；修正字段名（`room_base`/`start_money`/`diff_money` 等）；倍数相关字段（`grab_landlord_bet`/`complete_victory_bet`/`bomb_bet`）直接读列而非 JSON 解析；新增 `device_type`（iOS/Android）维度；留存 flag 区间修正（Day3=+3天，含 `a.dt > r.reg_date` 限制）；`dws_ddz_app_daily_active` 时间上限延至 20260508 覆盖 Day30 观测期
+> - v3.0：重构 DWS 层架构；修正字段名；倍数相关字段直接读列
+> - v3.1：修复 StarRocks 日期函数；修正新用户分端口径；优化 Bucket 配置
+> - **v4.0**：**修正留存口径**（从"游戏留存"改为"新增用户留存"，分母改为注册用户数）；**更新数据源**（使用 `dws_dq_app_daily_reg`、`dws_dq_daily_login`、`dws_ddz_daily_game`）；**新增字段**（`real_magnification` 实际倍数、`diff_money_pre_tax` 还原服务费输赢）；**简化 SQL 结构**
 >
-> **适用范围**：同城游·斗地主 App 新增用户留存专项分析
+> **适用范围**：同城游·斗地主 APP 端新增用户留存专项分析
 > **使用建议**：
-> 1. 按顺序执行 8.1.1 → 8.1.2 → 8.1.3 构建三层 DWS 表（详见 `dws/` 目录）
-> 2. 依次运行 8.2.1 ~ 8.2.5 进行各维度分组留存分析
-> 3. 将分析结果按「发现卡片」模板输出，推动产品优化
+> 1. 确认 `dws_dq_app_daily_reg`、`dws_dq_daily_login`、`dws_ddz_daily_game` 三个 DWS 表已构建
+> 2. 运行 8.2 节留存分析 SQL，获取各维度留存率
+> 3. 运行 8.3 节游戏行为分析 SQL，分析首日行为与留存关系
+> 4. 将分析结果按「发现卡片」模板输出，推动产品优化

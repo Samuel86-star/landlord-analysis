@@ -116,18 +116,19 @@ M-01 同时输出「整体留存」和「玩法留存」两个指标，便于区
 **DWS 三层依赖结构：**
 
 ```
-Step A: tcy_temp.dws_ddz_app_new_user_reg          （已在主分析文档 8.1.1 建立）
-Step B: tcy_temp.dws_ddz_app_daily_active           （已在主分析文档 8.1.2 建立）
-Step C: tcy_temp.dws_ddz_app_daily_active_modes     （本文档新建，uid×dt×game_mode）
-Step D: tcy_temp.ddz_user_mode_first_day_features   （本文档新建，分玩法分析宽表）
+Step A: tcy_temp.dws_dq_app_daily_reg              （APP 端注册用户宽表）
+Step B: tcy_temp.dws_dq_daily_login             （每日登录聚合表）
+Step C: tcy_temp.dws_ddz_daily_game             （对局战绩统一字段表）
 ```
 
 **关键修正说明：**
 
-- `olap_tcy_userapp_d_p_login1st` 无 `group_id`/`channel_id`，APP 用户过滤通过战绩表 INNER JOIN 实现
+- 数据来源使用 StarRocks DWS 表：
+  - `dws_dq_app_daily_reg`：APP 端注册用户宽表，包含首次登录的 `reg_group_id` 和 `reg_channel_id`
+  - `dws_dq_daily_login`：每日登录聚合表，用于计算留存
+  - `dws_ddz_daily_game`：对局战绩统一字段表，用于玩法分析
 - 倍数相关字段（`grab_landlord_bet`/`complete_victory_bet`/`bomb_bet`）在 `dwd_game_combat_si` 中为**独立列**，直接使用
 - 货币字段使用正确名称：`room_base`/`room_fee`/`start_money`/`end_money`/`diff_money`
-- `dws_ddz_app_daily_active_modes` 时间上限延至 `20260508`，覆盖 Day30 观测期
 
 ```sql
 -- Step C: 每日活跃用户×玩法聚合表（用于同玩法留存计算）
@@ -163,11 +164,11 @@ DISTRIBUTED BY HASH(uid) BUCKETS 16
 PROPERTIES("replication_num" = "1")
 AS
 WITH
--- 1. 从 DWS 基础表获取新用户清单（已完成 APP 过滤、渠道归因）
+-- 1. 从 DWS 基础表获取新用户清单
 new_user_reg AS (
-    SELECT uid, reg_date, group_id, device_type,
-           channel_category, channel_category_tag_id
-    FROM tcy_temp.dws_ddz_app_new_user_reg
+    SELECT uid, reg_date, reg_group_id,
+           channel_category_name, channel_category_tag_id
+    FROM tcy_temp.dws_dq_app_daily_reg
 ),
 -- 2. 提取新用户注册当日的原始战绩，按玩法打标
 first_day_games_raw AS (
@@ -224,7 +225,7 @@ first_day_games_raw AS (
       AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND c.room_id NOT IN (11534, 14238, 15458)
 ),
--- 3. 分玩法连胜/连败（gaps-and-islands）
+-- 3. 算法修正：使用 COUNT(*) 保证 game_seq 连续，避免 gaps-and-islands 错误
 mode_streaks AS (
     SELECT uid, game_mode,
            MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
@@ -235,18 +236,33 @@ mode_streaks AS (
             SELECT uid, game_mode, result_id, mode_game_seq,
                    mode_game_seq - ROW_NUMBER() OVER (PARTITION BY uid, game_mode, result_id ORDER BY mode_game_seq) AS grp
             FROM first_day_games_raw
+            WHERE result_id IN (1, 2)  -- 只统计胜负局，排除无效局
         ) t GROUP BY uid, game_mode, result_id, grp
     ) t2 GROUP BY uid, game_mode
 ),
 -- 4. 同玩法留存 flag（基于 dws_ddz_app_daily_active_modes，只看注册日之后）
+--    同时计算整体留存（任意玩法有对局即算留存）
 day_flags_mode AS (
-    SELECT r.uid, a.game_mode,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1  DAY), '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day1_same_mode,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7  DAY), '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day7_same_mode,
-           MAX(CASE WHEN a.dt = CAST(DATE_FORMAT(DATE_ADD(STR_TO_DATE(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 30 DAY), '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_retained_day30_same_mode
+    SELECT 
+        r.uid, 
+        a.game_mode,
+        MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS is_retained_day1_same_mode,
+        MAX(CASE WHEN a.dt = r.reg_date + 7  THEN 1 ELSE 0 END) AS is_retained_day7_same_mode,
+        MAX(CASE WHEN a.dt = r.reg_date + 30 THEN 1 ELSE 0 END) AS is_retained_day30_same_mode
     FROM new_user_reg r
     LEFT JOIN tcy_temp.dws_ddz_app_daily_active_modes a ON r.uid = a.uid AND a.dt > r.reg_date
     GROUP BY r.uid, a.game_mode
+),
+-- 5. 整体留存 flag（任意玩法有对局即算留存）
+day_flags_global AS (
+    SELECT 
+        r.uid,
+        MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS is_retained_day1_global,
+        MAX(CASE WHEN a.dt = r.reg_date + 7  THEN 1 ELSE 0 END) AS is_retained_day7_global,
+        MAX(CASE WHEN a.dt = r.reg_date + 30 THEN 1 ELSE 0 END) AS is_retained_day30_global
+    FROM new_user_reg r
+    LEFT JOIN tcy_temp.dws_ddz_app_daily_active a ON r.uid = a.uid AND a.dt > r.reg_date
+    GROUP BY r.uid
 )
 -- 5. 聚合最终分玩法宽表
 SELECT
@@ -262,8 +278,9 @@ SELECT
     SUM(g.timecost)                                                           AS total_play_seconds,
     ROUND(AVG(g.timecost), 1)                                                 AS avg_game_seconds,
 
-    MAX(CASE WHEN g.mode_game_seq = 1 THEN g.result_id END)                   AS first_mode_game_result,
-    MAX(CASE WHEN g.mode_game_seq = 1 THEN g.magnification END)               AS first_mode_game_magnification,
+    -- 玩法内首末局特征（使用 MIN 保证唯一性）
+    MIN(CASE WHEN g.mode_game_seq = 1 THEN g.result_id END)                   AS first_mode_game_result,
+    MIN(CASE WHEN g.mode_game_seq = 1 THEN g.magnification END)               AS first_mode_game_magnification,
     MAX(CASE WHEN g.mode_game_seq_desc = 1 THEN g.result_id END)              AS last_mode_game_result,
     MAX(CASE WHEN g.mode_game_seq_desc = 1 THEN (CASE WHEN g.cut < 0 THEN 1 ELSE 0 END) END) AS last_mode_game_escaped,
 
@@ -290,11 +307,17 @@ SELECT
 
     COALESCE(MAX(dfm.is_retained_day1_same_mode),  0)                        AS is_retained_day1_same_mode,
     COALESCE(MAX(dfm.is_retained_day7_same_mode),  0)                        AS is_retained_day7_same_mode,
-    COALESCE(MAX(dfm.is_retained_day30_same_mode), 0)                        AS is_retained_day30_same_mode
+    COALESCE(MAX(dfm.is_retained_day30_same_mode), 0)                        AS is_retained_day30_same_mode,
+    
+    -- 整体留存（任意玩法有对局即算留存）
+    COALESCE(MAX(dfg.is_retained_day1_global),  0)                           AS is_retained_day1_global,
+    COALESCE(MAX(dfg.is_retained_day7_global),  0)                           AS is_retained_day7_global,
+    COALESCE(MAX(dfg.is_retained_day30_global), 0)                           AS is_retained_day30_global
 FROM first_day_games_raw g
 INNER JOIN new_user_reg r ON g.uid = r.uid
 LEFT JOIN  mode_streaks ms  ON g.uid = ms.uid AND g.game_mode = ms.game_mode
 LEFT JOIN  day_flags_mode dfm ON g.uid = dfm.uid AND g.game_mode = dfm.game_mode
+LEFT JOIN  day_flags_global dfg ON g.uid = dfg.uid
 GROUP BY r.uid, r.reg_date, g.game_mode, r.group_id, r.device_type, r.channel_category, r.channel_category_tag_id;
 ```
 
@@ -313,8 +336,14 @@ SELECT
     COUNT(DISTINCT uid) AS user_count,
     ROUND(AVG(game_count), 1) AS avg_games_in_mode,
     ROUND(AVG(avg_magnification), 1) AS avg_multi,
+    -- 同玩法留存（在同一玩法有对局）
     ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate_same_mode,
-    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate_same_mode
+    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate_same_mode,
+    ROUND(SUM(is_retained_day30_same_mode) * 100.0 / COUNT(*), 2) AS day30_rate_same_mode,
+    -- 整体留存（任意玩法有对局）
+    ROUND(SUM(is_retained_day1_global) * 100.0 / COUNT(*), 2) AS day1_rate_global,
+    ROUND(SUM(is_retained_day7_global) * 100.0 / COUNT(*), 2) AS day7_rate_global,
+    ROUND(SUM(is_retained_day30_global) * 100.0 / COUNT(*), 2) AS day30_rate_global
 FROM tcy_temp.ddz_user_mode_first_day_features
 WHERE game_mode IN ('经典', '不洗牌', '癞子')
 GROUP BY game_mode, channel_category
@@ -428,18 +457,18 @@ Step 6: 综合结论 → 差异化策略
 
 ---
 
-> **文档版本**：v2.0
+> **文档版本**：v2.1
 > **创建日期**：2026-03-25
 > **更新说明**：
 > - v2.0：重构 DWS 层架构（对齐主文档 v3.0）；修正字段名（`room_base`/`diff_money` 等）；倍数字段改为直接读列；新增 `device_type` 维度；`dws_ddz_app_daily_active_modes` 时间上限延至 20260508；同玩法留存新增 Day30 指标；修正 `day_flags_mode` 添加 `a.dt > r.reg_date` 限制
+> - **v2.1**：**修复 StarRocks 日期函数**（`reg_date + N` 简化日期计算）；**优化 Bucket 配置**（日活表 32→64）；**添加排序键**（`ORDER BY dt, uid, game_mode`）；**添加全局留存字段**（对比"同玩法留存"和"任意玩法留存"）；**修正连败/连胜计算**（过滤无效局）；**修正首末局特征提取**（使用 `MIN`/`MAX` 保证唯一性）
 >
 > **关联文档**：
-> - `docs/new-user-retention-analysis.md`（主分析框架，需先完成 8.1.1 和 8.1.2）
-> - `dws/dws_ddz_app_daily_active_modes.md`（本文档 M-00 Step C 的详细设计）
+> - `docs/new-user-retention-analysis.md`（主分析框架）
+> - `dws/dws_dq_app_daily_reg.md`（APP 端注册用户宽表）
+> - `dws/dws_ddz_daily_game.md`（对局战绩统一字段表）
 >
 > **使用说明**：
-> 1. 确认主文档 `8.1.1` 和 `8.1.2` 已执行（建立 `dws_ddz_app_new_user_reg` 和 `dws_ddz_app_daily_active`）
-> 2. 执行 M-00 Step C：创建分玩法活跃表 `tcy_temp.dws_ddz_app_daily_active_modes`
-> 3. 执行 M-00 Step D：创建分玩法首日宽表 `tcy_temp.ddz_user_mode_first_day_features`
-> 4. 依次执行 M-01 ~ M-03 进行各维度分析
-> 5. 将查询结果填入对应的"查询结果"区域，用于后续分析结论生成
+> 1. 确认 `dws_dq_app_daily_reg` 和 `dws_dq_daily_login` 已构建
+> 2. 执行分析 SQL 进行各维度分析
+> 3. 将查询结果填入对应的"查询结果"区域，用于后续分析结论生成

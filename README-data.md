@@ -6,9 +6,10 @@
 landlord-analysis/
 ├── README-data.md      # 本数据说明文件
 ├── raw/                # 原始数据目录
-├── dws/                # 维度表层目录
+├── dws/                # DWS 中间表层目录
 ├── processed/          # 处理后的数据目录
-└── docs/               # 相关文档目录
+├── docs/               # 分析文档目录
+└── ops/                # 运维操作目录（增量更新SQL等）
 ```
 
 ## 数据字段说明
@@ -69,10 +70,23 @@ INNER JOIN hive_catalog_cdh5.dim.dim_channel_category t2
 | 表名 | 说明文件 | 描述 |
 |------|----------|------|
 | `dws_channel_category_map` | [dws_channel_category_map.md](dws/dws_channel_category_map.md) | 渠道号与渠道分类映射表 |
+| `dws_dq_daily_reg` | [dws_dq_daily_reg.md](dws/dws_dq_daily_reg.md) | 用户注册信息表（StarRocks） |
+| `dws_dq_daily_login` | [dws_dq_daily_login.md](dws/dws_dq_daily_login.md) | 用户每日登录多维度聚合表 |
+| `dws_ddz_daily_game` | [dws_ddz_daily_game.md](dws/dws_ddz_daily_game.md) | 对局战绩统一字段表 |
+| `dws_ddz_user_daily_game` | [dws_ddz_user_daily_game.md](dws/dws_ddz_user_daily_game.md) | 用户每日游戏行为聚合表 |
+| `dws_dq_app_daily_reg` | [dws_dq_app_daily_reg.md](dws/dws_dq_app_daily_reg.md) | APP端每日注册用户宽表 |
+| `dws_ddz_app_daily_active` | [dws_ddz_app_daily_active.md](dws/dws_ddz_app_daily_active.md) | APP端每日活跃用户表 |
+| `dws_ddz_app_daily_active_modes` | [dws_ddz_app_daily_active_modes.md](dws/dws_ddz_app_daily_active_modes.md) | APP端每日活跃用户×玩法聚合表 |
 
 ### 处理后数据表 (processed/)
 
 （待补充）
+
+### 运维操作文档 (ops/)
+
+| 文档 | 描述 |
+|------|------|
+| [daily_data_ops.md](ops/daily_data_ops.md) | 每日数据增量更新操作手册 |
 
 ## 版本历史
 

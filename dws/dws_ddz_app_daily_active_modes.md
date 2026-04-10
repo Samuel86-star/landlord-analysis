@@ -31,7 +31,8 @@
 ```sql
 -- 时间范围覆盖注册期 + Day30 观测期（20260210 ~ 20260508）
 CREATE TABLE tcy_temp.dws_ddz_app_daily_active_modes
-DISTRIBUTED BY HASH(uid) BUCKETS 32
+DISTRIBUTED BY HASH(uid) BUCKETS 64
+ORDER BY dt, uid, game_mode
 PROPERTIES("replication_num" = "1")
 AS
 SELECT
@@ -62,9 +63,14 @@ GROUP BY
 ## 与其他 DWS 表的关系
 
 ```
-tcy_temp.dws_ddz_app_new_user_reg            （新用户基础信息）
-            ↓  LEFT JOIN uid，a.dt > r.reg_date，a.game_mode = target_mode
-tcy_temp.dws_ddz_app_daily_active_modes      （每日活跃×玩法）
+tcy_temp.dws_dq_app_daily_reg                 （APP 端注册用户宽表）
+            ↓  LEFT JOIN uid，dt > reg_date，play_mode = target_mode
+tcy_temp.dws_ddz_daily_game                （对局战绩统一字段表）
             ↓  用于计算"同玩法留存 flag"
-tcy_temp.ddz_user_mode_first_day_features    （分玩法分析宽表）
+tcy_temp.ddz_user_mode_first_day_features  （分玩法分析宽表）
 ```
+
+> **文档版本**：v1.1
+> **更新说明**：
+> - v1.0：初始版本
+> - **v1.1**：**优化 Bucket 配置**（32→64）；**添加排序键**（`ORDER BY dt, uid, game_mode`）

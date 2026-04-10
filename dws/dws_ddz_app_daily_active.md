@@ -40,7 +40,8 @@
 -- Step 2：构建每日活跃用户去重表（用于留存 flag 计算）
 -- 时间范围覆盖注册期 + 最大留存观测期（Day30），上限延伸 30 天至 20260508
 CREATE TABLE tcy_temp.dws_ddz_app_daily_active
-DISTRIBUTED BY HASH(uid) BUCKETS 32
+DISTRIBUTED BY HASH(uid) BUCKETS 64
+ORDER BY dt, uid
 PROPERTIES("replication_num" = "1")
 AS
 SELECT
@@ -72,8 +73,8 @@ SELECT
     MAX(CASE WHEN datediff(...) = 7 THEN 1 ELSE 0 END) AS day7_retained,
     MAX(CASE WHEN datediff(...) = 14 THEN 1 ELSE 0 END) AS day14_retained,
     MAX(CASE WHEN datediff(...) = 30 THEN 1 ELSE 0 END) AS day30_retained
-FROM tcy_temp.dws_ddz_app_new_user_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_daily_active a
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_dq_daily_login a
     ON r.uid = a.uid
     AND a.dt > r.reg_date  -- 只看注册日之后的活跃，避免混入注册当日行为
 GROUP BY r.uid, r.reg_date;
@@ -85,7 +86,12 @@ GROUP BY r.uid, r.reg_date;
 ## 与其他 DWS 表的关系
 
 ```
-tcy_temp.dws_ddz_app_new_user_reg        （新用户基础信息，一行 = 一个新用户）
-            ↓  LEFT JOIN uid，a.dt > r.reg_date
-tcy_temp.dws_ddz_app_daily_active        （每日活跃，一行 = uid × dt）
+tcy_temp.dws_dq_app_daily_reg             （APP 端注册用户宽表）
+            ↓  LEFT JOIN uid，login_date > reg_date
+tcy_temp.dws_dq_daily_login            （每日登录聚合表）
 ```
+
+> **文档版本**：v1.1
+> **更新说明**：
+> - v1.0：初始版本
+> - **v1.1**：**优化 Bucket 配置**（32→64）；**添加排序键**（`ORDER BY dt, uid`）

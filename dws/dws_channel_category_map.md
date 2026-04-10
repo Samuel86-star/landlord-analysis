@@ -34,7 +34,18 @@ INNER JOIN hive_catalog_cdh5.dim.dim_channel_category t2
 | channel_category_name | string | 渠道分类名称 | "官方" | 是 |
 | channel_category_tag_id | int | 渠道分类标签 ID | 1 | 是 |
 
-## 渠道分类标签说明
+## 渠道分类层级说明
+
+该表建立了三层渠道分类体系：
+
+### 层级结构
+```
+channel_category_tag_id (渠道大类)
+    └─ channel_category_id (渠道细分类)
+        └─ channel_id (具体渠道号)
+```
+
+### 渠道分类标签（大类）
 
 | channel_category_tag_id | 说明 |
 |------------------------|------|
@@ -42,7 +53,60 @@ INNER JOIN hive_catalog_cdh5.dim.dim_channel_category t2
 | 2 | 渠道 |
 | 3 | 小游戏 |
 
-## 使用示例
+### 渠道分类明细（细分类）
+
+同一个 `channel_category_tag_id` 下可能存在多个 `channel_category_id`，示例：
+
+**官方大类 (tag_id = 1)：**
+| channel_category_id | channel_category_name | 说明 |
+|---------------------|----------------------|------|
+| 1 | 官方(非CPS) | 官方自有渠道，非CPS结算 |
+| 2 | 官方(CPS) | 官方渠道，采用CPS结算 |
+| 3 | IOS | 官方IOS渠道 |
+| 9 | 鸿蒙 | 官方鸿蒙渠道 |
+
+**渠道大类 (tag_id = 2)：**
+| channel_category_id | channel_category_name | 说明 |
+|---------------------|----------------------|------|
+| 4 | 渠道(非CPS) | 第三方渠道，非CPS结算 |
+| 5 | 渠道(CPS) | 第三方渠道，采用CPS结算 |
+
+**小游戏大类 (tag_id = 3)：**
+| channel_category_id | channel_category_name | 说明 |
+|---------------------|----------------------|------|
+| 6 | 小游戏(非CPS) | 小游戏平台，非CPS结算 |
+| 7 | 小游戏(CPS) | 小游戏平台，采用CPS结算 |
+
+### 渠道号分布
+
+每个 `channel_category_id` 下可能包含多个 `channel_id`，例如：
+- `channel_category_id = 1` (官方-非CPS) 可能包含：1001, 1002, 1003...
+- `channel_category_id = 2` (官方-CPS) 可能包含：2001, 2002, 2003...
+
+## 使用建议
+
+### 按渠道大类分析（官方/渠道/小游戏）
+```sql
+SELECT
+    channel_category_tag_id,
+    CASE channel_category_tag_id
+        WHEN 1 THEN '官方'
+        WHEN 2 THEN '渠道'
+        WHEN 3 THEN '小游戏'
+    END AS tag_name,
+    COUNT(DISTINCT channel_id) AS channel_count
+FROM tcy_temp.dws_channel_category_map
+GROUP BY channel_category_tag_id;
+```
+
+### 按渠道细分类分析
+```sql
+SELECT
+    channel_category_name,
+    COUNT(DISTINCT channel_id) AS channel_count
+FROM tcy_temp.dws_channel_category_map
+GROUP BY channel_category_name;
+```
 
 ### 查询某渠道号所属分类
 

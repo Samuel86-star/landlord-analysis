@@ -14,33 +14,37 @@
 
 | 字段名 | 类型 | 说明 | 示例值 | 是否必填 |
 |-------|------|------|--------|---------|
-| dt | int | 对局日期（格式：YYYYMMDD） | 20260408 | 是 |
-| time_unix | bigint | 对局时间戳 | 1712577000 | 是 |
+| dt | bigint | 对局日期（格式：YYYYMMDD） | 20260408 | 是 |
+| time_unix | bigint | 对局时间戳（毫秒级） | 1712577000000 | 是 |
 | resultguid | string | 本局战绩 ID | "abc123xyz" | 是 |
 | timecost | int | 对局耗时（秒） | 180 | 是 |
 | room_id | int | 房间号 | 1001 | 是 |
-| room_base | int | 房间底分 | 100 | 是 |
-| room_fee | int | 房间服务费 | 10 | 是 |
-| room_currency_lower | bigint | 进入房间所需最少携银 | 1000 | 是 |
-| room_currency_upper | bigint | 进入房间最大携银 | 10000 | 是 |
+| basescore | int | 积分+比赛+好友房玩法时的房间底分 | 100 | 是 |
+| basedeposit | int | 经典+不洗牌+癞子玩法时的房间底分 | 100 | 是 |
+| score_fee | int | 积分+比赛+好友房玩法时的房间服务费 | 10 | 是 |
+| fee | int | 经典+不洗牌+癞子玩法时的房间服务费 | 10 | 是 |
+| room_currency_lower | bigint | 进入房间所需最少携带货币 | 1000 | 是 |
+| room_currency_upper | bigint | 进入房间最大携带货币 | 10000 | 是 |
 | uid | bigint | 玩家 ID | 123456789 | 是 |
 | robot | int | 机器人标记：1=机器人，其他=真人 | 0 | 是 |
 | role | int | 角色：1=地主，2=农民 | 1 | 是 |
 | chairno | int | 座位号（0/1/2），0 号位优先叫地主 | 0 | 是 |
 | result_id | int | 结果：1=获胜，2=失败 | 1 | 是 |
-| start_money | bigint | 对局前货币数量 | 5000 | 是 |
-| end_money | bigint | 对局后货币数量 | 5500 | 是 |
-| diff_money | bigint | 本局输赢货币（不含服务费） | 500 | 是 |
+| oldscore | bigint | 积分+比赛+好友房玩法，对局前货币数量 | 5000 | 是 |
+| olddeposit | bigint | 经典+不洗牌+癞子玩法时，对局前货币数量 | 5000 | 是 |
+| end_score | bigint | 积分+比赛+好友房玩法时，对局后货币数量 | 5500 | 是 |
+| end_deposit | bigint | 经典+不洗牌+癞子玩法时，对局后货币数量 | 5500 | 是 |
+| scorediff | bigint | 积分+比赛+好友房玩法时，本局输赢货币（含服务费） | 500 | 是 |
+| depositdiff | bigint | 经典+不洗牌+癞子玩法时，本局输赢货币（含服务费） | 500 | 是 |
 | cut | bigint | 逃跑罚没货币（<0 代表存在逃跑行为） | 0 | 是 |
 | safebox_deposit | bigint | 保险箱存银 | 1000 | 否 |
 | magnification | int | 个人理论总倍数（含公共倍数×个人加倍） | 12 | 是 |
-| grab_landlord_bet | int | 抢地主倍数：3=无人抢/6=1 人抢/12=2 人抢 | 6 | 是 |
+| magnification_subdivision | string | json格式，个人操作倍数，包含了抢地主、春天/反春、炸弹等倍数信息({"behavior_bet":{"farmer1":1,"farmer2":1,"landlord":1},"public_bet":{"bomb_bet":1,"complete_victory_bet":1,"grab_landlord_bet":3,"initial_bet":1}}) | 6 | 是 |
 | magnification_stacked | int | 个人加倍：1=不加倍/2=加倍/4=超级加倍 | 2 | 是 |
-| complete_victory_bet | int | 春天/反春标记：2=存在春天或反春 | 0 | 是 |
-| bomb_bet | int | 炸弹倍数，`bomb_bet/2` = 炸弹个数 | 4 | 是 |
 | channel_id | bigint | 渠道号 | 1001 | 是 |
 | group_id | bigint | 分端 ID（区分 PC/APP/小游戏） | 6 | 是 |
 | app_id | bigint | 应用 ID | 1880053 | 是 |
+| game_id | bigint | 游戏 ID | 53 | 是 |
 
 ## 全局字段说明
 
@@ -49,6 +53,7 @@
 | 字段名 | 类型 | 说明 |
 |--------|------|------|
 | uid | bigint | 玩家唯一标识 ID |
+| game_id | bigint | 游戏 ID（53 = 斗地主游戏） |
 | app_id | bigint | 应用 ID（1880053 = 斗地主游戏应用） |
 | group_id | bigint | 分端 ID（区分 PC/APP/小游戏） |
 | channel_id | bigint | 渠道号 |
@@ -71,6 +76,7 @@
 |------|------|
 | `magnification` | 个人理论总倍数 = 公共倍数 × 个人加倍 |
 | `magnification_stacked` | 个人加倍：1=不加倍 / 2=加倍 / 4=超级加倍 |
+| `magnification_subdivision` | 个人操作倍数，包含了抢地主、春天/反春、炸弹等倍数信息({"behavior_bet":{"farmer1":1,"farmer2":1,"landlord":1},"public_bet":{"bomb_bet":1,"complete_victory_bet":1,"grab_landlord_bet":3,"initial_bet":1}}) |
 | `grab_landlord_bet` | 抢地主倍数：3=无人抢 / 6=1 人抢 / 12=2 人抢 |
 | `complete_victory_bet` | 春天/反春标记：2=存在春天或反春 |
 | `bomb_bet` | 炸弹倍数，炸弹个数 = `bomb_bet/2` |
@@ -79,9 +85,6 @@
 
 | 字段 | 说明 |
 |------|------|
-| `start_money` | 对局前货币数量 |
-| `end_money` | 对局后货币数量 |
-| `diff_money` | 本局输赢货币（不含服务费） |
 | `cut` | 逃跑罚没货币（<0 代表存在逃跑行为） |
 | `safebox_deposit` | 保险箱存银 |
 
@@ -90,8 +93,6 @@
 | 字段 | 说明 |
 |------|------|
 | `room_id` | 房间号，用于区分游戏玩法和房间等级 |
-| `room_base` | 房间底分 |
-| `room_fee` | 房间服务费 |
 | `room_currency_lower` | 进入房间所需最少携银 |
 | `room_currency_upper` | 进入房间最大携银 |
 
@@ -105,12 +106,11 @@
 |---------|------|------|--------|----------|----------|
 | 742 | 练习场 | 30 | 20 | 1000 | 2499 |
 | 420 | 新手场 | 110 | 125 | 1000 | 2499 |
-| 4484, 12074 | 新手场 | 250 | 350 | 1000 | 2499 |
-| 6314 | 初级场 | 500 | 750 | 2500 | 20000 |
-| 11168 | 中级场 | 1200 | 1800 | 6000 | 50000 |
-| 10336 | 高级场 | 2500 | 4000 | 15000 | 120000 |
-| 16445 | 大师场 | 4000 | 7200 | 50000 | 300000 |
-| - | 宗师场 | - | - | 130000 | 2000000000 |
+| 4484, 12074 | 初级场 | 250 | 350 | 1000 | 20000 |
+| 6314 | 中级场 | 500 | 750 | 2500 | 50000 |
+| 11168 | 高级场 | 1200 | 1800 | 6000 | 120000 |
+| 10336 | 大师场 | 2500 | 4000 | 15000 | 300000 |
+| 16445 | 宗师场 | 4000 | 7200 | 50000 | 2000000000 |
 
 **不洗牌玩法：**
 
@@ -149,7 +149,7 @@
 
 ## 注意事项
 
-1. 查询时需使用 `app_id` 字段进行过滤（如：`app_id = 1880053`）
+1. 查询时需使用 `game_id` 字段进行过滤（如：`game_id = 53`）
 2. 查询时间段时使用 `dt` 字段，注意 `dt` 为 int 类型的日期（如：20260408）
 3. `robot` 字段用于区分机器人和真人玩家
 4. `resultguid` 为每局战绩的唯一标识

@@ -16,7 +16,7 @@
 |-------|------|------|--------|---------|
 | log_id | string | 日志唯一 ID | "abc123xyz" | 是 |
 | dt | datetime | 登录时间 | 2026-04-08 10:30:00 | 是 |
-| time_unix | bigint | 登录时间戳 | 1712577000 | 是 |
+| time_unix | bigint | 登录时间戳（毫秒级） | 1761926380000 | 是 |
 | uid | bigint | 玩家唯一标识 ID | 123456789 | 是 |
 | client_ipv4 | string | 玩家登录 IP | "192.168.1.1" | 否 |
 | app_id | bigint | 应用 ID | 1880053 | 是 |
@@ -49,7 +49,7 @@
 
 1. `log_id` 为日志的唯一标识
 2. `dt` 为 datetime 类型，包含完整的日期和时间信息（如：2026-04-08 10:30:00）
-3. `time_unix` 为 Unix 时间戳（秒级）
+3. `time_unix` 为 Unix 时间戳（毫秒级）
 4. `client_ipv4` 记录玩家登录时的 IP 地址
 5. 查询时需使用 `app_id` 字段进行过滤（如：`app_id = 1880053`）
 6. 查询时间段时使用 `dt` 字段，注意 `dt` 为 datetime 类型

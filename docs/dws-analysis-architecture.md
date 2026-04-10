@@ -29,15 +29,16 @@ graph TD
 CREATE TABLE tcy_temp.dws_new_user_daily_features AS
 SELECT 
     reg.uid,
-    reg.dt AS reg_date,
-    login.channel_id,
+    reg.reg_date AS reg_date,
+    login.first_channel_id AS channel_id,
     chn.channel_category_name AS channel_category,
-    login.group_id,
+    login.first_group_id AS group_id,
     -- 核心特征汇总 ... (包含win_rate, game_count, diff_money 等)
-FROM hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st reg
-LEFT JOIN tcy_dwd.dwd_tcy_userlogin_si login ON reg.uid = login.uid 
-    AND login.dt = reg.dt
-LEFT JOIN tcy_temp.dws_channel_category_map chn ON login.channel_id = chn.channel_id
+FROM tcy_temp.dws_dq_daily_reg reg
+LEFT JOIN tcy_temp.dws_dq_daily_login login 
+    ON reg.uid = login.uid 
+    AND CAST(DATE_FORMAT(login.login_date, '%Y%m%d') AS INT) = reg.reg_date
+LEFT JOIN tcy_temp.dws_channel_category_map chn ON login.first_channel_id = chn.channel_id
 -- ... 关联 combat 事实表进行聚合 ...
 ```
 
@@ -60,3 +61,5 @@ LEFT JOIN tcy_temp.dws_channel_category_map chn ON login.channel_id = chn.channe
 ---
 
 > **下一步**：我将开始执行各个文档的 SQL 重构工作，您无需手动修改，我会通过工具批量更新。
+
+> **更新**：所有 DWS 表已优化，详见各表文档 v1.1 版本。主分析文档更新至 v3.1，分玩法文档更新至 v2.1。
