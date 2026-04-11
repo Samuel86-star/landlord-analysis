@@ -1,14 +1,14 @@
-# DWS 中间表：用户每日游戏行为聚合表
+# DWS 中间表：APP 端每日游戏行为统计表
 
 ## 表基本信息
 
 | 项目 | 说明 |
 |------|------|
 | 库名 | `tcy_temp` |
-| 表名 | `dws_ddz_user_daily_game` |
-| 全名 | `tcy_temp.dws_ddz_user_daily_game` |
+| 表名 | `dws_ddz_appdaily_game_stat` |
+| 全名 | `tcy_temp.dws_ddz_appdaily_game_stat` |
 | 类型 | DWS 层聚合表（每日增量） |
-| 描述 | 用户每日游戏行为聚合表，包含对局数、胜负、倍数、经济等汇总指标 |
+| 描述 | APP 端用户每日游戏行为统计表，包含对局数、胜负、倍数、经济等汇总指标 |
 | 粒度 | uid × dt（一个用户一天一行） |
 
 ## 设计背景
@@ -63,14 +63,14 @@
 | 4 | 积分（PC端） | 积分 |
 | 6 | 好友房 | 积分 |
 
-> **注意**：APP 端玩家主要参与 play_mode 为 1/2/3/5 的玩法（均为银子币种），分析时建议过滤这些玩法。
+> **说明**：本表仅统计 APP 端用户（`group_id` IN 6,66,8,88,33,44,77,99）的银子玩法（play_mode IN 1,2,3,5），排除 PC 端积分玩法。
 
 ## 构建 SQL
 
 ### 建表语句
 
 ```sql
-CREATE TABLE tcy_temp.dws_ddz_user_daily_game (
+CREATE TABLE tcy_temp.dws_ddz_appdaily_game_stat (
     uid BIGINT,
     dt BIGINT,
     game_count BIGINT,
@@ -111,7 +111,7 @@ PROPERTIES("replication_num" = "1");
 ### 增量数据导入
 
 ```sql
-INSERT INTO tcy_temp.dws_ddz_user_daily_game
+INSERT INTO tcy_temp.dws_ddz_appdaily_game_stat
 WITH game_enriched AS (
     -- 1. 预处理：在单层扫描中完成基础过滤和窗口排序
     SELECT
@@ -124,7 +124,8 @@ WITH game_enriched AS (
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt = 20260408
       AND robot != 1
-      AND play_mode IN (1, 2, 3, 5) -- 仅银子玩法
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- 仅 APP 端
+      AND play_mode IN (1, 2, 3, 5)  -- 仅银子玩法
 ),
 streaks_calc AS (
     -- 2. 连胜连败逻辑：利用 game_seq - 内部序号的差值分组（经典 Gaps and Islands 算法）
@@ -196,7 +197,27 @@ GROUP BY g.uid, g.dt;
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
 
-## 使用示例
+## 注意事项
+
+1. **玩法过滤**：仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
+2. **APP 端过滤**：仅统计 APP 端用户（group_id IN 6,66,8,88,33,44,77,99）
+3. **比赛玩法**：play_mode=5 为 APP/小游戏端的比赛玩法，使用银子币种
+4. **实际倍数**：`avg_real_magnification` 已使用 `ABS()` 处理，保证非负
+5. **连胜连败**：仅统计胜负局，排除无效局
+6. **数据完整性**：如用户当日无对局，本表无对应记录
+
+## 与其他 DWS 表的关系
+
+```
+tcy_temp.dws_ddz_daily_game        （对局明细表）
+            ↓  APP端+银子玩法聚合
+tcy_temp.dws_ddz_appdaily_game_stat   （APP端用户每日游戏统计表）
+            ↓  关联分析
+tcy_temp.dws_dq_app_daily_reg      （APP 端注册用户宽表）
+tcy_temp.dws_dq_daily_login        （每日登录聚合表）
+```
+
+## 关联查询示例
 
 ### 1. 计算新增用户留存（注册日有对局的用户）
 
@@ -209,7 +230,7 @@ SELECT
     COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) AS day1_retained,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260215
 GROUP BY r.reg_date
@@ -231,7 +252,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260210
 GROUP BY r.reg_date,
@@ -259,7 +280,7 @@ SELECT
     ROUND(AVG(g.game_count), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260210
   AND g.game_count > 0
@@ -287,7 +308,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_user_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260210
 GROUP BY r.reg_date,
@@ -312,14 +333,119 @@ ORDER BY r.reg_date, high_multi_exp;
 
 ```
 tcy_temp.dws_ddz_daily_game        （对局明细表）
-            ↓  用户×日期聚合
-tcy_temp.dws_ddz_user_daily_game   （用户每日游戏聚合表）
+            ↓  APP端+银子玩法聚合
+tcy_temp.dws_ddz_appdaily_game_stat   （APP端用户每日游戏统计表）
             ↓  关联分析
 tcy_temp.dws_dq_app_daily_reg      （APP 端注册用户宽表）
 tcy_temp.dws_dq_daily_login        （每日登录聚合表）
 ```
 
-> **文档版本**：v1.0
+## 关联查询示例
+
+### 1. 计算新增用户留存（注册日有对局的用户）
+
+```sql
+-- 新增用户留存（注册且有对局）
+SELECT
+    r.reg_date,
+    COUNT(DISTINCT r.uid) AS reg_user_count,
+    COUNT(DISTINCT g.uid) AS game_user_count,
+    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) AS day1_retained,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260215
+GROUP BY r.reg_date
+ORDER BY r.reg_date;
+```
+
+### 2. 按首日对局数分析留存
+
+```sql
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.game_count = 1 THEN '1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN '2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN '6-10局'
+        ELSE '10局以上'
+    END AS game_count_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.game_count = 1 THEN '1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN '2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN '6-10局'
+        ELSE '10局以上'
+    END
+ORDER BY r.reg_date, game_count_group;
+```
+
+### 3. 按首日胜率分析留存
+
+```sql
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.win_rate < 30 THEN 'A: <30%'
+        WHEN g.win_rate < 50 THEN 'B: 30-50%'
+        WHEN g.win_rate < 70 THEN 'C: 50-70%'
+        ELSE 'D: >=70%'
+    END AS win_rate_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.game_count), 1) AS avg_games,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+  AND g.game_count > 0
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.win_rate < 30 THEN 'A: <30%'
+        WHEN g.win_rate < 50 THEN 'B: 30-50%'
+        WHEN g.win_rate < 70 THEN 'C: 50-70%'
+        ELSE 'D: >=70%'
+    END
+ORDER BY r.reg_date, win_rate_group;
+```
+
+### 4. 按首日高倍局经历分析留存
+
+```sql
+SELECT
+    r.reg_date,
+    CASE
+        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
+        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
+        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
+        ELSE 'D: 有赢有输'
+    END AS high_multi_exp,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date = 20260210
+GROUP BY r.reg_date,
+    CASE
+        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
+        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
+        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
+        ELSE 'D: 有赢有输'
+    END
+ORDER BY r.reg_date, high_multi_exp;
+```
+
+> **文档版本**：v2.0
 > **创建时间**：2026-04-09
 > **更新说明**：
-> - v1.0：初始版本，聚合用户每日游戏行为特征，包含 play_mode=5（比赛）玩法
+> - v1.0：初始版本
+> - **v2.0**：重命名为 `dws_ddz_appdaily_game_stat`，增加 `group_id IN (6,66,8,88,33,44,77,99)` APP 端过滤

@@ -48,6 +48,7 @@
 ```sql
 CREATE TABLE tcy_temp.dws_dq_app_daily_reg (
     uid BIGINT,
+    app_id BIGINT,
     reg_date INT,
     reg_datetime DATETIME,
     reg_group_id INT,
@@ -58,17 +59,18 @@ CREATE TABLE tcy_temp.dws_dq_app_daily_reg (
     is_login_log_missing INT,
     first_day_login_cnt BIGINT
 )
-DUPLICATE KEY(uid)
-DISTRIBUTED BY HASH(uid) BUCKETS 16
+DUPLICATE KEY(uid, app_id)
+DISTRIBUTED BY HASH(uid) BUCKETS 4
 PROPERTIES("replication_num" = "1");
 ```
 
 ### 增量数据导入
 
 ```sql
-INSERT INTO tcy_temp.dws_dq_app_daily_reg
+insert into tcy_temp.dws_dq_app_daily_reg
 SELECT 
     r.uid,
+    r.app_id,
     r.reg_date,
     r.reg_datetime,
     COALESCE(l.first_group_id, -1) AS reg_group_id,
@@ -79,14 +81,15 @@ SELECT
     CASE WHEN l.uid IS NULL THEN 1 ELSE 0 END AS is_login_log_missing,
     COALESCE(l.login_count, 0) AS first_day_login_cnt
 FROM tcy_temp.dws_dq_daily_reg r
-LEFT JOIN tcy_temp.dws_dq_daily_login l 
+INNER JOIN tcy_temp.dws_dq_daily_login l 
     ON r.uid = l.uid 
+    AND r.app_id = l.app_id 
     AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
-    AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)  -- 仅 APP 端
 LEFT JOIN tcy_temp.dws_channel_category_map chn 
     ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
-  AND r.reg_date = ${DATE};  -- 替换为实际日期
+  AND r.reg_date between 20260210 and 20260410
+  AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88);
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
@@ -136,24 +139,24 @@ ORDER BY reg_date, channel_category_name, platform;
 
 ```sql
 SELECT
-    reg_date,
     CASE 
-        WHEN first_day_login_cnt = 1 THEN '1次'
-        WHEN first_day_login_cnt BETWEEN 2 AND 5 THEN '2-5次'
-        WHEN first_day_login_cnt > 5 THEN '5次以上'
-        ELSE '无登录记录'
+        WHEN first_day_login_cnt = 1 THEN '0：1次'
+        WHEN first_day_login_cnt BETWEEN 2 AND 5 THEN '1：2-5次'
+        WHEN first_day_login_cnt > 5 THEN '2：5次以上'
+        ELSE '3：无登录记录'
     END AS login_bucket,
+    reg_date,
     COUNT(DISTINCT uid) AS user_count
 FROM tcy_temp.dws_dq_app_daily_reg
 WHERE reg_date BETWEEN 20260210 AND 20260215
 GROUP BY reg_date,
     CASE 
-        WHEN first_day_login_cnt = 1 THEN '1次'
-        WHEN first_day_login_cnt BETWEEN 2 AND 5 THEN '2-5次'
-        WHEN first_day_login_cnt > 5 THEN '5次以上'
-        ELSE '无登录记录'
+        WHEN first_day_login_cnt = 1 THEN '0：1次'
+        WHEN first_day_login_cnt BETWEEN 2 AND 5 THEN '1：2-5次'
+        WHEN first_day_login_cnt > 5 THEN '2：5次以上'
+        ELSE '3：无登录记录'
     END
-ORDER BY reg_date, login_bucket;
+ORDER BY login_bucket desc, reg_date desc;
 ```
 
 ### 4. 关联对局数据计算游戏留存分母
@@ -200,7 +203,7 @@ tcy_temp.dws_ddz_daily_game        （对局战绩统一字段表）
 
 ```
 dws_dq_daily_reg ──┐
-                   ├── LEFT JOIN ──→ dws_dq_app_daily_reg
+                   ├── INNER JOIN ──→ dws_dq_app_daily_reg
 dws_dq_daily_login ─┘
                    │
                    └── LEFT JOIN ──→ dws_channel_category_map

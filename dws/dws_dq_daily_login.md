@@ -109,7 +109,8 @@ FROM (
     FROM tcy_temp.dws_dq_daily_login
     WHERE app_id = 1880053
     GROUP BY login_date
-) t;
+) t
+ORDER BY login_date DESC;
 ```
 
 ### 2. 分端使用偏好分析
@@ -121,31 +122,32 @@ SELECT
     COUNT(DISTINCT uid) AS user_count
 FROM tcy_temp.dws_dq_daily_login
 WHERE app_id = 1880053
-GROUP BY login_date, most_freq_group_id;
+GROUP BY login_date, most_freq_group_id
+ORDER BY 1 desc, 3 desc;
 ```
 
 ### 3. 登录活跃度分析
 ```sql
 -- 统计不同登录频次的用户分布
 SELECT
-    login_date,
     CASE 
-        WHEN login_count = 1 THEN '1次'
-        WHEN login_count BETWEEN 2 AND 5 THEN '2-5次'
-        WHEN login_count BETWEEN 6 AND 10 THEN '6-10次'
-        ELSE '10次以上'
+        WHEN login_count = 1 THEN '0:1次'
+        WHEN login_count BETWEEN 2 AND 5 THEN '1:2-5次'
+        WHEN login_count BETWEEN 6 AND 10 THEN '2:6-10次'
+        ELSE '3:10次以上'
     END AS login_freq_bucket,
+    login_date,
     COUNT(DISTINCT uid) AS user_count
 FROM tcy_temp.dws_dq_daily_login
 WHERE app_id = 1880053
 GROUP BY login_date, 
     CASE 
-        WHEN login_count = 1 THEN '1次'
-        WHEN login_count BETWEEN 2 AND 5 THEN '2-5次'
-        WHEN login_count BETWEEN 6 AND 10 THEN '6-10次'
-        ELSE '10次以上'
+        WHEN login_count = 1 THEN '0:1次'
+        WHEN login_count BETWEEN 2 AND 5 THEN '1:2-5次'
+        WHEN login_count BETWEEN 6 AND 10 THEN '2:6-10次'
+        ELSE '3:10次以上'
     END
-order by 1 desc, 2;
+order by 1 desc, 2 desc;
 ```
 
 ### 4. 注册用户登录行为分析
@@ -161,7 +163,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid 
-    AND CAST(r.reg_date AS VARCHAR) = DATE_FORMAT(l.login_date, '%Y%m%d')
+    AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
 WHERE r.reg_date = 20260210;
 ```
 

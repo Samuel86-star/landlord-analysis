@@ -65,6 +65,7 @@ WHERE app_id = 1880053
 直接关联首次登录日志表：
 
 ```sql
+SELECT
     r.uid,
     r.reg_date,
     r.reg_datetime,
@@ -78,6 +79,8 @@ FROM tcy_temp.dws_dq_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l 
     ON r.uid = l.uid 
     AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
+LEFT JOIN tcy_temp.dws_channel_category_map chn
+    ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN 20260210 AND 20260210;
 ```

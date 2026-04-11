@@ -8,8 +8,11 @@
 
 1. [注册数据增量更新](#1-注册数据增量更新)
 2. [登录数据增量更新](#2-登录数据增量更新)
-3. [对局数据增量更新](#3-对局数据增量更新)
-4. [执行顺序与依赖关系](#4-执行顺序与依赖关系)
+3. [APP 端注册用户宽表增量更新](#3-app-端注册用户宽表增量更新)
+4. [对局数据增量更新](#4-对局数据增量更新)
+5. [用户每日游戏行为聚合增量更新](#5-用户每日游戏行为聚合增量更新)
+6. [执行顺序与依赖关系](#6-执行顺序与依赖关系)
+7. [常见问题](#7-常见问题)
 
 ---
 
@@ -104,7 +107,55 @@ GROUP BY uid, app_id, DATE(dt);
 
 ---
 
-## 3. 对局数据增量更新
+## 3. APP 端注册用户宽表增量更新
+
+### 源表与目标表
+
+| 源表 | 目标表 |
+|------|--------|
+| `tcy_temp.dws_dq_daily_reg`、`tcy_temp.dws_dq_daily_login` | `tcy_temp.dws_dq_app_daily_reg` |
+
+### 增量更新 SQL
+
+```sql
+-- APP 端注册用户宽表增量导入
+-- 参数：将 ${DATE} 替换为实际日期
+INSERT INTO tcy_temp.dws_dq_app_daily_reg
+SELECT 
+    r.uid,
+    r.app_id,
+    r.reg_date,
+    r.reg_datetime,
+    COALESCE(l.first_group_id, -1) AS reg_group_id,
+    COALESCE(l.first_channel_id, -1) AS reg_channel_id,
+    COALESCE(chn.channel_category_id, -1) AS channel_category_id,
+    COALESCE(chn.channel_category_name, '未知/日志丢失') AS channel_category_name,
+    COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
+    CASE WHEN l.uid IS NULL THEN 1 ELSE 0 END AS is_login_log_missing,
+    COALESCE(l.login_count, 0) AS first_day_login_cnt
+FROM tcy_temp.dws_dq_daily_reg r
+INNER JOIN tcy_temp.dws_dq_daily_login l 
+    ON r.uid = l.uid 
+    AND r.app_id = l.app_id 
+    AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
+LEFT JOIN tcy_temp.dws_channel_category_map chn 
+    ON l.first_channel_id = chn.channel_id
+WHERE r.app_id = 1880053
+  AND r.reg_date between 20260210 and 20260410
+  AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88);
+```
+
+### 说明
+
+- 依赖 `dws_dq_daily_reg` 和 `dws_dq_daily_login` 表，需在其之后执行
+- 仅包含 APP 端注册用户（Android + iOS），通过 `reg_group_id` 过滤
+- `is_login_log_missing = 1` 表示注册当日无登录日志
+- 建议每日凌晨执行，导入前一日数据
+- 详细文档：[dws/dws_dq_app_daily_reg.md](../dws/dws_dq_app_daily_reg.md)
+
+---
+
+## 4. 对局数据增量更新
 
 ### 源表与目标表
 
@@ -124,17 +175,15 @@ SELECT
     resultguid,
     timecost,
     room_id,
-    -- 玩法分类
     CASE 
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1  -- 经典
-        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2                 -- 不洗牌
-        WHEN room_id IN (13176,13177,13178) THEN 3                          -- 癞子
-        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5  -- 比赛（APP/小游戏端）
-        WHEN room_id IN (11534,14238,15458) THEN 4                          -- 积分
-        WHEN room_id IN (158,159) THEN 6                                    -- 好友房
+        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
+        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
+        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
+        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
+        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
+        WHEN room_id IN (158,159) THEN 6 -- 好友房
         ELSE 0 
     END AS play_mode,
-    -- 统一货币字段
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
     room_currency_lower,
@@ -154,13 +203,11 @@ SELECT
     safebox_deposit,
     magnification,
     magnification_stacked,
-    -- 实际倍数
     CASE 
         WHEN room_id IN (11534,14238,15458,158,159) 
         THEN ROUND((scorediff + score_fee) / NULLIF(basescore, 0), 2)
         ELSE ROUND((depositdiff + fee) / NULLIF(basedeposit, 0), 2)
     END AS real_magnification,
-    -- JSON 倍数提取
     get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet') AS grab_landlord_bet,
     get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet') AS complete_victory_bet,
     get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet,
@@ -170,7 +217,7 @@ SELECT
     game_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE game_id = 53
-  AND dt BETWEEN ${START_DATE} AND ${END_DATE};  -- 替换为实际日期范围，如 20260409 AND 20260409
+  AND dt BETWEEN 20260401 AND 20260408;
 ```
 
 ### 说明
@@ -183,105 +230,113 @@ WHERE game_id = 53
 
 ---
 
-## 3.1 用户每日游戏行为聚合增量更新
+## 5. APP 端每日游戏行为统计增量更新
 
 ### 源表与目标表
 
 | 源表 | 目标表 |
 |------|--------|
-| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_user_daily_game` |
+| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_appdaily_game_stat` |
 
 ### 增量更新 SQL
 
 ```sql
--- 用户每日游戏行为聚合增量导入
-INSERT INTO tcy_temp.dws_ddz_user_daily_game
-WITH game_base AS (
+-- APP 端每日游戏行为统计增量导入
+INSERT INTO tcy_temp.dws_ddz_appdaily_game_stat
+WITH game_enriched AS (
+    -- 1. 预处理：在单层扫描中完成基础过滤和窗口排序
     SELECT
-        uid, dt, timecost, result_id,
-        magnification, real_magnification, grab_landlord_bet,
-        magnification_stacked, bomb_bet, start_money, end_money,
-        diff_money_pre_tax, room_fee, cut, room_id, play_mode, time_unix
+        *,
+        -- 确定玩家全天首局和末局顺序，为后续提取 start/end_money 做准备
+        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix ASC) AS rank_asc,
+        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix DESC) AS rank_desc,
+        -- 为连胜连败计算准备：生成全天对局序号
+        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix ASC) AS game_seq
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt = ${DATE}  -- 替换为实际日期
       AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- 仅 APP 端
       AND play_mode IN (1, 2, 3, 5)  -- 仅银子玩法
 ),
--- 计算连胜连败
-streaks AS (
-    SELECT uid, dt, result_id, COUNT(*) AS streak_len
+streaks_calc AS (
+    -- 2. 连胜连败逻辑：利用 game_seq - 内部序号的差值分组（经典 Gaps and Islands 算法）
+    SELECT 
+        uid, 
+        result_id,
+        COUNT(*) AS streak_len
     FROM (
-        SELECT uid, dt, result_id, game_seq,
-               game_seq - ROW_NUMBER() OVER (PARTITION BY uid, dt, result_id ORDER BY game_seq) AS grp
-        FROM (
-            SELECT uid, dt, result_id,
-                   ROW_NUMBER() OVER (PARTITION BY uid, dt ORDER BY time_unix) AS game_seq
-            FROM game_base
-            WHERE result_id IN (1, 2)
-        ) t1
-    ) t2 
-    GROUP BY uid, dt, result_id, grp
+        SELECT 
+            uid, 
+            result_id,
+            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, result_id ORDER BY game_seq) AS grp
+        FROM game_enriched
+        WHERE result_id IN (1, 2)
+    ) t
+    GROUP BY uid, result_id, grp
 ),
 max_streaks AS (
-    SELECT uid, dt,
-           MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
-           MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
-    FROM streaks
-    GROUP BY uid, dt
-),
--- 首末局信息
-first_last AS (
-    SELECT uid, dt,
-           FIRST_VALUE(start_money) OVER (PARTITION BY uid, dt ORDER BY time_unix) AS start_money,
-           FIRST_VALUE(end_money) OVER (PARTITION BY uid, dt ORDER BY time_unix DESC) AS end_money
-    FROM game_base
+    -- 3. 汇总最大连胜连败
+    SELECT 
+        uid,
+        MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
+        MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
+    FROM streaks_calc
+    GROUP BY uid
 )
+-- 4. 最终聚合
 SELECT
-    g.uid, g.dt,
+    g.uid,
+    g.dt,
+    -- 对局及时间统计
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
     ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
-    SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END) AS win_count,
-    SUM(CASE WHEN g.result_id = 2 THEN 1 ELSE 0 END) AS lose_count,
-    ROUND(SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS win_rate,
-    COALESCE(s.max_win_streak, 0) AS max_win_streak,
-    COALESCE(s.max_lose_streak, 0) AS max_lose_streak,
+    -- 胜负统计
+    COUNT(CASE WHEN g.result_id = 1 THEN 1 END) AS win_count,
+    COUNT(CASE WHEN g.result_id = 2 THEN 1 END) AS lose_count,
+    ROUND(COUNT(CASE WHEN g.result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
+    ANY_VALUE(s.max_win_streak) AS max_win_streak,
+    ANY_VALUE(s.max_lose_streak) AS max_lose_streak,
+    -- 倍数统计（使用更简洁的条件聚合）
     ROUND(AVG(g.magnification), 2) AS avg_magnification,
     MAX(g.magnification) AS max_magnification,
     ROUND(AVG(ABS(g.real_magnification)), 2) AS avg_real_magnification,
-    SUM(CASE WHEN g.magnification <= 6 THEN 1 ELSE 0 END) AS low_multi_games,
-    SUM(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 ELSE 0 END) AS mid_multi_games,
-    SUM(CASE WHEN g.magnification > 24 THEN 1 ELSE 0 END) AS high_multi_games,
-    SUM(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 ELSE 0 END) AS high_multi_wins,
-    SUM(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 ELSE 0 END) AS high_multi_losses,
-    SUM(CAST(g.bomb_bet / 2 AS BIGINT)) AS total_bomb_count,
-    SUM(CASE WHEN g.grab_landlord_bet > 3 THEN 1 ELSE 0 END) AS games_with_grab,
-    SUM(CASE WHEN g.magnification_stacked > 1 THEN 1 ELSE 0 END) AS games_player_doubled,
-    MIN(fl.start_money) AS start_money,
-    MAX(fl.end_money) AS end_money,
+    COUNT(CASE WHEN g.magnification <= 6 THEN 1 END) AS low_multi_games,
+    COUNT(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 END) AS mid_multi_games,
+    COUNT(CASE WHEN g.magnification > 24 THEN 1 END) AS high_multi_games,
+    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 END) AS high_multi_wins,
+    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 END) AS high_multi_losses,
+    -- 特征特征
+    SUM(g.bomb_bet / 2) AS total_bomb_count,
+    COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END) AS games_with_grab,
+    COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END) AS games_player_doubled,
+    -- 经济统计
+    MAX(CASE WHEN g.rank_asc = 1 THEN g.start_money END) AS start_money,
+    MAX(CASE WHEN g.rank_desc = 1 THEN g.end_money END) AS end_money,
     MAX(g.end_money) AS money_peak,
     MIN(g.end_money) AS money_valley,
     SUM(g.diff_money_pre_tax) AS total_diff_money,
     SUM(g.room_fee) AS total_fee_paid,
-    SUM(CASE WHEN g.cut < 0 THEN 1 ELSE 0 END) AS escape_count,
+    -- 逃跑和房间
+    COUNT(CASE WHEN g.cut < 0 THEN 1 END) AS escape_count,
     COUNT(DISTINCT g.room_id) AS distinct_rooms,
-    LISTAGG(DISTINCT CAST(g.play_mode AS VARCHAR), ',') WITHIN GROUP (ORDER BY g.play_mode) AS play_modes
-FROM game_base g
-LEFT JOIN max_streaks s ON g.uid = s.uid AND g.dt = s.dt
-LEFT JOIN first_last fl ON g.uid = fl.uid AND g.dt = fl.dt
+    GROUP_CONCAT(DISTINCT CAST(g.play_mode AS VARCHAR) ORDER BY g.play_mode) AS play_modes
+FROM game_enriched g
+LEFT JOIN max_streaks s ON g.uid = s.uid
 GROUP BY g.uid, g.dt;
 ```
 
 ### 说明
 
 - 依赖 `dws_ddz_daily_game` 表，需在其之后执行
-- 仅聚合银子玩法（play_mode IN 1,2,3,5）
+- **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
+- 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
 - 包含胜负、倍数、经济等汇总指标
-- 详细文档：[dws/dws_ddz_user_daily_game.md](../dws/dws_ddz_user_daily_game.md)
+- 详细文档：[dws/dws_ddz_appdaily_game_stat.md](../dws/dws_ddz_appdaily_game_stat.md)
 
 ---
 
-## 5. 执行顺序与依赖关系
+## 6. 执行顺序与依赖关系
 
 ### 表依赖关系
 
@@ -289,14 +344,14 @@ GROUP BY g.uid, g.dt;
 dws_dq_daily_reg          ← 无依赖，可优先执行
 dws_dq_daily_login        ← 无依赖，可并行执行
 dws_ddz_daily_game        ← 无依赖，可并行执行
-dws_ddz_user_daily_game   ← 依赖 dws_ddz_daily_game
 dws_dq_app_daily_reg      ← 依赖 dws_dq_daily_reg, dws_dq_daily_login
+dws_ddz_appdaily_game_stat   ← 依赖 dws_ddz_daily_game
 ```
 
 ### 建议执行顺序
 
 1. **每日凌晨 02:00**：并行执行基础表增量导入（dws_dq_daily_reg、dws_dq_daily_login、dws_ddz_daily_game）
-2. **每日凌晨 03:00**：执行依赖表增量导入（dws_ddz_user_daily_game、dws_dq_app_daily_reg）
+2. **每日凌晨 03:00**：执行依赖表增量导入（dws_dq_app_daily_reg、dws_ddz_appdaily_game_stat）
 3. **数据校验**：检查导入数据量是否符合预期
 
 ### 批量执行脚本示例
@@ -339,7 +394,7 @@ echo "数据增量更新完成！"
 
 ---
 
-## 5. 常见问题
+## 7. 常见问题
 
 ### Q1: 如何补历史数据？
 

@@ -73,7 +73,7 @@ INNER JOIN hive_catalog_cdh5.dim.dim_channel_category t2
 | `dws_dq_daily_reg` | [dws_dq_daily_reg.md](dws/dws_dq_daily_reg.md) | 用户注册信息表（StarRocks） |
 | `dws_dq_daily_login` | [dws_dq_daily_login.md](dws/dws_dq_daily_login.md) | 用户每日登录多维度聚合表 |
 | `dws_ddz_daily_game` | [dws_ddz_daily_game.md](dws/dws_ddz_daily_game.md) | 对局战绩统一字段表 |
-| `dws_ddz_user_daily_game` | [dws_ddz_user_daily_game.md](dws/dws_ddz_user_daily_game.md) | 用户每日游戏行为聚合表 |
+| `dws_ddz_appdaily_game_stat` | [dws_ddz_appdaily_game_stat.md](dws/dws_ddz_appdaily_game_stat.md) | APP端每日游戏行为统计表 |
 | `dws_dq_app_daily_reg` | [dws_dq_app_daily_reg.md](dws/dws_dq_app_daily_reg.md) | APP端每日注册用户宽表 |
 | `dws_ddz_app_daily_active` | [dws_ddz_app_daily_active.md](dws/dws_ddz_app_daily_active.md) | APP端每日活跃用户表 |
 | `dws_ddz_app_daily_active_modes` | [dws_ddz_app_daily_active_modes.md](dws/dws_ddz_app_daily_active_modes.md) | APP端每日活跃用户×玩法聚合表 |

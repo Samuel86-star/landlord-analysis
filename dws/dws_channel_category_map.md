@@ -17,12 +17,13 @@
 CREATE TABLE tcy_temp.dws_channel_category_map AS
 SELECT
     t1.channel_id,
-    t2.channel_category_id,
-    t2.channel_category_name,
-    t2.channel_category_tag_id
+    ANY_VALUE(t2.channel_category_id),
+    ANY_VALUE(t2.channel_category_name),
+    ANY_VALUE(t2.channel_category_tag_id)
 FROM tcy_dim.dim_channel_singletag_dict t1
 INNER JOIN hive_catalog_cdh5.dim.dim_channel_category t2
-    ON t1.channel_type_id = t2.channel_type_id;
+    ON t1.channel_type_id = t2.channel_type_id
+GROUP BY t1.channel_id;
 ```
 
 ## 字段说明
