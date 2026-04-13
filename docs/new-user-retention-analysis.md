@@ -531,13 +531,14 @@ ORDER BY platform, r.reg_date desc;
 #### 8.3.1 按首日对局数分析留存
 
 ```sql
--- 按首日对局数分组分析留存
+-- 按首日对局数分组分析留存（0局和1局拆分）
 SELECT
     CASE 
-        WHEN g.game_count = 1 OR g.game_count IS NULL THEN 'A: 0-1局'
-        WHEN g.game_count BETWEEN 2 AND 5 THEN 'B: 2-5局'
-        WHEN g.game_count BETWEEN 6 AND 10 THEN 'C: 6-10局'
-        ELSE 'D: 10局以上'
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
+        WHEN g.game_count = 1 THEN 'B: 1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN 'D: 6-10局'
+        ELSE 'E: 10局以上'
     END AS game_count_group,
     r.reg_date,
     COUNT(DISTINCT r.uid) AS user_count,
@@ -546,17 +547,20 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260405
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
 GROUP BY 
     CASE 
-        WHEN g.game_count = 1 OR g.game_count IS NULL THEN 'A: 0-1局'
-        WHEN g.game_count BETWEEN 2 AND 5 THEN 'B: 2-5局'
-        WHEN g.game_count BETWEEN 6 AND 10 THEN 'C: 6-10局'
-        ELSE 'D: 10局以上'
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
+        WHEN g.game_count = 1 THEN 'B: 1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN 'D: 6-10局'
+        ELSE 'E: 10局以上'
     END,
   r.reg_date
 ORDER BY game_count_group, r.reg_date desc;
 ```
+
+> **说明**：0 局用户（注册但未进入对局）与 1 局用户（仅体验首局）的流失原因不同——前者可能是引导/UI 层面流失，后者是首局体验驱动流失，拆分后可分别制定干预策略。
 
 **查询结果：**
 
