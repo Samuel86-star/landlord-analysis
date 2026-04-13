@@ -433,6 +433,7 @@ APP 端注册（dws_dq_app_daily_reg）
 | `dws_dq_daily_login` | 每日登录聚合表 | [dws_dq_daily_login.md](../dws/dws_dq_daily_login.md) |
 | `dws_ddz_daily_game` | 对局战绩统一字段表 | [dws_ddz_daily_game.md](../dws/dws_ddz_daily_game.md) |
 | `dws_ddz_appdaily_game_stat` | 用户每日游戏行为聚合表 | [dws_ddz_appdaily_game_stat.md](../dws/dws_ddz_appdaily_game_stat.md) |
+| `dws_ddz_appdaily_game_stat_by_mode` | 用户每日游戏行为聚合表（按玩法拆分） | [dws_ddz_appdaily_game_stat_by_mode.md](../dws/dws_ddz_appdaily_game_stat_by_mode.md) |
 
 ### 8.2 新增用户留存分析 SQL
 
@@ -937,6 +938,549 @@ ORDER BY r.reg_date, reg_hour_group;
 - 凌晨注册用户可能是高粘性夜间玩家或低质量刷量用户
 - 晚间（18-22）是游戏活跃高峰期，该时段注册用户的首日体验可能更好（匹配速度快、对手多样性高）
 
+### 8.4 首日仅 1 局流失用户专项分析
+
+> **分析背景**：首日仅完成 1 局的用户占比 9.3%，次留仅 9.6%。这部分用户进入了游戏但体验首局后即离开，是首局体验优化的核心目标群体。由于只有一条对局记录，可以精确分析这唯一一局的各个维度，定位流失原因。
+>
+> 以下 SQL 均从明细表 `dws_ddz_daily_game` 中取首日唯一一局的数据，与注册表和登录表关联分析留存。
+
+#### 8.4.1 首局胜负 × 角色 对留存的影响
+
+```sql
+-- 1局用户：首局胜负 × 角色（地主/农民）对留存的影响
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.role = 1 AND g.result_id = 1 THEN 'A: 地主-胜'
+        WHEN g.role = 1 AND g.result_id = 2 THEN 'B: 地主-负'
+        WHEN g.role = 2 AND g.result_id = 1 THEN 'C: 农民-胜'
+        WHEN g.role = 2 AND g.result_id = 2 THEN 'D: 农民-负'
+        ELSE 'E: 其他'
+    END AS role_result_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.role = 1 AND g.result_id = 1 THEN 'A: 地主-胜'
+        WHEN g.role = 1 AND g.result_id = 2 THEN 'B: 地主-负'
+        WHEN g.role = 2 AND g.result_id = 1 THEN 'C: 农民-胜'
+        WHEN g.role = 2 AND g.result_id = 2 THEN 'D: 农民-负'
+        ELSE 'E: 其他'
+    END
+ORDER BY r.reg_date, role_result_group;
+```
+
+**分析要点**：
+- 首局有新手配牌，预期地主胜率偏高；如果地主负的留存极低，说明配牌效果不足
+- 对比「地主胜 vs 农民胜」的留存差异，判断角色体验是否影响留存
+- 首局输的用户如果留存显著低于赢的用户，说明新手对首局胜负非常敏感
+
+#### 8.4.2 首局倍数对留存的影响
+
+```sql
+-- 1局用户：首局玩法 × 倍数对留存的影响
+SELECT
+    r.reg_date,
+    CASE g.play_mode
+        WHEN 1 THEN '经典'
+        WHEN 2 THEN '不洗牌'
+        WHEN 3 THEN '赖子'
+        ELSE '其他'
+    END AS play_mode_name,
+    CASE
+        WHEN g.magnification <= 6 THEN 'A: 低倍(<=6)'
+        WHEN g.magnification <= 12 THEN 'B: 中低倍(6-12)'
+        WHEN g.magnification <= 24 THEN 'C: 中倍(12-24)'
+        ELSE 'D: 高倍(24+)'
+    END AS multi_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.magnification), 1) AS avg_magnification,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE g.play_mode
+        WHEN 1 THEN '经典'
+        WHEN 2 THEN '不洗牌'
+        WHEN 3 THEN '赖子'
+        ELSE '其他'
+    END,
+    CASE
+        WHEN g.magnification <= 6 THEN 'A: 低倍(<=6)'
+        WHEN g.magnification <= 12 THEN 'B: 中低倍(6-12)'
+        WHEN g.magnification <= 24 THEN 'C: 中倍(12-24)'
+        ELSE 'D: 高倍(24+)'
+    END
+ORDER BY r.reg_date, play_mode_name, multi_group;
+```
+
+**分析要点**：
+- **必须按玩法拆分看倍数**：赖子玩法有万能牌，炸弹概率远高于经典，天然高倍；不洗牌保留上局牌序，倍数分布也与经典不同。混合在一起会把玩法差异误读为倍数体验差异
+- 同样是"高倍(24+)"，经典玩法的 24 倍局是相对罕见的极端体验，而赖子玩法可能是常态——对新手的心理冲击不同
+- 首局低倍（<=6，即叫地主无人抢无炸无春天）可能缺乏刺激性，但需分玩法看是否合理
+- 结合胜负交叉：同一玩法内，高倍胜 vs 高倍负的留存差异预期最大
+
+#### 8.4.3 首局经济变化对留存的影响
+
+```sql
+-- 1局用户：首局经济变化对留存的影响
+SELECT
+    r.reg_date,
+    CASE
+        WHEN g.diff_money_pre_tax < -5000 THEN 'A: 大亏(<-5000)'
+        WHEN g.diff_money_pre_tax < 0 THEN 'B: 小亏(-5000~0)'
+        WHEN g.diff_money_pre_tax = 0 THEN 'C: 持平'
+        WHEN g.diff_money_pre_tax <= 5000 THEN 'D: 小赚(0~5000)'
+        ELSE 'E: 大赚(>5000)'
+    END AS money_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.diff_money_pre_tax), 0) AS avg_diff,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE
+        WHEN g.diff_money_pre_tax < -5000 THEN 'A: 大亏(<-5000)'
+        WHEN g.diff_money_pre_tax < 0 THEN 'B: 小亏(-5000~0)'
+        WHEN g.diff_money_pre_tax = 0 THEN 'C: 持平'
+        WHEN g.diff_money_pre_tax <= 5000 THEN 'D: 小赚(0~5000)'
+        ELSE 'E: 大赚(>5000)'
+    END
+ORDER BY r.reg_date, money_group;
+```
+
+**分析要点**：
+- 1 局用户的经济变化完全由这一局决定，可以精确衡量单局输赢对留存的冲击
+- 首局大亏（>5000 银子）可能产生强烈的"被坑"感
+- 首局大赚是否能有效提升留存，验证"赢钱即粘性"假设
+
+#### 8.4.4 首局是否逃跑对留存的影响
+
+```sql
+-- 1局用户：首局是否逃跑对留存的影响
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.cut < 0 THEN 'A: 逃跑'
+        ELSE 'B: 正常完成'
+    END AS escape_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.cut < 0 THEN 'A: 逃跑'
+        ELSE 'B: 正常完成'
+    END
+ORDER BY r.reg_date, escape_group;
+```
+
+**分析要点**：
+- 首局即逃跑是最极端的负面体验信号，预期该群体留存极低
+- 逃跑还会产生罚没惩罚，加剧负面感受
+- 关注首局逃跑用户的占比——如果占比显著，说明首局体验存在系统性问题
+
+#### 8.4.5 首局时长对留存的影响
+
+```sql
+-- 1局用户：首局时长对留存的影响
+SELECT
+    r.reg_date,
+    CASE
+        WHEN g.timecost < 60 THEN 'A: <1分钟'
+        WHEN g.timecost < 120 THEN 'B: 1-2分钟'
+        WHEN g.timecost < 240 THEN 'C: 2-4分钟'
+        WHEN g.timecost < 480 THEN 'D: 4-8分钟'
+        ELSE 'E: 8分钟+'
+    END AS duration_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.timecost), 0) AS avg_seconds,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE
+        WHEN g.timecost < 60 THEN 'A: <1分钟'
+        WHEN g.timecost < 120 THEN 'B: 1-2分钟'
+        WHEN g.timecost < 240 THEN 'C: 2-4分钟'
+        WHEN g.timecost < 480 THEN 'D: 4-8分钟'
+        ELSE 'E: 8分钟+'
+    END
+ORDER BY r.reg_date, duration_group;
+```
+
+**分析要点**：
+- <1 分钟的对局很可能是逃跑或被秒杀（春天），体验极差
+- 时长过短可能说明新手还没理解规则就结束了
+- 正常斗地主一局约 2-5 分钟，时长在此区间的用户体验应最完整
+
+#### 8.4.6 首局玩法对留存的影响
+
+```sql
+-- 1局用户：首局玩法对留存的影响
+SELECT
+    r.reg_date,
+    CASE g.play_mode
+        WHEN 1 THEN 'A: 经典'
+        WHEN 2 THEN 'B: 不洗牌'
+        WHEN 3 THEN 'C: 赖子'
+        WHEN 5 THEN 'D: 比赛'
+        ELSE 'E: 其他'
+    END AS play_mode_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.magnification), 1) AS avg_magnification,
+    ROUND(AVG(g.diff_money_pre_tax), 0) AS avg_diff,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE g.play_mode
+        WHEN 1 THEN 'A: 经典'
+        WHEN 2 THEN 'B: 不洗牌'
+        WHEN 3 THEN 'C: 赖子'
+        WHEN 5 THEN 'D: 比赛'
+        ELSE 'E: 其他'
+    END
+ORDER BY r.reg_date, play_mode_group;
+```
+
+**分析要点**：
+- 新手默认进入经典玩法，如果首局即选择不洗牌/赖子，说明用户有主动探索行为，可能是有经验玩家
+- 赖子玩法随机性更强（万能牌），倍数波动可能更大，对新手是否友好需验证
+- 比赛玩法（play_mode=5）的用户画像可能与普通用户不同，留存特征也可能差异明显
+- 各玩法的平均倍数和平均输赢差异可揭示不同玩法对新手经济体验的影响
+
+#### 8.4.7 首局房间底分对留存的影响
+
+```sql
+-- 1局用户：首局房间底分对留存的影响
+SELECT
+    r.reg_date,
+    CASE
+        WHEN g.room_base <= 50 THEN 'A: 新手场(<=50)'
+        WHEN g.room_base <= 200 THEN 'B: 低分场(50-200)'
+        WHEN g.room_base <= 1000 THEN 'C: 中分场(200-1000)'
+        ELSE 'D: 高分场(>1000)'
+    END AS room_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.room_base), 0) AS avg_base,
+    ROUND(AVG(ABS(g.diff_money_pre_tax)), 0) AS avg_abs_diff,
+    ROUND(AVG(g.start_money), 0) AS avg_start_money,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE
+        WHEN g.room_base <= 50 THEN 'A: 新手场(<=50)'
+        WHEN g.room_base <= 200 THEN 'B: 低分场(50-200)'
+        WHEN g.room_base <= 1000 THEN 'C: 中分场(200-1000)'
+        ELSE 'D: 高分场(>1000)'
+    END
+ORDER BY r.reg_date, room_group;
+```
+
+**分析要点**：
+- 底分直接决定单局最低输赢金额（底分 × 倍数），新手如果误入高底分房间可能一局即"破产"
+- 关注 `avg_start_money / room_base` 的比值：如果携银仅刚好达到门槛（比值 < 3），说明用户在承受超出经济能力的风险
+- 新手场（底分 ≤50）是默认引导目标，如果有 1 局用户首局就进了中高底分场，说明引导路径可能存在问题
+- `avg_abs_diff`（平均单局绝对输赢）可衡量各房间对新手银子的实际冲击幅度
+
+#### 8.4.8 首局综合画像（多维交叉）
+
+```sql
+-- 1局用户综合画像：胜负 × 倍数高低 × 经济变化幅度
+SELECT
+    r.reg_date,
+    CASE WHEN g.result_id = 1 THEN '胜' ELSE '负' END AS result,
+    CASE
+        WHEN g.magnification <= 12 THEN '低中倍(<=12)'
+        ELSE '高倍(>12)'
+    END AS multi_level,
+    CASE
+        WHEN g.cut < 0 THEN '逃跑'
+        ELSE '正常'
+    END AS is_escape,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.diff_money_pre_tax), 0) AS avg_diff,
+    ROUND(AVG(g.timecost), 0) AS avg_seconds,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
+INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE WHEN g.result_id = 1 THEN '胜' ELSE '负' END,
+    CASE WHEN g.magnification <= 12 THEN '低中倍(<=12)' ELSE '高倍(>12)' END,
+    CASE WHEN g.cut < 0 THEN '逃跑' ELSE '正常' END
+ORDER BY r.reg_date, result, multi_level, is_escape;
+```
+
+**分析要点**：
+- 多维交叉可识别最差体验组合，如「负 + 高倍 + 逃跑」，预期留存接近 0
+- 找到最佳体验组合（如「胜 + 中低倍 + 正常完成」），作为首局体验设计的目标模型
+- 通过各组合的用户占比，判断当前首局体验设计是否让多数用户落入好的区间
+
+### 8.5 按玩法拆分的留存分析
+
+> **分析背景**：不同玩法的倍数分布差异显著（赖子 > 不洗牌 > 经典），而倍数直接影响单局输赢、经济变化、破产概率。因此所有与倍数/经济/胜率/连胜连败相关的分析，都应按玩法拆分后再看。
+>
+> 以下 SQL 使用新建的 `dws_ddz_appdaily_game_stat_by_mode` 表（粒度：uid × dt × play_mode），详见 [dws_ddz_appdaily_game_stat_by_mode.md](../dws/dws_ddz_appdaily_game_stat_by_mode.md)。
+
+#### 8.5.1 按玩法 × 胜率分析留存
+
+```sql
+-- 按玩法 × 胜率分组分析留存
+SELECT
+    r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
+    CASE 
+        WHEN g.win_rate < 30 THEN 'A: <30%'
+        WHEN g.win_rate < 50 THEN 'B: 30-50%'
+        WHEN g.win_rate < 70 THEN 'C: 50-70%'
+        ELSE 'D: >=70%'
+    END AS win_rate_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.game_count), 1) AS avg_games,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+  AND g.game_count > 0
+GROUP BY r.reg_date, 
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
+    CASE 
+        WHEN g.win_rate < 30 THEN 'A: <30%'
+        WHEN g.win_rate < 50 THEN 'B: 30-50%'
+        WHEN g.win_rate < 70 THEN 'C: 50-70%'
+        ELSE 'D: >=70%'
+    END
+ORDER BY r.reg_date, play_mode_name, win_rate_group;
+```
+
+**分析要点**：
+- 赖子玩法有万能牌，胜率分布可能与经典不同，30-50% 是否仍是最优区间需分玩法验证
+- 不同玩法的"合理胜率区间"可能不同，新手保护策略需分玩法调整
+
+#### 8.5.2 按玩法 × 倍数分析留存
+
+```sql
+-- 按玩法 × 倍数分组分析留存
+SELECT
+    r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
+    CASE
+        WHEN g.avg_magnification <= 6 THEN 'A: <=6'
+        WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
+        WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
+        ELSE 'D: 24+'
+    END AS multi_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.game_count), 1) AS avg_games,
+    ROUND(AVG(g.avg_magnification), 1) AS avg_multi,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date, 
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
+    CASE
+        WHEN g.avg_magnification <= 6 THEN 'A: <=6'
+        WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
+        WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
+        ELSE 'D: 24+'
+    END
+ORDER BY r.reg_date, play_mode_name, multi_group;
+```
+
+**分析要点**：
+- 经典玩法的 24+ 倍是极端事件，赖子玩法的 24+ 倍可能是常态——"高倍"的定义应按玩法差异化
+- 比较同一倍数区间在不同玩法下的留存差异，可揭示"高倍"对不同玩法用户的影响是否一致
+
+#### 8.5.3 按玩法 × 经济变化分析留存
+
+```sql
+-- 按玩法 × 经济变化分组分析留存
+SELECT
+    r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
+    CASE
+        WHEN g.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
+        WHEN g.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
+        WHEN g.total_diff_money < 0 THEN 'C: 小亏(-1万~0)'
+        WHEN g.total_diff_money < 10000 THEN 'D: 小赚(0~1万)'
+        WHEN g.total_diff_money < 50000 THEN 'E: 大赚(1万~5万)'
+        ELSE 'F: 巨赚(>5万)'
+    END AS money_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date, 
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
+    CASE
+        WHEN g.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
+        WHEN g.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
+        WHEN g.total_diff_money < 0 THEN 'C: 小亏(-1万~0)'
+        WHEN g.total_diff_money < 10000 THEN 'D: 小赚(0~1万)'
+        WHEN g.total_diff_money < 50000 THEN 'E: 大赚(1万~5万)'
+        ELSE 'F: 巨赚(>5万)'
+    END
+ORDER BY r.reg_date, play_mode_name, money_group;
+```
+
+**分析要点**：
+- 赖子玩法倍数高 → 单局输赢金额大 → 经济变化极端值更多，"巨亏"和"巨赚"的占比预期高于经典
+- 同样是"巨亏<-5万"，在经典和赖子中的含义不同——前者可能是连续亏损积累，后者可能一两局就达到
+
+#### 8.5.4 按玩法 × 高倍局经历分析留存
+
+```sql
+-- 按玩法 × 高倍局经历分组分析留存
+SELECT
+    r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
+    CASE
+        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
+        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
+        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
+        ELSE 'D: 有赢有输'
+    END AS high_multi_exp,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date, 
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
+    CASE
+        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
+        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
+        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
+        ELSE 'D: 有赢有输'
+    END
+ORDER BY r.reg_date, play_mode_name, high_multi_exp;
+```
+
+**分析要点**：
+- 赖子玩法中"未经历高倍"的用户占比预期远低于经典，因为高倍是赖子的常态
+- 关注经典玩法中"仅输高倍"用户的留存——这群人在低风险预期下遭遇了高倍亏损，挫败感可能最强
+
+#### 8.5.5 按玩法 × 连胜连败分析留存
+
+```sql
+-- 按玩法 × 连胜连败分组分析留存
+SELECT
+    r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
+    CASE 
+        WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
+        WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
+        WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
+        WHEN g.max_lose_streak >= 3 THEN 'D: 连败3+'
+        WHEN g.max_lose_streak = 2 THEN 'E: 连败2'
+        ELSE 'F: 无连胜连败'
+    END AS streak_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+  AND g.game_count > 0
+GROUP BY r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
+    CASE 
+        WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
+        WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
+        WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
+        WHEN g.max_lose_streak >= 3 THEN 'D: 连败3+'
+        WHEN g.max_lose_streak = 2 THEN 'E: 连败2'
+        ELSE 'F: 无连胜连败'
+    END
+ORDER BY r.reg_date, play_mode_name, streak_group;
+```
+
+**分析要点**：
+- 赖子玩法随机性更高，连胜/连败模式可能与经典不同
+- 如果赖子玩法的连败3+用户占比显著高于经典，说明赖子的高波动性在制造更多负面体验
+- 连败保护机制是否需要按玩法差异化设计
+
+#### 8.5.6 按玩法 × 疑似破产分析留存
+
+```sql
+-- 按玩法 × 疑似破产分组分析留存
+SELECT
+    r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
+    CASE 
+        WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
+        ELSE 'B: 未破产'
+    END AS bankrupt_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(g.game_count), 1) AS avg_games,
+    ROUND(AVG(g.total_diff_money), 0) AS avg_diff_money,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+  AND g.game_count > 0
+GROUP BY r.reg_date,
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
+    CASE 
+        WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
+        ELSE 'B: 未破产'
+    END
+ORDER BY r.reg_date, play_mode_name, bankrupt_group;
+```
+
+**分析要点**：
+- 赖子玩法高倍数 → 大额输赢 → 更容易触发破产线，预期赖子的破产率高于经典
+- 如果赖子玩法的破产率显著偏高，可考虑对赖子模式的新手设置更高的经济兜底额度
+- 分玩法的破产数据可为"新手前N局是否应限制赖子/不洗牌入口"的决策提供依据
+
 ---
 
 ## 九、结论模板与行动建议框架
@@ -1087,7 +1631,7 @@ ORDER BY r.reg_date, reg_hour_group;
 
 ---
 
-> **文档版本**：v4.1
+> **文档版本**：v4.3
 > **创建日期**：2026-03-23
 > **更新说明**：
 > - v2.0：整合同城游平台业务背景、斗地主具体玩法规则、数据表结构及取数 SQL
@@ -1096,6 +1640,8 @@ ORDER BY r.reg_date, reg_hour_group;
 > - v3.1：修复 StarRocks 日期函数；修正新用户分端口径；优化 Bucket 配置
 > - **v4.0**：**修正留存口径**（从"游戏留存"改为"新增用户留存"，分母改为注册用户数）；**更新数据源**（使用 `dws_dq_app_daily_reg`、`dws_dq_daily_login`、`dws_ddz_daily_game`）；**新增字段**（`real_magnification` 实际倍数、`diff_money_pre_tax` 还原服务费输赢）；**简化 SQL 结构**
 > - **v4.1**：**补充 5 个分析维度**（8.3.7 逃跑行为、8.3.8 首局胜负、8.3.9 疑似破产、8.3.10 对局时长、8.3.11 注册时段），覆盖框架中此前未取数的关键指标
+> - **v4.2**：**新增 8.4 首日仅 1 局流失用户专项分析**（8 个 SQL），从胜负×角色、倍数、经济变化、逃跑、时长、玩法、房间底分、综合画像八个维度精细化分析 1 局用户的唯一对局
+> - **v4.3**：**新增 8.5 按玩法拆分的留存分析**（6 个 SQL），基于新建 `dws_ddz_appdaily_game_stat_by_mode` 表，对胜率、倍数、经济变化、高倍局、连胜连败、破产六个维度按玩法拆分分析；8.4.2 倍数分析同步增加玩法交叉维度
 >
 > **适用范围**：同城游·斗地主 APP 端新增用户留存专项分析
 > **使用建议**：
