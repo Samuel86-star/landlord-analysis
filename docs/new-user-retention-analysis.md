@@ -745,6 +745,194 @@ ORDER BY r.reg_date, streak_group;
 **查询结果：**
 
 数据文件：`[8.3.6 首日连胜连败留存数据](../../data/md/8.3.6.md)`
+
+#### 8.3.7 按首日逃跑行为分析留存
+
+```sql
+-- 按首日逃跑行为分组分析留存
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.escape_count IS NULL OR g.escape_count = 0 THEN 'A: 无逃跑'
+        WHEN g.escape_count = 1 THEN 'B: 逃跑1次'
+        WHEN g.escape_count = 2 THEN 'C: 逃跑2次'
+        ELSE 'D: 逃跑3+次'
+    END AS escape_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+  AND g.game_count > 0
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.escape_count IS NULL OR g.escape_count = 0 THEN 'A: 无逃跑'
+        WHEN g.escape_count = 1 THEN 'B: 逃跑1次'
+        WHEN g.escape_count = 2 THEN 'C: 逃跑2次'
+        ELSE 'D: 逃跑3+次'
+    END
+ORDER BY r.reg_date, escape_group;
+```
+
+**分析要点**：
+- 逃跑是负面情绪的直接行为信号，与连败分析互补
+- 关注逃跑率（`escape_count / game_count`）与留存的关系
+- 逃跑用户的经济状态（逃跑罚没加速银子耗尽）
+
+#### 8.3.8 按首局胜负分析留存
+
+```sql
+-- 首局胜负对留存的影响（需从明细表取首局数据）
+WITH first_game AS (
+    SELECT
+        g.uid,
+        g.dt,
+        g.result_id AS first_game_result,
+        g.role AS first_game_role,
+        g.magnification AS first_game_magnification,
+        g.diff_money_pre_tax AS first_game_diff_money,
+        ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.time_unix ASC) AS rn
+    FROM tcy_temp.dws_ddz_daily_game g
+    WHERE g.robot != 1
+      AND g.dt BETWEEN 20260210 AND 20260412
+)
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN fg.first_game_result = 1 THEN 'A: 首局胜'
+        WHEN fg.first_game_result = 2 THEN 'B: 首局负'
+        ELSE 'C: 无对局'
+    END AS first_game_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN first_game fg ON r.uid = fg.uid AND r.reg_date = fg.dt AND fg.rn = 1
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE 
+        WHEN fg.first_game_result = 1 THEN 'A: 首局胜'
+        WHEN fg.first_game_result = 2 THEN 'B: 首局负'
+        ELSE 'C: 无对局'
+    END
+ORDER BY r.reg_date, first_game_group;
+```
+
+**分析要点**：
+- 首局有新手配牌加持，预期首局胜率偏高
+- 验证首局胜 vs 首局负的留存率差异，量化新手配牌策略的效果
+- 可进一步交叉分析首局角色（地主/农民）× 首局胜负 × 留存
+
+#### 8.3.9 按首日疑似破产分析留存
+
+```sql
+-- 首日是否疑似破产对留存的影响
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'C: 无对局'
+        WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
+        ELSE 'B: 未破产'
+    END AS bankrupt_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
+    ROUND(AVG(COALESCE(g.total_diff_money, 0)), 0) AS avg_diff_money,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'C: 无对局'
+        WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
+        ELSE 'B: 未破产'
+    END
+ORDER BY r.reg_date, bankrupt_group;
+```
+
+**分析要点**：
+- `money_valley` 是当日货币谷值，低于最低房间门槛即无法继续游戏
+- 此处使用 1000 作为近似破产线（可根据实际最低房间 `room_currency_lower` 调整）
+- 破产用户是经济系统兜底机制优化的核心目标群体
+
+#### 8.3.10 按首日对局时长分析留存
+
+```sql
+-- 按首日总对局时长分组分析留存
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN g.total_play_seconds IS NULL OR g.total_play_seconds = 0 THEN 'A: 无对局'
+        WHEN g.total_play_seconds < 300 THEN 'B: <5分钟'
+        WHEN g.total_play_seconds < 900 THEN 'C: 5-15分钟'
+        WHEN g.total_play_seconds < 1800 THEN 'D: 15-30分钟'
+        ELSE 'E: 30分钟+'
+    END AS duration_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE 
+        WHEN g.total_play_seconds IS NULL OR g.total_play_seconds = 0 THEN 'A: 无对局'
+        WHEN g.total_play_seconds < 300 THEN 'B: <5分钟'
+        WHEN g.total_play_seconds < 900 THEN 'C: 5-15分钟'
+        WHEN g.total_play_seconds < 1800 THEN 'D: 15-30分钟'
+        ELSE 'E: 30分钟+'
+    END
+ORDER BY r.reg_date, duration_group;
+```
+
+**分析要点**：
+- 总时长是沉浸度的直接体现，与对局数互补（同样 5 局，单局时长差异大）
+- 极短时长（<5分钟）可能对应秒退/逃跑用户
+- 可进一步分析 `avg_game_seconds` 异常短（<60s）的对局占比
+
+#### 8.3.11 按注册时段分析留存
+
+```sql
+-- 按注册时段分组分析留存
+SELECT
+    r.reg_date,
+    CASE 
+        WHEN HOUR(r.reg_datetime) BETWEEN 0 AND 5 THEN 'A: 凌晨(0-6)'
+        WHEN HOUR(r.reg_datetime) BETWEEN 6 AND 11 THEN 'B: 上午(6-12)'
+        WHEN HOUR(r.reg_datetime) BETWEEN 12 AND 17 THEN 'C: 下午(12-18)'
+        WHEN HOUR(r.reg_datetime) BETWEEN 18 AND 21 THEN 'D: 晚间(18-22)'
+        ELSE 'E: 深夜(22-24)'
+    END AS reg_hour_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
+GROUP BY r.reg_date,
+    CASE 
+        WHEN HOUR(r.reg_datetime) BETWEEN 0 AND 5 THEN 'A: 凌晨(0-6)'
+        WHEN HOUR(r.reg_datetime) BETWEEN 6 AND 11 THEN 'B: 上午(6-12)'
+        WHEN HOUR(r.reg_datetime) BETWEEN 12 AND 17 THEN 'C: 下午(12-18)'
+        WHEN HOUR(r.reg_datetime) BETWEEN 18 AND 21 THEN 'D: 晚间(18-22)'
+        ELSE 'E: 深夜(22-24)'
+    END
+ORDER BY r.reg_date, reg_hour_group;
+```
+
+**分析要点**：
+- 不同时段注册的用户可能对应不同的获客渠道和用户画像
+- 凌晨注册用户可能是高粘性夜间玩家或低质量刷量用户
+- 晚间（18-22）是游戏活跃高峰期，该时段注册用户的首日体验可能更好（匹配速度快、对手多样性高）
+
 ---
 
 ## 九、结论模板与行动建议框架
@@ -895,7 +1083,7 @@ ORDER BY r.reg_date, streak_group;
 
 ---
 
-> **文档版本**：v4.0
+> **文档版本**：v4.1
 > **创建日期**：2026-03-23
 > **更新说明**：
 > - v2.0：整合同城游平台业务背景、斗地主具体玩法规则、数据表结构及取数 SQL
@@ -903,6 +1091,7 @@ ORDER BY r.reg_date, streak_group;
 > - v3.0：重构 DWS 层架构；修正字段名；倍数相关字段直接读列
 > - v3.1：修复 StarRocks 日期函数；修正新用户分端口径；优化 Bucket 配置
 > - **v4.0**：**修正留存口径**（从"游戏留存"改为"新增用户留存"，分母改为注册用户数）；**更新数据源**（使用 `dws_dq_app_daily_reg`、`dws_dq_daily_login`、`dws_ddz_daily_game`）；**新增字段**（`real_magnification` 实际倍数、`diff_money_pre_tax` 还原服务费输赢）；**简化 SQL 结构**
+> - **v4.1**：**补充 5 个分析维度**（8.3.7 逃跑行为、8.3.8 首局胜负、8.3.9 疑似破产、8.3.10 对局时长、8.3.11 注册时段），覆盖框架中此前未取数的关键指标
 >
 > **适用范围**：同城游·斗地主 APP 端新增用户留存专项分析
 > **使用建议**：
