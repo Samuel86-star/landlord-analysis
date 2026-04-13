@@ -366,10 +366,10 @@ ORDER BY r.reg_date;
 SELECT
     r.reg_date,
     CASE 
-        WHEN g.game_count = 1 THEN '1局'
-        WHEN g.game_count BETWEEN 2 AND 5 THEN '2-5局'
-        WHEN g.game_count BETWEEN 6 AND 10 THEN '6-10局'
-        ELSE '10局以上'
+        WHEN g.game_count = 1 THEN '0:1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN '1:2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN '2:6-10局'
+        ELSE '3:10局以上'
     END AS game_count_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
@@ -380,10 +380,10 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE
 WHERE r.reg_date = 20260210
 GROUP BY r.reg_date,
     CASE 
-        WHEN g.game_count = 1 THEN '1局'
-        WHEN g.game_count BETWEEN 2 AND 5 THEN '2-5局'
-        WHEN g.game_count BETWEEN 6 AND 10 THEN '6-10局'
-        ELSE '10局以上'
+        WHEN g.game_count = 1 THEN '0:1局'
+        WHEN g.game_count BETWEEN 2 AND 5 THEN '1:2-5局'
+        WHEN g.game_count BETWEEN 6 AND 10 THEN '2:6-10局'
+        ELSE '3:10局以上'
     END
 ORDER BY r.reg_date, game_count_group;
 ```

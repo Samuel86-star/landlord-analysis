@@ -48,7 +48,7 @@
 **支持三种玩法：**
 
 | 玩法 | 特点 |
-|------|------|
+| ---- | ---- |
 | 经典玩法 | 标准斗地主规则，新手默认进入 |
 | 不洗牌玩法 | 保留上局出牌顺序发牌，牌序有延续性 |
 | 赖子玩法 | 存在万能牌（赖子），增加随机性和策略性 |
@@ -60,7 +60,7 @@
 ```
 
 | 倍数因子 | 作用范围 | 取值规则 |
-|---------|---------|---------|
+| ------- | ------- | ------- |
 | 叫地主 | 公共 | 固定 3 分，不存在 1/2 分 |
 | 抢地主 | 公共 | 每抢一次公共倍数 ×2；`grab_landlord_bet`：3=无人抢 / 6=1人抢 / 12=2人抢 |
 | 加倍/超级加倍 | 仅对自己 | `magnification_stacked`：1=不加倍 / 2=加倍 / 4=超级加倍 |
@@ -197,7 +197,7 @@
 | 指标名称 | 定义/计算公式 | 数据来源 | 分析维度 | 与留存的关联假设 |
 |---------|-------------|---------|---------|----------------|
 | 首日平均理论倍数 | `AVG(magnification)`，magnification 已含个人加倍 | magnification | 分区间（3 / 6 / 12 / 24 / 48+） | 适中的倍数体验可能对应最优留存 |
-| 首日最大理论倍数 | `MAX(magnification)` | magnification | 分区间（≤6 / 6-24 / 24-96 / 96+） | 经历超高倍局可能产生两极分化 |
+| 首日最大理论倍数 | `MAX(magnification)` | magnification | 分区间（≤6 / 6-12 / 12-24 / 24-48 / 48-96 / 96+） | 经历超高倍局可能产生两极分化 |
 | 首日平均公共倍数 | `AVG(magnification / magnification_stacked)`，剥离个人加倍 | magnification, magnification_stacked | 分区间（3 / 6 / 12 / 24+） | 公共倍数反映牌局本身的激烈程度 |
 | 首日平均实际倍数 | `AVG(ABS(diff_money) / room_base)` | diff_money, room_base | 分区间 | 实际倍数受携银限制可能低于理论倍数 |
 | 理论与实际倍数差异率 | `AVG(1 - ABS(diff_money) / (room_base * magnification))` | 计算字段 | 百分比 | 差异大说明携银不足局面频繁，经济压力大 |
@@ -308,7 +308,7 @@
 ### 6.1 可从对局日志提取的行为指标
 
 | 指标名称 | 定义/计算公式 | 数据来源 | 与留存的关联假设 |
-|---------|-------------|---------|----------------|
+| ------- | ----------- | ------- | -------------- |
 | 逃跑次数 | `SUM(CASE WHEN cut < 0 THEN 1 ELSE 0 END)` | cut | 逃跑行为反映挫败感，与流失强相关 |
 | 逃跑率 | `逃跑次数 / 总对局数 × 100%` | cut | 逃跑率高的用户留存预期极低 |
 | 首次逃跑时间点 | 第几局首次出现逃跑 | cut, resultguid 排序 | 越早逃跑说明体验越差 |
@@ -322,7 +322,7 @@
 以下指标对留存分析有重要价值，但需要对应的业务日志表支持：
 
 | 指标名称 | 所需数据源 | 与留存的关联假设 |
-|---------|-----------|----------------|
+| ------- | --------- | -------------- |
 | 新手引导完成率 | 引导步骤日志表 | 完成引导的用户对游戏理解更充分 |
 | 签到行为 | 签到日志表 | 签到说明用户意识到长期收益机制 |
 | 社交行为（表情/聊天/好友） | 社交行为日志表 | 社交关系链是最强留存锚点 |
@@ -349,7 +349,7 @@
 **示例（倍数维度）：**
 
 | 首日平均公共倍数 | 用户数 | Day1 留存率 | Day7 留存率 |
-|----------------|-------|-----------|-----------|
+| -------------- | ----- | --------- | --------- |
 | 3（仅叫地主，无抢无炸） | - | -% | -% |
 | 3-6（偶有抢地主） | - | -% | -% |
 | 6-24（常有抢地主或炸弹） | - | -% | -% |
@@ -384,7 +384,7 @@
 **典型分群示例：**
 
 | 用户类型 | 特征描述 | 预期留存 |
-|---------|---------|---------|
+| ------- | ------- | ------- |
 | 浅尝辄止型 | 仅 1-2 局、低倍、未切换房间 | 低 |
 | 稳健成长型 | 5-10 局、中倍、胜率 40%+、无逃跑 | 高 |
 | 激进冒险型 | 高倍偏好、频繁加倍/超级加倍、银子波动大 | 受胜负影响大 |
@@ -428,7 +428,7 @@ APP 端注册（dws_dq_app_daily_reg）
 本分析依赖以下 DWS 中间表，详细设计见各表文档：
 
 | 表名 | 说明 | 文档 |
-|------|------|------|
+| --- | --- | --- |
 | `dws_dq_app_daily_reg` | APP 端注册用户宽表 | [dws_dq_app_daily_reg.md](../dws/dws_dq_app_daily_reg.md) |
 | `dws_dq_daily_login` | 每日登录聚合表 | [dws_dq_daily_login.md](../dws/dws_dq_daily_login.md) |
 | `dws_ddz_daily_game` | 对局战绩统一字段表 | [dws_ddz_daily_game.md](../dws/dws_ddz_daily_game.md) |
@@ -456,18 +456,22 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260215
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
 GROUP BY r.reg_date
 ORDER BY r.reg_date;
 ```
+
+**查询结果（2026-02-10 至 2026-04-12）：**
+
+数据文件：`[8.2.1 留存率数据](../../data/md/8.2.1.md)`
 
 #### 8.2.2 按渠道分类统计留存率
 
 ```sql
 -- 按渠道分类统计新增用户留存
-SELECT
+SELECT    
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     r.reg_date,
-    r.channel_category_name,
     COUNT(DISTINCT r.uid) AS reg_user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
@@ -475,23 +479,27 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260215
+WHERE r.reg_date BETWEEN 20260320 AND 20260412
   AND r.is_login_log_missing = 0
-GROUP BY r.reg_date, r.channel_category_name
-ORDER BY r.reg_date, r.channel_category_name;
+GROUP BY case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, r.reg_date
+ORDER BY case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, r.reg_date desc
 ```
+
+**查询结果（2026-03-20 至 2026-04-02）：**
+
+数据文件：`[8.2.2 渠道留存率数据](../../data/md/8.2.2.md)`
 
 #### 8.2.3 按 APP 端类型统计留存率
 
 ```sql
 -- 按 Android/iOS 统计新增用户留存
 SELECT
-    r.reg_date,
     CASE 
         WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
         WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         ELSE '其他'
     END AS platform,
+    r.reg_date,
     COUNT(DISTINCT r.uid) AS reg_user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
@@ -499,16 +507,21 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260215
+WHERE r.reg_date BETWEEN 20260210 AND 20260412
   AND r.is_login_log_missing = 0
-GROUP BY r.reg_date,
+GROUP BY 
     CASE 
         WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
         WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         ELSE '其他'
-    END
-ORDER BY r.reg_date, platform;
+    END,
+    r.reg_date
+ORDER BY platform, r.reg_date desc;
 ```
+
+**查询结果（2026-02-10 至 2026-04-05）：**
+
+数据文件：`[8.2.3 平台留存率数据](../../data/md/8.2.3.md)`
 
 ### 8.3 首日游戏行为分析 SQL
 
@@ -520,29 +533,34 @@ ORDER BY r.reg_date, platform;
 ```sql
 -- 按首日对局数分组分析留存
 SELECT
-    r.reg_date,
     CASE 
         WHEN g.game_count = 1 OR g.game_count IS NULL THEN 'A: 0-1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN 'B: 2-5局'
         WHEN g.game_count BETWEEN 6 AND 10 THEN 'C: 6-10局'
         ELSE 'D: 10局以上'
     END AS game_count_group,
+    r.reg_date,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260215
-GROUP BY r.reg_date,
+WHERE r.reg_date BETWEEN 20260210 AND 20260405
+GROUP BY 
     CASE 
         WHEN g.game_count = 1 OR g.game_count IS NULL THEN 'A: 0-1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN 'B: 2-5局'
         WHEN g.game_count BETWEEN 6 AND 10 THEN 'C: 6-10局'
         ELSE 'D: 10局以上'
-    END
-ORDER BY r.reg_date, game_count_group;
+    END,
+  r.reg_date
+ORDER BY game_count_group, r.reg_date desc;
 ```
+
+**查询结果：**
+
+数据文件：`[8.3.1 首日对局数留存数据](../../data/md/8.3.1.md)`
 
 #### 8.3.2 按首日胜率分析留存
 
@@ -550,7 +568,7 @@ ORDER BY r.reg_date, game_count_group;
 -- 按首日胜率分组分析留存
 SELECT
     r.reg_date,
-    r.channel_category_name,
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     CASE 
         WHEN g.win_rate < 30 OR g.win_rate IS NULL THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
@@ -564,17 +582,22 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date = 20260210
-  AND g.game_count > 0  -- 仅分析有对局的用户
-GROUP BY r.reg_date, r.channel_category_name,
+WHERE r.reg_date between 20260210 and 20260412
+  AND g.game_count > 0  
+GROUP BY r.reg_date,     
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE 
         WHEN g.win_rate < 30 OR g.win_rate IS NULL THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
         ELSE 'D: >=70%'
     END
-ORDER BY r.reg_date, r.channel_category_name, win_rate_group;
+ORDER BY r.reg_date, case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, win_rate_group;
 ```
+
+**查询结果：**
+
+数据文件：`[8.3.2 首日胜率留存数据](../../data/md/8.3.2.md)`
 
 #### 8.3.3 按首日倍数分组分析留存
 
@@ -582,7 +605,7 @@ ORDER BY r.reg_date, r.channel_category_name, win_rate_group;
 -- 按首日平均倍数分组分析留存
 SELECT
     r.reg_date,
-    r.channel_category_name,
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     CASE
         WHEN g.avg_magnification <= 6 OR g.avg_magnification IS NULL THEN 'A: <=6'
         WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
@@ -596,16 +619,21 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date = 20260210
-GROUP BY r.reg_date, r.channel_category_name,
+WHERE r.reg_date between 20260210 and 20260412
+GROUP BY r.reg_date, 
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
         WHEN g.avg_magnification <= 6 OR g.avg_magnification IS NULL THEN 'A: <=6'
         WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
         WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
         ELSE 'D: 24+'
     END
-ORDER BY r.reg_date, r.channel_category_name, multi_group;
+ORDER BY r.reg_date, case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, multi_group;
 ```
+
+**查询结果：**
+
+数据文件：`[8.3.3 首日倍数留存数据](../../data/md/8.3.3.md)`
 
 #### 8.3.4 按高倍局经历分析留存
 
@@ -613,7 +641,7 @@ ORDER BY r.reg_date, r.channel_category_name, multi_group;
 -- 分析高倍局经历对留存的影响
 SELECT
     r.reg_date,
-    r.channel_category_name,
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     CASE
         WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
         WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
@@ -626,16 +654,21 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date = 20260210
-GROUP BY r.reg_date, r.channel_category_name,
+WHERE r.reg_date between 20260210 and 20260412
+GROUP BY r.reg_date, 
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
         WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
         WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
         WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
         ELSE 'D: 有赢有输'
     END
-ORDER BY r.reg_date, r.channel_category_name, high_multi_exp;
+ORDER BY r.reg_date, case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, high_multi_exp;
 ```
+
+**查询结果：**
+
+数据文件：`[8.3.4 高倍局经历留存数据](../../data/md/8.3.4.md)`
 
 #### 8.3.5 按首日经济变化分析留存
 
@@ -643,7 +676,7 @@ ORDER BY r.reg_date, r.channel_category_name, high_multi_exp;
 -- 分析首日经济变化对留存的影响
 SELECT
     r.reg_date,
-    r.channel_category_name,
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     CASE
         WHEN g.total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
         WHEN g.total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
@@ -658,8 +691,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date = 20260210
-GROUP BY r.reg_date, r.channel_category_name,
+WHERE r.reg_date between 20260210 and 20260412
+GROUP BY r.reg_date, 
+    case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
         WHEN g.total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
         WHEN g.total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
@@ -668,8 +702,12 @@ GROUP BY r.reg_date, r.channel_category_name,
         WHEN g.total_diff_money < 50000 THEN 'E: 大赚 (1万~5万)'
         ELSE 'F: 巨赚 (>5万)'
     END
-ORDER BY r.reg_date, r.channel_category_name, money_change_group;
+ORDER BY r.reg_date, case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, money_change_group;
 ```
+
+**查询结果：**
+
+数据文件：`[8.3.5 首日经济变化留存数据](../../data/md/8.3.5.md)`
 
 #### 8.3.6 按首日连胜连败分析留存
 
@@ -690,7 +728,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date = 20260210
+WHERE r.reg_date between 20260210 and 20260412
   AND g.game_count > 0
 GROUP BY r.reg_date,
     CASE 
@@ -703,45 +741,10 @@ GROUP BY r.reg_date,
     END
 ORDER BY r.reg_date, streak_group;
 ```
-        WHEN high_multi_wins > 0 AND high_multi_losses = 0 THEN 'B: 仅赢高倍'
-        WHEN high_multi_wins = 0 AND high_multi_losses > 0 THEN 'C: 仅输高倍'
-        ELSE 'D: 有赢有输'
-    END AS high_multi_exp,
-    COUNT(*) AS user_count,
-    ROUND(SUM(is_retained_day1) * 100.0 / COUNT(*), 2) AS day1_rate,
-    ROUND(SUM(is_retained_day7) * 100.0 / COUNT(*), 2) AS day7_rate
-FROM tcy_temp.ddz_user_first_day_features
-GROUP BY channel_category,
-    CASE
-        WHEN high_multi_games = 0 THEN 'A: 未经历高倍局'
-        WHEN high_multi_wins > 0 AND high_multi_losses = 0 THEN 'B: 仅赢高倍'
-        WHEN high_multi_wins = 0 AND high_multi_losses > 0 THEN 'C: 仅输高倍'
-        ELSE 'D: 有赢有输'
-    END
-ORDER BY channel_category, high_multi_exp;
-```
 
-#### 8.2.5 设备类型（iOS vs Android）留存对比
-```sql
--- 分析目的：APP 端 iOS/Android 用户在首日行为和留存上的差异
--- 可结合 channel_category 交叉分析，区分"渠道 Android"与"官方 iOS"等细分群体
-SELECT
-    device_type,
-    channel_category,
-    COUNT(*)                                                         AS user_count,
-    ROUND(AVG(game_count), 1)                                        AS avg_game_count,
-    ROUND(AVG(win_rate), 2)                                          AS avg_win_rate,
-    ROUND(AVG(avg_magnification), 2)                                 AS avg_magnification,
-    ROUND(SUM(is_retained_day1) * 100.0 / COUNT(*), 2)               AS day1_rate,
-    ROUND(SUM(is_retained_day3) * 100.0 / COUNT(*), 2)               AS day3_rate,
-    ROUND(SUM(is_retained_day7) * 100.0 / COUNT(*), 2)               AS day7_rate,
-    ROUND(SUM(is_retained_day14) * 100.0 / COUNT(*), 2)              AS day14_rate,
-    ROUND(SUM(is_retained_day30) * 100.0 / COUNT(*), 2)              AS day30_rate
-FROM tcy_temp.ddz_user_first_day_features
-GROUP BY device_type, channel_category
-ORDER BY device_type, channel_category;
-```
+**查询结果：**
 
+数据文件：`[8.3.6 首日连胜连败留存数据](../../data/md/8.3.6.md)`
 ---
 
 ## 九、结论模板与行动建议框架
