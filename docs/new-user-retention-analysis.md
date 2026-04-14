@@ -790,8 +790,15 @@ ORDER BY r.reg_date, escape_group;
 #### 8.3.8 按首局胜负分析留存
 
 ```sql
--- 首局胜负对留存的影响（需从明细表取首局数据）
-WITH first_game AS (
+-- 首局胜负对留存的影响
+-- 优化说明：先用注册表筛出目标 uid，再用 INNER JOIN 限定明细表范围，减少窗口函数的计算量
+WITH target_users AS (
+    -- 先确定注册用户范围，避免明细表全表扫描
+    SELECT uid, reg_date
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE reg_date BETWEEN 20260210 AND 20260412
+),
+first_game AS (
     SELECT
         g.uid,
         g.dt,
@@ -801,8 +808,10 @@ WITH first_game AS (
         g.diff_money_pre_tax AS first_game_diff_money,
         ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.time_unix ASC) AS rn
     FROM tcy_temp.dws_ddz_daily_game g
+    INNER JOIN target_users t ON g.uid = t.uid AND g.dt = t.reg_date
     WHERE g.robot != 1
-      AND g.dt BETWEEN 20260210 AND 20260412
+      AND g.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- 仅 APP 端
+      AND g.play_mode IN (1, 2, 3, 5)  -- 仅银子玩法
 )
 SELECT
     r.reg_date,
