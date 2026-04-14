@@ -420,7 +420,7 @@ APP 端注册（dws_dq_app_daily_reg）
 ## 八、取数SQL
 
 > 以下 SQL 基于 StarRocks 语法编写。参数化注册日期如 `'20260210'`。
-> 分析时间段：**20260210 至 20260408**。
+> 分析时间段：**20260210 至 20260413**。
 > 过滤条件：仅限 APP 端银子玩法（`play_mode IN (1, 2, 3, 5)`），其中 5 为 APP 端比赛玩法。
 
 ### 8.1 基础 DWS 中间表构建
@@ -457,12 +457,12 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260412
+WHERE r.reg_date BETWEEN 20260210 AND 20260413
 GROUP BY r.reg_date
 ORDER BY r.reg_date;
 ```
 
-**查询结果（2026-02-10 至 2026-04-12）：**
+**查询结果（2026-02-10 至 2026-04-13）：**
 
 数据文件：`[8.2.1 留存率数据](../../data/md/8.2.1.md)`
 
@@ -480,13 +480,13 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260320 AND 20260412
+WHERE r.reg_date BETWEEN 20260210 AND 20260413
   AND r.is_login_log_missing = 0
 GROUP BY case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, r.reg_date
 ORDER BY case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, r.reg_date desc
 ```
 
-**查询结果（2026-03-20 至 2026-04-02）：**
+**查询结果（2026-02-10 至 2026-04-13）：**
 
 数据文件：`[8.2.2 渠道留存率数据](../../data/md/8.2.2.md)`
 
@@ -508,7 +508,7 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260412
+WHERE r.reg_date BETWEEN 20260210 AND 20260413
   AND r.is_login_log_missing = 0
 GROUP BY 
     CASE 
@@ -520,7 +520,7 @@ GROUP BY
 ORDER BY platform, r.reg_date desc;
 ```
 
-**查询结果（2026-02-10 至 2026-04-05）：**
+**查询结果（2026-02-10 至 2026-04-13）：**
 
 数据文件：`[8.2.3 平台留存率数据](../../data/md/8.2.3.md)`
 
@@ -548,7 +548,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260412
+WHERE r.reg_date BETWEEN 20260210 AND 20260413
 GROUP BY 
     CASE 
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
@@ -587,7 +587,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date between 20260210 and 20260412
+WHERE r.reg_date between 20260210 and 20260413
   AND g.game_count > 0  
 GROUP BY r.reg_date,     
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
@@ -624,7 +624,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date between 20260210 and 20260412
+WHERE r.reg_date between 20260210 and 20260413
 GROUP BY r.reg_date, 
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
@@ -659,7 +659,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date between 20260210 and 20260412
+WHERE r.reg_date between 20260210 and 20260413
 GROUP BY r.reg_date, 
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
@@ -696,7 +696,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date between 20260210 and 20260412
+WHERE r.reg_date between 20260210 and 20260413
 GROUP BY r.reg_date, 
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
@@ -733,7 +733,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date between 20260210 and 20260412
+WHERE r.reg_date between 20260210 and 20260413
   AND g.game_count > 0
 GROUP BY r.reg_date,
     CASE 
@@ -770,7 +770,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260412
+WHERE r.reg_date BETWEEN 20260210 AND 20260413
   AND g.game_count > 0
 GROUP BY r.reg_date,
     CASE 
