@@ -153,14 +153,21 @@
 
 | 指标名称           | 定义                       | 计算公式                                 |
 | -------------- | ------------------------ | ------------------------------------ |
-| 次日留存（Day1）   | 注册用户中，次日仍有登录的比例   | `次日有登录的注册用户数 / 当日注册用户数 × 100%`   |
-| 3日留存（Day3）   | 注册用户中，第3天仍有登录的比例  | `第3日有登录的注册用户数 / 当日注册用户数 × 100%`  |
-| 7日留存（Day7）   | 注册用户中，第7天仍有登录的比例  | `第7日有登录的注册用户数 / 当日注册用户数 × 100%`  |
-| 14日留存（Day14） | 注册用户中，第14天仍有登录的比例 | `第14日有登录的注册用户数 / 当日注册用户数 × 100%` |
-| 30日留存（Day30） | 注册用户中，第30天仍有登录的比例 | `第30日有登录的注册用户数 / 当日注册用户数 × 100%` |
+| 次日留存（Day1）   | 注册用户中，注册后第1天仍有登录的比例   | `第1日有登录的注册用户数 / 当日注册用户数 × 100%`   |
+| 3日留存（Day2）   | 注册用户中，注册后第2天仍有登录的比例  | `第2日有登录的注册用户数 / 当日注册用户数 × 100%`  |
+| 7日留存（Day6）   | 注册用户中，注册后第6天仍有登录的比例  | `第6日有登录的注册用户数 / 当日注册用户数 × 100%`  |
+| 14日留存（Day13） | 注册用户中，注册后第13天仍有登录的比例 | `第13日有登录的注册用户数 / 当日注册用户数 × 100%` |
+| 30日留存（Day29） | 注册用户中，注册后第29天仍有登录的比例 | `第29日有登录的注册用户数 / 当日注册用户数 × 100%` |
 
 **口径说明：**
 
+- **时间基准**：
+  - Day 0 = 注册当天（第0天）
+  - Day 1 = 次日留存 = 注册后第1天
+  - Day 2 = 3日留存 = 注册后第2天
+  - Day 6 = 7日留存 = 注册后第6天
+  - Day 13 = 14日留存 = 注册后第13天
+  - Day 29 = 30日留存 = 注册后第29天
 - **新增用户**：以 `dws_dq_app_daily_reg` 表中的 uid 为准，即首次进入斗地主 App 并在服务端生成注册记录的用户（仅 APP 端）。
 - **分母**：当日注册的 APP 端用户数，不要求注册当日有对局行为。
 - **分子**：第 N 日在 `dws_dq_daily_login` 中存在登录记录的用户数。
@@ -214,7 +221,7 @@
 **分析要点：**
 
 - `magnification` 记录的是玩家个人理论总倍数（含加倍/超级加倍），分析公共倍数时需除以 `magnification_stacked`。
-- 将新用户按「首日平均理论倍数」分为低倍组（magnification 均值 ≤6）/ 中倍组（6-24）/ 高倍组（>24），对比各组 Day1 ~ Day7 留存曲线。
+- 将新用户按「首日平均理论倍数」分为低倍组（magnification 均值 ≤6）/ 中倍组（6-24）/ 高倍组（>24），对比各组 Day1 ~ Day6 留存曲线。
 - 重点分析「首日经历过高倍局（magnification>24）且输掉」的用户群体，预期其流失概率最高。
 - 关注「理论与实际倍数差异率」，差异率高说明携银不足的情况频繁，玩家在承受超出自身经济能力的对局。
 - 区分主动倍数行为（玩家加倍 magnification_stacked）与被动倍数（炸弹 bomb_bet、春天 complete_victory_bet），分析新手对主动加倍的使用是否过于激进。
@@ -343,12 +350,12 @@
 
 1. 选定目标指标（如首日平均倍数 `magnification`）。
 2. 按分位数或业务逻辑将用户分为 3-5 组。
-3. 计算各组的 Day1、Day3、Day7 留存率。
+3. 计算各组的 Day1、Day2、Day6 留存率。
 4. 使用卡方检验或 Z 检验验证组间差异的统计显著性。
 
 **示例（倍数维度）：**
 
-| 首日平均公共倍数 | 用户数 | Day1 留存率 | Day7 留存率 |
+| 首日平均公共倍数 | 用户数 | Day1 留存率 | Day6 留存率 |
 | -------------- | ----- | --------- | --------- |
 | 3（仅叫地主，无抢无炸） | - | -% | -% |
 | 3-6（偶有抢地主） | - | -% | -% |
@@ -401,7 +408,7 @@ APP 端注册（dws_dq_app_daily_reg）
       → 完成第 5 局
         → 完成第 10 局
           → 次日有登录（Day1 留存）
-            → 第 7 日有登录（Day7 留存）
+            → 第 6 日有登录（Day6 留存）
 ```
 
 ### 7.6 生存分析
@@ -444,15 +451,15 @@ APP 端注册（dws_dq_app_daily_reg）
 SELECT
     r.reg_date,
     COUNT(DISTINCT r.uid) AS reg_user_count,
-    -- Day1 留存
+    -- Day1 留存（注册后第1天）
     COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) AS day1_retained,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    -- Day3 留存
-    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 3 DAY) THEN r.uid END) AS day3_retained,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 3 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day3_rate,
-    -- Day7 留存
-    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) AS day7_retained,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    -- Day2 留存（注册后第2天，即传统3日留存）
+    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 2 DAY) THEN r.uid END) AS day2_retained,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 2 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day2_rate,
+    -- Day6 留存（注册后第6天，即传统7日留存）
+    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) AS day6_retained,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
@@ -475,7 +482,7 @@ SELECT
     r.reg_date,
     COUNT(DISTINCT r.uid) AS reg_user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
@@ -503,7 +510,7 @@ SELECT
     r.reg_date,
     COUNT(DISTINCT r.uid) AS reg_user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
@@ -544,7 +551,7 @@ SELECT
     r.reg_date,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -583,7 +590,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -620,7 +627,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -655,7 +662,7 @@ SELECT
     END AS high_multi_exp,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -692,7 +699,7 @@ SELECT
     END AS money_change_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -766,7 +773,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -822,7 +829,7 @@ SELECT
     END AS first_game_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN first_game fg ON r.uid = fg.uid AND r.reg_date = fg.dt AND fg.rn = 1
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -856,7 +863,7 @@ SELECT
     ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
     ROUND(AVG(COALESCE(g.total_diff_money, 0)), 0) AS avg_diff_money,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -891,7 +898,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -927,7 +934,7 @@ SELECT
     END AS reg_hour_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260413
@@ -968,7 +975,7 @@ SELECT
     END AS role_result_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
@@ -1011,7 +1018,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(g.magnification), 1) AS avg_magnification,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
@@ -1055,7 +1062,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(g.diff_money_pre_tax), 0) AS avg_diff,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
@@ -1089,7 +1096,7 @@ SELECT
     END AS escape_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
@@ -1124,7 +1131,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(g.timecost), 0) AS avg_seconds,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
@@ -1163,7 +1170,7 @@ SELECT
     ROUND(AVG(g.magnification), 1) AS avg_magnification,
     ROUND(AVG(g.diff_money_pre_tax), 0) AS avg_diff,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
@@ -1203,7 +1210,7 @@ SELECT
     ROUND(AVG(ABS(g.diff_money_pre_tax)), 0) AS avg_abs_diff,
     ROUND(AVG(g.start_money), 0) AS avg_start_money,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
@@ -1283,7 +1290,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(g.game_count), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -1321,7 +1328,7 @@ SELECT
     ROUND(AVG(g.game_count), 1) AS avg_games,
     ROUND(AVG(g.avg_magnification), 1) AS avg_multi,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -1358,7 +1365,7 @@ SELECT
     END AS money_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -1395,7 +1402,7 @@ SELECT
     END AS high_multi_exp,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -1470,7 +1477,7 @@ SELECT
     ROUND(AVG(g.game_count), 1) AS avg_games,
     ROUND(AVG(g.total_diff_money), 0) AS avg_diff_money,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 7 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
@@ -1568,10 +1575,10 @@ ORDER BY r.reg_date, play_mode_name, bankrupt_group;
 | 编号 | 指标名称 | 计算公式 / 数据来源 | 分析维度 |
 |-----|---------|-------------------|---------|
 | R01 | 游戏次日留存率 | Day1 有对局的新用户 / 当日新增且有对局的用户 | 渠道/设备/时段 |
-| R02 | 游戏3日留存率 | Day3 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
-| R03 | 游戏7日留存率 | Day7 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
-| R04 | 游戏14日留存率 | Day14 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
-| R05 | 游戏30日留存率 | Day30 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
+| R02 | 游戏3日留存率 | Day2 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
+| R03 | 游戏7日留存率 | Day6 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
+| R04 | 游戏14日留存率 | Day13 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
+| R05 | 游戏30日留存率 | Day29 有对局的新用户 / 当日新增且有对局的用户 | 同上 |
 
 ### 倍数指标
 
