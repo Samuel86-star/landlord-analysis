@@ -204,7 +204,7 @@ first_day_games_raw AS (
     WHERE c.game_id = 53
       AND c.robot != 1
       AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-      AND c.room_id NOT IN (11534, 14238, 15458)
+      -- 积分/比赛房间不再显式排除，play_mode CASE 会将其归为 0，分析 SQL 的 play_mode IN (1,2,3) 自然过滤
 ),
 -- 3. 算法修正：使用 COUNT(*) 保证 game_seq 连续，避免 gaps-and-islands 错误
 mode_streaks AS (
