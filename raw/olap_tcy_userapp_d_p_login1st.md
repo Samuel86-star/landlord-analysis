@@ -3,7 +3,7 @@
 ## 表基本信息
 
 | 项目 | 说明 |
-|------|------|
+| ---- | ---- |
 | 库名 | `hive_catalog_cdh5.dm` |
 | 表名 | `olap_tcy_userapp_d_p_login1st` |
 | 全名 | `hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st` |
@@ -13,7 +13,7 @@
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 | 是否必填 |
-|-------|------|------|--------|---------|
+| ----- | ---- | ---- | ------ | ------- |
 | uid | bigint | 玩家唯一标识 ID | 123456789 | 是 |
 | app_id | bigint | 应用 ID | 1880053 | 是 |
 | first_login_ts | bigint | 游戏注册时间戳 | 1707523200 | 是 |

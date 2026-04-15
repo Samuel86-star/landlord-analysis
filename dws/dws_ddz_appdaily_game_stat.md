@@ -3,13 +3,13 @@
 ## 表基本信息
 
 | 项目 | 说明 |
-|------|------|
+| ---- | ---- |
 | 库名 | `tcy_temp` |
 | 表名 | `dws_ddz_appdaily_game_stat` |
 | 全名 | `tcy_temp.dws_ddz_appdaily_game_stat` |
 | 类型 | DWS 层聚合表（每日增量） |
 | 描述 | APP 端用户每日游戏行为统计表，包含对局数、胜负、倍数、经济等汇总指标 |
-| 粒度 | uid × dt（一个用户一天一行） |
+| 粒度 | uid × dt × app_code（一个用户一天一个客户端版本一行） |
 
 ## 设计背景
 
@@ -20,9 +20,10 @@
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |
-|--------|------|------|--------|
+| ------ | ---- | ---- | ------ |
 | uid | bigint | 玩家唯一标识 | 123456789 |
 | dt | bigint | 对局日期（YYYYMMDD） | 20260210 |
+| app_code | string | 客户端代码（zgdx=cocos creator, zgda=cocos lua） | "zgdx" |
 | game_count | bigint | 当日对局总数 | 12 |
 | total_play_seconds | bigint | 当日总游戏时长（秒） | 3600 |
 | avg_game_seconds | double | 平均每局时长 | 180.5 |
@@ -52,10 +53,19 @@
 | distinct_rooms | bigint | 当日游玩房间数 | 3 |
 | play_modes | string | 当日游玩玩法（逗号分隔） | "1,2,5" |
 
+## 客户端开发语言说明
+
+| app_code | 客户端开发语言 | 界面和流程特点 |
+| ------- | ------------ | -------------- |
+| zgdx | Cocos Creator | 界面和流程较新，体验优化 |
+| zgda | Cocos Lua | 界面和流程较传统 |
+
+> **说明**：本表支持按客户端开发语言维度分析用户行为差异。通过 `app_code` 字段区分不同客户端版本的用户，粒度为 uid × dt × app_code（一个用户一天一个客户端版本一行）。
+
 ## 玩法分类说明
 
 | play_mode | 玩法 | 币种 |
-|-----------|------|------|
+| --------- | ---- | ---- |
 | 1 | 经典 | 银子 |
 | 2 | 不洗牌 | 银子 |
 | 3 | 癞子 | 银子 |
@@ -73,6 +83,7 @@
 CREATE TABLE tcy_temp.dws_ddz_appdaily_game_stat (
     uid BIGINT,
     dt BIGINT,
+    app_code STRING,
     game_count BIGINT,
     total_play_seconds BIGINT,
     avg_game_seconds DOUBLE,
@@ -102,9 +113,9 @@ CREATE TABLE tcy_temp.dws_ddz_appdaily_game_stat (
     distinct_rooms BIGINT,
     play_modes STRING
 )
-DUPLICATE KEY(uid, dt)
+DUPLICATE KEY(uid, dt, app_code)
 DISTRIBUTED BY HASH(uid) BUCKETS 32
-ORDER BY dt, uid
+ORDER BY dt, uid, app_code
 PROPERTIES("replication_num" = "1");
 ```
 
@@ -117,10 +128,10 @@ WITH game_enriched AS (
     SELECT
         *,
         -- 确定玩家全天首局和末局顺序，为后续提取 start/end_money 做准备
-        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix ASC) AS rank_asc,
-        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix DESC) AS rank_desc,
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix ASC) AS rank_asc,
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix DESC) AS rank_desc,
         -- 为连胜连败计算准备：生成全天对局序号
-        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix ASC) AS game_seq
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix ASC) AS game_seq
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt = 20260408
       AND robot != 1
@@ -131,31 +142,35 @@ streaks_calc AS (
     -- 2. 连胜连败逻辑：利用 game_seq - 内部序号的差值分组（经典 Gaps and Islands 算法）
     SELECT 
         uid, 
+        app_code,
         result_id,
         COUNT(*) AS streak_len
     FROM (
         SELECT 
             uid, 
+            app_code,
             result_id,
-            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, result_id ORDER BY game_seq) AS grp
+            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, app_code, result_id ORDER BY game_seq) AS grp
         FROM game_enriched
         WHERE result_id IN (1, 2)
     ) t
-    GROUP BY uid, result_id, grp
+    GROUP BY uid, app_code, result_id, grp
 ),
 max_streaks AS (
     -- 3. 汇总最大连胜连败
     SELECT 
         uid,
+        app_code,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM streaks_calc
-    GROUP BY uid
+    GROUP BY uid, app_code
 )
 -- 4. 最终聚合
 SELECT
     g.uid,
     g.dt,
+    g.app_code,
     -- 对局及时间统计
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
@@ -191,8 +206,8 @@ SELECT
     COUNT(DISTINCT g.room_id) AS distinct_rooms,
     GROUP_CONCAT(DISTINCT CAST(g.play_mode AS VARCHAR) ORDER BY g.play_mode) AS play_modes
 FROM game_enriched g
-LEFT JOIN max_streaks s ON g.uid = s.uid
-GROUP BY g.uid, g.dt;
+LEFT JOIN max_streaks s ON g.uid = s.uid AND g.app_code = s.app_code
+GROUP BY g.uid, g.dt, g.app_code;
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)

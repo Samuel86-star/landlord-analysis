@@ -3,7 +3,7 @@
 ## 表基本信息
 
 | 项目 | 说明 |
-|------|------|
+| ---- | ---- |
 | 库名 | `tcy_temp` |
 | 表名 | `dws_ddz_daily_game` |
 | 全名 | `tcy_temp.dws_ddz_daily_game` |
@@ -16,13 +16,14 @@
 原始 `dwd_game_combat_si` 战绩表存储了所有玩法的对局日志，但不同玩法使用不同的货币字段：
 
 | 玩法 | 货币类型 | 底分字段 | 服务费字段 | 对局前货币 | 对局后货币 | 输赢字段 |
-|------|---------|---------|-----------|-----------|-----------|---------|
+| ---- | ------- | ------- | --------- | --------- | --------- | ------- |
 | 经典/不洗牌/癞子 | 银子 | `basedeposit` | `fee` | `olddeposit` | `end_deposit` | `depositdiff` |
 | 积分/好友房/比赛 | 积分 | `basescore` | `score_fee` | `oldscore` | `end_score` | `scorediff` |
 
 此外，个人操作倍数存储在 JSON 字段 `magnification_subdivision` 中，需要解析提取。
 
 **解决方案**：
+
 1. 统一货币字段命名：`start_money`、`end_money`、`diff_money_pre_tax`
 2. 统一房间底分和服务费：`room_base`、`room_fee`
 3. 添加玩法分类字段：`play_mode`
@@ -32,7 +33,7 @@
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |
-|--------|------|------|--------|
+| ------ | ---- | ---- | ------ |
 | dt | bigint | 对局日期（YYYYMMDD） | 20260408 |
 | time_unix | bigint | 对局时间戳（毫秒级） | 1712577000000 |
 | resultguid | string | 本局战绩 ID | "abc123xyz" |
@@ -62,12 +63,13 @@
 | channel_id | bigint | 渠道号 | 1001 |
 | group_id | bigint | 分端 ID | 6 |
 | app_id | bigint | 应用 ID | 1880053 |
+| app_code | string | 应用code | zgda |
 | game_id | bigint | 游戏 ID | 53 |
 
 ## 玩法分类说明 (play_mode)
 
 | play_mode | 玩法 | room_id 列表 | 备注 |
-|-----------|------|-------------|------|
+| --------- | ---- | ----------- | ---- |
 | 1 | 经典 | 742, 420, 4484, 12074, 6314, 11168, 10336, 16445 | 银子玩法 |
 | 2 | 不洗牌 | 421, 22039, 22040, 22041, 22042 | 银子玩法 |
 | 3 | 癞子 | 13176, 13177, 13178 | 银子玩法 |
@@ -77,6 +79,7 @@
 | 0 | 其他 | 其他 room_id | 未识别玩法 |
 
 **比赛玩法判断逻辑**：
+
 - `room_id = 11534` 且 `group_id IN (6,66,33,44,77,99,8,88,56)` 时为比赛玩法（APP/小游戏端），`play_mode = 5`
 - `room_id = 11534` 且 `group_id` 为 PC 端时为积分玩法，`play_mode = 4`
 - `room_id IN (14238,15458)` 时为积分玩法（仅PC端），`play_mode = 4`
@@ -150,10 +153,11 @@ SELECT
     channel_id,
     group_id,
     app_id,
+    app_code,
     game_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE game_id = 53
-  AND dt BETWEEN 20260210 AND 20260508;
+  AND dt BETWEEN 20260210 AND 20260414;
 ```
 
 ## 更新SQL
@@ -205,6 +209,7 @@ SELECT
     channel_id,
     group_id,
     app_id,
+    app_code,
     game_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE game_id = 53
@@ -216,6 +221,7 @@ WHERE game_id = 53
 ## 使用示例
 
 ### 1. 按玩法统计对局数据
+
 ```sql
 SELECT
     play_mode,

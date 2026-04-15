@@ -3,7 +3,7 @@
 ## 表基本信息
 
 | 项目 | 说明 |
-|------|------|
+| ---- | ---- |
 | 库名 | `tcy_temp` |
 | 表名 | `dws_dq_app_daily_reg` |
 | 全名 | `tcy_temp.dws_dq_app_daily_reg` |
@@ -20,12 +20,13 @@
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |
-|--------|------|------|--------|
+| ------ | ---- | ---- | ------ |
 | uid | bigint | 玩家唯一标识 | 123456789 |
 | reg_date | int | 注册日期（YYYYMMDD） | 20260210 |
 | reg_datetime | datetime | 注册时间 | 2026-02-10 08:00:00 |
 | reg_group_id | int | 首次登录分端 ID | 6 |
 | reg_channel_id | bigint | 首次登录渠道号 | 1001 |
+| reg_app_code | string | 首次登录应用code | zgda |
 | channel_category_id | int | 渠道分类 ID | 1 |
 | channel_category_name | string | 渠道分类名称 | '官方' |
 | channel_category_tag_id | int | 渠道分类标签：1=官方，2=渠道，3=小游戏 | 1 |
@@ -37,9 +38,19 @@
 通过 `reg_group_id` 区分 APP 端类型：
 
 | 端类型 | group_id 范围 |
-|--------|---------------|
+| ------ | ------------- |
 | Android | 6, 66, 33, 44, 77, 99 |
 | iOS | 8, 88 |
+
+## APP 端分开发语言规则
+
+通过 `reg_app_code` 区分 APP 端开发语言：
+
+| 端开发语言 | reg_app_code |
+| ------ | ------------- |
+| cocos-lua | zgda |
+| cocos-creator | zgdx |
+
 
 ## 构建 SQL
 
@@ -53,6 +64,7 @@ CREATE TABLE tcy_temp.dws_dq_app_daily_reg (
     reg_datetime DATETIME,
     reg_group_id INT,
     reg_channel_id BIGINT,
+    reg_app_code STRING,
     channel_category_id INT,
     channel_category_name STRING,
     channel_category_tag_id INT,
@@ -75,6 +87,7 @@ SELECT
     r.reg_datetime,
     COALESCE(l.first_group_id, -1) AS reg_group_id,
     COALESCE(l.first_channel_id, -1) AS reg_channel_id,
+    COALESCE(l.first_app_code, '') AS reg_app_code,
     COALESCE(chn.channel_category_id, -1) AS channel_category_id,
     COALESCE(chn.channel_category_name, '未知/日志丢失') AS channel_category_name,
     COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,

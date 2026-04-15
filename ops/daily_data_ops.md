@@ -22,7 +22,7 @@
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ---- | ------ |
 | `hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st` | `tcy_temp.dws_dq_daily_reg` |
 
 ### 增量更新 SQL
@@ -54,7 +54,7 @@ WHERE app_id = 1880053
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ---- | ------ |
 | `tcy_dwd.dwd_tcy_userlogin_si` | `tcy_temp.dws_dq_daily_login` |
 
 ### 增量更新 SQL
@@ -64,36 +64,32 @@ WHERE app_id = 1880053
 -- 参数：将日期范围替换为实际日期
 INSERT INTO tcy_temp.dws_dq_daily_login
 SELECT 
-    uid,
-    app_id,
+    uid, app_id,
     DATE(dt) AS login_date,
-    
-    -- 首次登录维度
     MIN(dt) AS first_login_time,
+    MIN_BY(app_code, time_unix) AS first_app_code,
     MIN_BY(channel_id, time_unix) AS first_channel_id,
     MIN_BY(group_id, time_unix) AS first_group_id,
-    
-    -- 最后登录维度
     MAX(dt) AS last_login_time,
+    MAX_BY(app_code, time_unix) AS last_app_code,
     MAX_BY(channel_id, time_unix) AS last_channel_id,
     MAX_BY(group_id, time_unix) AS last_group_id,
-    
-    -- 最频繁维度
-    CAST(SUBSTR(MAX(CONCAT(LPAD(CAST(cnt_channel AS STRING), 10, '0'), CAST(channel_id AS STRING))), 11) AS BIGINT) AS most_freq_channel_id,
-    CAST(SUBSTR(MAX(CONCAT(LPAD(CAST(cnt_group AS STRING), 10, '0'), CAST(group_id AS STRING))), 11) AS BIGINT) AS most_freq_group_id,
-    
-    -- 统计维度
+    MAX_BY(channel_id, cnt_channel) AS most_freq_channel_id,
+    MAX_BY(group_id, cnt_group) AS most_freq_group_id,
+    MAX_BY(app_code, cnt_app_code) AS most_freq_app_code,
     COUNT(DISTINCT channel_id) AS channel_id_count,
     COUNT(DISTINCT group_id) AS group_id_count,
+    COUNT(DISTINCT app_code) AS app_code_count,
     COUNT(1) AS login_count
 FROM (
     SELECT 
         *,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), channel_id) AS cnt_channel,
-        COUNT(*) OVER(PARTITION BY uid, DATE(dt), group_id) AS cnt_group
+        COUNT(*) OVER(PARTITION BY uid, DATE(dt), group_id) AS cnt_group,
+        COUNT(*) OVER(PARTITION BY uid, DATE(dt), app_code) AS cnt_app_code
     FROM tcy_dwd.dwd_tcy_userlogin_si
     WHERE app_id = 1880053
-      AND dt >= '${DATE} 00:00:00'  -- 替换为实际日期，如 2026-04-09
+      AND dt >= '${DATE} 00:00:00' 
       AND dt <= '${DATE} 23:59:59'
 ) t
 GROUP BY uid, app_id, DATE(dt);
@@ -129,6 +125,7 @@ SELECT
     r.reg_datetime,
     COALESCE(l.first_group_id, -1) AS reg_group_id,
     COALESCE(l.first_channel_id, -1) AS reg_channel_id,
+    COALESCE(l.first_app_code, '') AS reg_app_code,
     COALESCE(chn.channel_category_id, -1) AS channel_category_id,
     COALESCE(chn.channel_category_name, '未知/日志丢失') AS channel_category_name,
     COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
@@ -249,10 +246,10 @@ WITH game_enriched AS (
     SELECT
         *,
         -- 确定玩家全天首局和末局顺序，为后续提取 start/end_money 做准备
-        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix ASC) AS rank_asc,
-        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix DESC) AS rank_desc,
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix ASC) AS rank_asc,
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix DESC) AS rank_desc,
         -- 为连胜连败计算准备：生成全天对局序号
-        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY time_unix ASC) AS game_seq
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix ASC) AS game_seq
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt = ${DATE}  -- 替换为实际日期
       AND robot != 1
@@ -263,31 +260,35 @@ streaks_calc AS (
     -- 2. 连胜连败逻辑：利用 game_seq - 内部序号的差值分组（经典 Gaps and Islands 算法）
     SELECT 
         uid, 
+        app_code,
         result_id,
         COUNT(*) AS streak_len
     FROM (
         SELECT 
             uid, 
+            app_code,
             result_id,
-            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, result_id ORDER BY game_seq) AS grp
+            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, app_code, result_id ORDER BY game_seq) AS grp
         FROM game_enriched
         WHERE result_id IN (1, 2)
     ) t
-    GROUP BY uid, result_id, grp
+    GROUP BY uid, app_code, result_id, grp
 ),
 max_streaks AS (
     -- 3. 汇总最大连胜连败
     SELECT 
         uid,
+        app_code,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM streaks_calc
-    GROUP BY uid
+    GROUP BY uid, app_code
 )
 -- 4. 最终聚合
 SELECT
     g.uid,
     g.dt,
+    g.app_code,
     -- 对局及时间统计
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
@@ -323,13 +324,19 @@ SELECT
     COUNT(DISTINCT g.room_id) AS distinct_rooms,
     GROUP_CONCAT(DISTINCT CAST(g.play_mode AS VARCHAR) ORDER BY g.play_mode) AS play_modes
 FROM game_enriched g
-LEFT JOIN max_streaks s ON g.uid = s.uid
-GROUP BY g.uid, g.dt;
+LEFT JOIN max_streaks s ON g.uid = s.uid AND g.app_code = s.app_code
+GROUP BY g.uid, g.dt, g.app_code;
 ```
 
 ### 说明
 
 - 依赖 `dws_ddz_daily_game` 表，需在其之后执行
+- **新增 `app_code` 维度**：粒度为 uid × dt × app_code，支持按客户端开发语言（cocos creator vs cocos lua）分析用户行为差异
+- **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
+- 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
+- 包含胜负、倍数、经济等汇总指标
+- `play_modes` 字段记录当天玩过的所有玩法
+- 详细文档：[dws/dws_ddz_appdaily_game_stat.md](../dws/dws_ddz_appdaily_game_stat.md)
 - **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
 - 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
 - 包含胜负、倍数、经济等汇总指标
@@ -354,9 +361,9 @@ INSERT INTO tcy_temp.dws_ddz_appdaily_game_stat_by_mode
 WITH game_enriched AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY time_unix ASC) AS rank_asc,
-        ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY time_unix DESC) AS rank_desc,
-        ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY time_unix ASC) AS game_seq
+        ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY time_unix ASC) AS rank_asc,
+        ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY time_unix DESC) AS rank_desc,
+        ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY time_unix ASC) AS game_seq
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt = ${DATE}  -- 替换为实际日期
       AND robot != 1
@@ -366,32 +373,36 @@ WITH game_enriched AS (
 streaks_calc AS (
     SELECT 
         uid,
+        app_code,
         play_mode,
         result_id,
         COUNT(*) AS streak_len
     FROM (
         SELECT 
             uid,
+            app_code,
             play_mode,
             result_id,
-            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY game_seq) AS grp
+            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code, result_id ORDER BY game_seq) AS grp
         FROM game_enriched
         WHERE result_id IN (1, 2)
     ) t
-    GROUP BY uid, play_mode, result_id, grp
+    GROUP BY uid, app_code, play_mode, result_id, grp
 ),
 max_streaks AS (
     SELECT 
         uid,
+        app_code,
         play_mode,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM streaks_calc
-    GROUP BY uid, play_mode
+    GROUP BY uid, app_code, play_mode
 )
 SELECT
     g.uid,
     g.dt,
+    g.app_code,
     g.play_mode,
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
@@ -421,13 +432,14 @@ SELECT
     COUNT(CASE WHEN g.cut < 0 THEN 1 END) AS escape_count,
     COUNT(DISTINCT g.room_id) AS distinct_rooms
 FROM game_enriched g
-LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode
-GROUP BY g.uid, g.dt, g.play_mode;
+LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode AND g.app_code = s.app_code
+GROUP BY g.uid, g.dt, g.app_code, g.play_mode;
 ```
 
 ### 说明
 
 - 依赖 `dws_ddz_daily_game` 表，需在其之后执行
+- **新增 `app_code` 维度**：粒度为 uid × dt × play_mode × app_code，支持按客户端开发语言和玩法双维度分析
 - **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
 - 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
 - 与 `dws_ddz_appdaily_game_stat` 字段基本一致，增加 `play_mode` 维度

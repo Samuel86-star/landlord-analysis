@@ -3,7 +3,7 @@
 ## 表基本信息
 
 | 项目 | 说明 |
-|------|------|
+| ---- | ---- |
 | 库名 | `tcy_temp` |
 | 表名 | `dws_dq_daily_login` |
 | 全名 | `tcy_temp.dws_dq_daily_login` |
@@ -20,40 +20,48 @@
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |
-|--------|------|------|--------|
+| ------ | ---- | ---- | ------ |
 | uid | bigint | 玩家唯一标识 | 123456789 |
 | app_id | bigint | 应用 ID | 1880053 |
 | login_date | date | 登录日期（天级聚合） | 2026-02-10 |
 | first_login_time | datetime | 当日首次登录时间 | 2026-02-10 09:30:00 |
+| first_app_code | string | 当日首次登录应用code | zgdx |
 | first_channel_id | bigint | 当日首次登录渠道号 | 1001 |
 | first_group_id | int | 当日首次登录分端 ID | 6 |
 | last_login_time | datetime | 当日最后登录时间 | 2026-02-10 22:15:00 |
+| last_app_code | string | 当日最后登录应用code | zgdx |
 | last_channel_id | bigint | 当日最后登录渠道号 | 1001 |
 | last_group_id | int | 当日最后登录分端 ID | 6 |
 | most_freq_channel_id | bigint | 当日最频繁登录渠道号 | 1001 |
 | most_freq_group_id | bigint | 当日最频繁登录分端 ID | 6 |
+| most_freq_app_code | string | 当日最频繁登录应用code | zgdx |
 | channel_id_count | bigint | 当日接触渠道数（去重） | 2 |
 | group_id_count | bigint | 当日切换分端数（去重） | 1 |
+| app_code_count | bigint | 当日切换应用code数（去重） | 1 |
 | login_count | bigint | 当日总登录次数 | 5 |
 
 ## 字段分类
 
 ### 时间维度
+
 - `login_date`：登录日期（天级）
 - `first_login_time`：当日首次登录时间
 - `last_login_time`：当日最后登录时间
 
 ### 渠道维度
+
 - `first_channel_id`：首次登录渠道（基于 `time_unix` 最小值）
 - `last_channel_id`：最后登录渠道（基于 `time_unix` 最大值）
 - `most_freq_channel_id`：最频繁登录渠道（基于出现次数最多）
 
 ### 分端维度
+
 - `first_group_id`：首次登录分端（基于 `time_unix` 最小值）
 - `last_group_id`：最后登录分端（基于 `time_unix` 最大值）
 - `most_freq_group_id`：最频繁登录分端（基于出现次数最多）
 
 ### 统计维度
+
 - `channel_id_count`：当日接触的不同渠道数量
 - `group_id_count`：当日切换的不同分端数量
 - `login_count`：当日总登录次数
@@ -66,25 +74,30 @@ SELECT
     uid, app_id,
     DATE(dt) AS login_date,
     MIN(dt) AS first_login_time,
+    MIN_BY(app_code, time_unix) AS first_app_code,
     MIN_BY(channel_id, time_unix) AS first_channel_id,
     MIN_BY(group_id, time_unix) AS first_group_id,
     MAX(dt) AS last_login_time,
+    MAX_BY(app_code, time_unix) AS last_app_code,
     MAX_BY(channel_id, time_unix) AS last_channel_id,
     MAX_BY(group_id, time_unix) AS last_group_id,
-    CAST(SUBSTR(MAX(CONCAT(LPAD(CAST(cnt_channel AS STRING), 10, '0'), CAST(channel_id AS STRING))), 11) AS BIGINT) AS most_freq_channel_id,
-    CAST(SUBSTR(MAX(CONCAT(LPAD(CAST(cnt_group AS STRING), 10, '0'), CAST(group_id AS STRING))), 11) AS BIGINT) AS most_freq_group_id,
+    MAX_BY(channel_id, cnt_channel) AS most_freq_channel_id,
+    MAX_BY(group_id, cnt_group) AS most_freq_group_id,
+    MAX_BY(app_code, cnt_app_code) AS most_freq_app_code,
     COUNT(DISTINCT channel_id) AS channel_id_count,
     COUNT(DISTINCT group_id) AS group_id_count,
+    COUNT(DISTINCT app_code) AS app_code_count,
     COUNT(1) AS login_count
 FROM (
     SELECT 
         *,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), channel_id) AS cnt_channel,
-        COUNT(*) OVER(PARTITION BY uid, DATE(dt), group_id) AS cnt_group
+        COUNT(*) OVER(PARTITION BY uid, DATE(dt), group_id) AS cnt_group,
+        COUNT(*) OVER(PARTITION BY uid, DATE(dt), app_code) AS cnt_app_code
     FROM tcy_dwd.dwd_tcy_userlogin_si
     WHERE app_id = 1880053
       AND dt >= '2026-02-10 00:00:00' 
-      AND dt <= '2026-04-08 23:59:59'
+      AND dt <= '2026-04-14 23:59:59'
 ) t
 GROUP BY uid, app_id, DATE(dt);
 ```
@@ -94,6 +107,7 @@ GROUP BY uid, app_id, DATE(dt);
 ## 使用场景
 
 ### 1. 渠道切换分析
+
 ```sql
 -- 统计用户当日首次与最后登录渠道是否一致
 SELECT
@@ -114,6 +128,7 @@ ORDER BY login_date DESC;
 ```
 
 ### 2. 分端使用偏好分析
+
 ```sql
 -- 分析用户当日最频繁使用的分端
 SELECT
@@ -127,6 +142,7 @@ ORDER BY 1 desc, 3 desc;
 ```
 
 ### 3. 登录活跃度分析
+
 ```sql
 -- 统计不同登录频次的用户分布
 SELECT
@@ -151,6 +167,7 @@ order by 1 desc, 2 desc;
 ```
 
 ### 4. 注册用户登录行为分析
+
 ```sql
 -- 关联新用户注册表，分析注册当日的登录特征
 SELECT
