@@ -67,9 +67,9 @@ GROUP BY dt, uid, app_id;
 SELECT
     r.uid,
     r.reg_date,
-    MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS day1_retained,
-    MAX(CASE WHEN a.dt = r.reg_date + 7  THEN 1 ELSE 0 END) AS day7_retained,
-    MAX(CASE WHEN a.dt = r.reg_date + 30 THEN 1 ELSE 0 END) AS day30_retained
+    MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS day1_retained,   -- 次留：第2天（注册日=Day1）
+    MAX(CASE WHEN a.dt = r.reg_date + 6  THEN 1 ELSE 0 END) AS day7_retained,   -- 7留：第7天
+    MAX(CASE WHEN a.dt = r.reg_date + 29 THEN 1 ELSE 0 END) AS day30_retained   -- 30留：第30天
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON r.uid = a.uid
@@ -78,6 +78,8 @@ LEFT JOIN tcy_temp.dws_app_game_active a
 GROUP BY r.uid, r.reg_date;
 ```
 
+> **留存日期口径**：注册日计为 Day1，因此 Day7 = `reg_date + 6`，Day30 = `reg_date + 29`。
+>
 > **StarRocks 日期转换说明**：`dt` 为 int 类型，可直接做整数加法（`r.reg_date + 1`）比较，
 > 也可使用 `str_to_date(CAST(dt AS VARCHAR), '%Y%m%d')` 转为 DATE 类型后再做 `datediff`。
 

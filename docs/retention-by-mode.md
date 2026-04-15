@@ -205,8 +205,8 @@ day_flags_mode AS (
         r.uid,
         a.play_mode,
         MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS is_retained_day1_same_mode,
-        MAX(CASE WHEN a.dt = r.reg_date + 7  THEN 1 ELSE 0 END) AS is_retained_day7_same_mode,
-        MAX(CASE WHEN a.dt = r.reg_date + 30 THEN 1 ELSE 0 END) AS is_retained_day30_same_mode
+        MAX(CASE WHEN a.dt = r.reg_date + 6  THEN 1 ELSE 0 END) AS is_retained_day7_same_mode,
+        MAX(CASE WHEN a.dt = r.reg_date + 29 THEN 1 ELSE 0 END) AS is_retained_day30_same_mode
     FROM new_user_reg r
     LEFT JOIN tcy_temp.dws_app_gamemode_active a ON r.uid = a.uid AND a.app_id = r.app_id AND a.dt > r.reg_date
     GROUP BY r.uid, a.play_mode
@@ -216,8 +216,8 @@ day_flags_global AS (
     SELECT 
         r.uid,
         MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS is_retained_day1_global,
-        MAX(CASE WHEN a.dt = r.reg_date + 7  THEN 1 ELSE 0 END) AS is_retained_day7_global,
-        MAX(CASE WHEN a.dt = r.reg_date + 30 THEN 1 ELSE 0 END) AS is_retained_day30_global
+        MAX(CASE WHEN a.dt = r.reg_date + 6  THEN 1 ELSE 0 END) AS is_retained_day7_global,
+        MAX(CASE WHEN a.dt = r.reg_date + 29 THEN 1 ELSE 0 END) AS is_retained_day30_global
     FROM new_user_reg r
     LEFT JOIN tcy_temp.dws_app_game_active a ON r.uid = a.uid AND a.app_id = r.app_id AND a.dt > r.reg_date
     GROUP BY r.uid
