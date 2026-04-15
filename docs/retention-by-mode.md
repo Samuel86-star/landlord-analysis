@@ -117,52 +117,25 @@ M-01 同时输出「整体留存」和「玩法留存」两个指标，便于区
 
 ### M-00: 分玩法首日对局特征宽表（DWS 优化）
 
-**DWS 三层依赖结构：**
+**DWS 依赖结构：**
 
 ```
-Step A: tcy_temp.dws_dq_app_daily_reg              （APP 端注册用户宽表）
-Step B: tcy_temp.dws_dq_daily_login             （每日登录聚合表）
-Step C: tcy_temp.dws_ddz_daily_game             （对局战绩统一字段表）
+Step A: tcy_temp.dws_dq_app_daily_reg       （APP 端注册用户宽表）
+Step B: tcy_temp.dws_ddz_daily_game         （对局战绩统一字段表，用于首日宽表计算）
+Step C: tcy_temp.dws_app_game_active        （每日游戏活跃用户表，整体留存 flag 用）  → 见 dws/dws_app_game_active.md
+Step D: tcy_temp.dws_app_gamemode_active    （每日游戏活跃用户×玩法表，同玩法留存 flag 用）  → 见 dws/dws_app_gamemode_active.md
+→ 输出：tcy_temp.ddz_user_mode_first_day_features
 ```
 
-**关键修正说明：**
+**关键说明：**
 
-- 数据来源使用 StarRocks DWS 表：
-  - `dws_dq_app_daily_reg`：APP 端注册用户宽表，包含首次登录的 `reg_group_id` 和 `reg_channel_id`
-  - `dws_dq_daily_login`：每日登录聚合表，用于计算留存
-  - `dws_ddz_daily_game`：对局战绩统一字段表，用于玩法分析
+- `dws_app_game_active` / `dws_app_gamemode_active` 为预构建的轻量 DWS 表，执行本 SQL 前需确认已构建完成
 - 倍数相关字段（`grab_landlord_bet`/`complete_victory_bet`/`bomb_bet`）在 `dwd_game_combat_si` 中为**独立列**，直接使用
 - 货币字段使用正确名称：`room_base`/`room_fee`/`start_money`/`end_money`/`diff_money`
+- `dws_app_gamemode_active` 的玩法字段为 `play_mode`（整数），宽表 SQL 内通过 CASE 转换为中文 `game_mode`
 
 ```sql
--- Step C: 每日活跃用户×玩法聚合表（用于同玩法留存计算）
--- 完整设计见 dws/dws_app_gamemode_active.md
-CREATE TABLE tcy_temp.dws_app_gamemode_active
-DISTRIBUTED BY HASH(uid) BUCKETS 32
-PROPERTIES("replication_num" = "1")
-AS
-SELECT
-    uid, dt,
-    CASE
-        WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-        WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-        WHEN room_id IN (13176, 13177, 13178)                              THEN '癞子'
-        ELSE '其他'
-    END AS game_mode
-FROM tcy_dwd.dwd_game_combat_si
-WHERE dt BETWEEN 20260210 AND 20260508  -- 覆盖注册期 + Day30 观测期
-  AND game_id = 53 AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-  AND room_id NOT IN (11534, 14238, 15458)
-GROUP BY uid, dt,
-    CASE
-        WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-        WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-        WHEN room_id IN (13176, 13177, 13178)                              THEN '癞子'
-        ELSE '其他'
-    END;
-
--- Step D: 分玩法首日宽表（核心分析数据集）
+-- 分玩法首日宽表（核心分析数据集）
 CREATE TABLE tcy_temp.ddz_user_mode_first_day_features
 DISTRIBUTED BY HASH(uid) BUCKETS 16
 PROPERTIES("replication_num" = "1")
@@ -170,7 +143,7 @@ AS
 WITH
 -- 1. 从 DWS 基础表获取新用户清单
 new_user_reg AS (
-    SELECT uid, reg_date, reg_group_id,
+    SELECT uid, app_id, reg_date, reg_group_id,
            channel_category_name, channel_category_tag_id
     FROM tcy_temp.dws_dq_app_daily_reg
 ),
@@ -245,17 +218,28 @@ mode_streaks AS (
     ) t2 GROUP BY uid, game_mode
 ),
 -- 4. 同玩法留存 flag（基于 dws_app_gamemode_active，只看注册日之后）
---    同时计算整体留存（任意玩法有对局即算留存）
+--    dws_app_gamemode_active.play_mode 为整数，此处转换为与 first_day_games_raw 一致的中文 game_mode
 day_flags_mode AS (
     SELECT 
-        r.uid, 
-        a.game_mode,
+        r.uid,
+        CASE a.play_mode
+            WHEN 1 THEN '经典'
+            WHEN 2 THEN '不洗牌'
+            WHEN 3 THEN '癞子'
+            ELSE '其他'
+        END AS game_mode,
         MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS is_retained_day1_same_mode,
         MAX(CASE WHEN a.dt = r.reg_date + 7  THEN 1 ELSE 0 END) AS is_retained_day7_same_mode,
         MAX(CASE WHEN a.dt = r.reg_date + 30 THEN 1 ELSE 0 END) AS is_retained_day30_same_mode
     FROM new_user_reg r
     LEFT JOIN tcy_temp.dws_app_gamemode_active a ON r.uid = a.uid AND a.app_id = r.app_id AND a.dt > r.reg_date
-    GROUP BY r.uid, a.game_mode
+    GROUP BY r.uid,
+        CASE a.play_mode
+            WHEN 1 THEN '经典'
+            WHEN 2 THEN '不洗牌'
+            WHEN 3 THEN '癞子'
+            ELSE '其他'
+        END
 ),
 -- 5. 整体留存 flag（任意玩法有对局即算留存）
 day_flags_global AS (
@@ -467,7 +451,8 @@ Step 6: 综合结论 → 差异化策略
 > - v2.0：重构 DWS 层架构（对齐主文档 v3.0）；修正字段名（`room_base`/`diff_money` 等）；倍数字段改为直接读列；新增 `device_type` 维度；`dws_app_gamemode_active` 时间上限延至 20260508；同玩法留存新增 Day30 指标；修正 `day_flags_mode` 添加 `a.dt > r.reg_date` 限制
 > - v2.1：修复 StarRocks 日期函数；优化 Bucket 配置；添加全局留存字段；修正连败/连胜计算；修正首末局特征提取
 > - v2.2：补充共享基础声明（明确引用全局文档一~七章）；承接"游戏模式偏好"分析职责（从全局文档迁入）
-> - **v2.3**：DWS 表重命名（`dws_ddz_daily_play_by_mode` → `dws_app_gamemode_active`，`dws_ddz_daily_play` → `dws_app_game_active`）；留存 JOIN 补充 `app_id` 条件
+> - v2.3：DWS 表重命名（`dws_ddz_daily_play_by_mode` → `dws_app_gamemode_active`，`dws_ddz_daily_play` → `dws_app_game_active`）；留存 JOIN 补充 `app_id` 条件
+> - **v2.4**：删除 Step C 内联 CREATE TABLE（`dws_app_gamemode_active` 已独立文档维护）；`new_user_reg` CTE 补充 `app_id` 字段；`day_flags_mode` 修复 `a.game_mode` → CASE on `a.play_mode` 转换为中文玩法名
 >
 > **关联文档**：
 > - [`retention-global.md`](retention-global.md)（全局分析框架，含共享基础设定）
@@ -476,6 +461,6 @@ Step 6: 综合结论 → 差异化策略
 > - `dws/dws_ddz_daily_game.md`（对局战绩统一字段表）
 >
 > **使用说明**：
-> 1. 确认 `dws_dq_app_daily_reg` 和 `dws_dq_daily_login` 已构建
+> 1. 确认 `dws_dq_app_daily_reg`、`dws_app_game_active`、`dws_app_gamemode_active` 已构建
 > 2. 执行分析 SQL 进行各维度分析
 > 3. 将查询结果填入对应的"查询结果"区域，用于后续分析结论生成
