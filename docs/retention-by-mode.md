@@ -52,11 +52,12 @@
 
 ```sql
 CASE 
-    WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-    WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-    WHEN room_id IN (13176, 13177, 13178)                              THEN '癞子'
-    ELSE '其他'
-END AS game_mode
+    WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN 1 -- 经典
+    WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN 2 -- 不洗牌
+    WHEN room_id IN (13176, 13177, 13178)                              THEN 3 -- 癞子
+    WHEN room_id IN (158, 159)                                         THEN 6 -- 好友房
+    ELSE 0
+END AS play_mode
 ```
 
 ### 2.2 玩法 room_id 列表
@@ -132,7 +133,7 @@ Step D: tcy_temp.dws_app_gamemode_active    （每日游戏活跃用户×玩法�
 - `dws_app_game_active` / `dws_app_gamemode_active` 为预构建的轻量 DWS 表，执行本 SQL 前需确认已构建完成
 - 倍数相关字段（`grab_landlord_bet`/`complete_victory_bet`/`bomb_bet`）在 `dwd_game_combat_si` 中为**独立列**，直接使用
 - 货币字段使用正确名称：`room_base`/`room_fee`/`start_money`/`end_money`/`diff_money`
-- `dws_app_gamemode_active` 的玩法字段为 `play_mode`（整数），宽表 SQL 内通过 CASE 转换为中文 `game_mode`
+- `dws_app_gamemode_active` 的玩法字段为 `play_mode`（整数），宽表 `ddz_user_mode_first_day_features` 统一使用 `play_mode` 整数，与 `dws_ddz_daily_game` 保持一致
 
 ```sql
 -- 分玩法首日宽表（核心分析数据集）
@@ -155,11 +156,12 @@ first_day_games_raw AS (
         c.timecost,
         c.room_id,
         CASE
-            WHEN c.room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-            WHEN c.room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-            WHEN c.room_id IN (13176, 13177, 13178)                              THEN '癞子'
-            ELSE '其他'
-        END                          AS game_mode,
+            WHEN c.room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN 1 -- 经典
+            WHEN c.room_id IN (421, 22039, 22040, 22041, 22042)                  THEN 2 -- 不洗牌
+            WHEN c.room_id IN (13176, 13177, 13178)                              THEN 3 -- 癞子
+            WHEN c.room_id IN (158, 159)                                         THEN 6 -- 好友房
+            ELSE 0
+        END                          AS play_mode,
         c.role,
         c.chairno,
         c.result_id,
@@ -177,20 +179,22 @@ first_day_games_raw AS (
         ROW_NUMBER() OVER (
             PARTITION BY c.uid,
                 CASE
-                    WHEN c.room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-                    WHEN c.room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-                    WHEN c.room_id IN (13176, 13177, 13178)                              THEN '癞子'
-                    ELSE '其他'
+                    WHEN c.room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN 1
+                    WHEN c.room_id IN (421, 22039, 22040, 22041, 22042)                  THEN 2
+                    WHEN c.room_id IN (13176, 13177, 13178)                              THEN 3
+                    WHEN c.room_id IN (158, 159)                                         THEN 6
+                    ELSE 0
                 END
             ORDER BY c.time_unix
         )                            AS mode_game_seq,
         ROW_NUMBER() OVER (
             PARTITION BY c.uid,
                 CASE
-                    WHEN c.room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-                    WHEN c.room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-                    WHEN c.room_id IN (13176, 13177, 13178)                              THEN '癞子'
-                    ELSE '其他'
+                    WHEN c.room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN 1
+                    WHEN c.room_id IN (421, 22039, 22040, 22041, 22042)                  THEN 2
+                    WHEN c.room_id IN (13176, 13177, 13178)                              THEN 3
+                    WHEN c.room_id IN (158, 159)                                         THEN 6
+                    ELSE 0
                 END
             ORDER BY c.time_unix DESC
         )                            AS mode_game_seq_desc,
@@ -204,42 +208,30 @@ first_day_games_raw AS (
 ),
 -- 3. 算法修正：使用 COUNT(*) 保证 game_seq 连续，避免 gaps-and-islands 错误
 mode_streaks AS (
-    SELECT uid, game_mode,
+    SELECT uid, play_mode,
            MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
            MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM (
-        SELECT uid, game_mode, result_id, COUNT(*) AS streak_len
+        SELECT uid, play_mode, result_id, COUNT(*) AS streak_len
         FROM (
-            SELECT uid, game_mode, result_id, mode_game_seq,
-                   mode_game_seq - ROW_NUMBER() OVER (PARTITION BY uid, game_mode, result_id ORDER BY mode_game_seq) AS grp
+            SELECT uid, play_mode, result_id, mode_game_seq,
+                   mode_game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY mode_game_seq) AS grp
             FROM first_day_games_raw
             WHERE result_id IN (1, 2)  -- 只统计胜负局，排除无效局
-        ) t GROUP BY uid, game_mode, result_id, grp
-    ) t2 GROUP BY uid, game_mode
+        ) t GROUP BY uid, play_mode, result_id, grp
+    ) t2 GROUP BY uid, play_mode
 ),
 -- 4. 同玩法留存 flag（基于 dws_app_gamemode_active，只看注册日之后）
---    dws_app_gamemode_active.play_mode 为整数，此处转换为与 first_day_games_raw 一致的中文 game_mode
 day_flags_mode AS (
     SELECT 
         r.uid,
-        CASE a.play_mode
-            WHEN 1 THEN '经典'
-            WHEN 2 THEN '不洗牌'
-            WHEN 3 THEN '癞子'
-            ELSE '其他'
-        END AS game_mode,
+        a.play_mode,
         MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS is_retained_day1_same_mode,
         MAX(CASE WHEN a.dt = r.reg_date + 7  THEN 1 ELSE 0 END) AS is_retained_day7_same_mode,
         MAX(CASE WHEN a.dt = r.reg_date + 30 THEN 1 ELSE 0 END) AS is_retained_day30_same_mode
     FROM new_user_reg r
     LEFT JOIN tcy_temp.dws_app_gamemode_active a ON r.uid = a.uid AND a.app_id = r.app_id AND a.dt > r.reg_date
-    GROUP BY r.uid,
-        CASE a.play_mode
-            WHEN 1 THEN '经典'
-            WHEN 2 THEN '不洗牌'
-            WHEN 3 THEN '癞子'
-            ELSE '其他'
-        END
+    GROUP BY r.uid, a.play_mode
 ),
 -- 5. 整体留存 flag（任意玩法有对局即算留存）
 day_flags_global AS (
@@ -256,7 +248,7 @@ day_flags_global AS (
 SELECT
     r.uid,
     r.reg_date,
-    g.game_mode,
+    g.play_mode,
     r.group_id,
     r.device_type,
     r.channel_category,
@@ -303,10 +295,10 @@ SELECT
     COALESCE(MAX(dfg.is_retained_day30_global), 0)                           AS is_retained_day30_global
 FROM first_day_games_raw g
 INNER JOIN new_user_reg r ON g.uid = r.uid
-LEFT JOIN  mode_streaks ms  ON g.uid = ms.uid AND g.game_mode = ms.game_mode
-LEFT JOIN  day_flags_mode dfm ON g.uid = dfm.uid AND g.game_mode = dfm.game_mode
+LEFT JOIN  mode_streaks ms  ON g.uid = ms.uid AND g.play_mode = ms.play_mode
+LEFT JOIN  day_flags_mode dfm ON g.uid = dfm.uid AND g.play_mode = dfm.play_mode
 LEFT JOIN  day_flags_global dfg ON g.uid = dfg.uid
-GROUP BY r.uid, r.reg_date, g.game_mode, r.group_id, r.device_type, r.channel_category, r.channel_category_tag_id;
+GROUP BY r.uid, r.reg_date, g.play_mode, r.group_id, r.device_type, r.channel_category, r.channel_category_tag_id;
 ```
 
 ---
@@ -319,7 +311,7 @@ GROUP BY r.uid, r.reg_date, g.game_mode, r.group_id, r.device_type, r.channel_ca
 ### M-01: 各玩法新增用户留存率（含渠道拆分）
 ```sql
 SELECT
-    game_mode,
+    play_mode,
     channel_category,
     COUNT(DISTINCT uid) AS user_count,
     ROUND(AVG(game_count), 1) AS avg_games_in_mode,
@@ -333,15 +325,15 @@ SELECT
     ROUND(SUM(is_retained_day7_global) * 100.0 / COUNT(*), 2) AS day7_rate_global,
     ROUND(SUM(is_retained_day30_global) * 100.0 / COUNT(*), 2) AS day30_rate_global
 FROM tcy_temp.ddz_user_mode_first_day_features
-WHERE game_mode IN ('经典', '不洗牌', '癞子')
-GROUP BY game_mode, channel_category
-ORDER BY game_mode, channel_category;
+WHERE play_mode IN (1, 2, 3)  -- 1=经典，2=不洗牌，3=癞子
+GROUP BY play_mode, channel_category
+ORDER BY play_mode, channel_category;
 ```
 
 ### M-02: 分玩法 × 倍数分组留存
 ```sql
 SELECT
-    game_mode, channel_category,
+    play_mode, channel_category,
     CASE
         WHEN avg_magnification <= 6  THEN 'A: <=6'
         WHEN avg_magnification <= 12 THEN 'B: 6-12'
@@ -352,8 +344,8 @@ SELECT
     COUNT(*) AS user_count,
     ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate
 FROM tcy_temp.ddz_user_mode_first_day_features
-WHERE game_mode IN ('经典', '不洗牌', '癞子')
-GROUP BY game_mode, channel_category,
+WHERE play_mode IN (1, 2, 3)  -- 1=经典，2=不洗牌，3=癞子
+GROUP BY play_mode, channel_category,
     CASE
         WHEN avg_magnification <= 6  THEN 'A: <=6'
         WHEN avg_magnification <= 12 THEN 'B: 6-12'
@@ -361,13 +353,13 @@ GROUP BY game_mode, channel_category,
         WHEN avg_magnification <= 48 THEN 'D: 24-48'
         ELSE                              'E: 48+'
     END
-ORDER BY game_mode, channel_category, multi_group;
+ORDER BY play_mode, channel_category, multi_group;
 ```
 
 ### M-03: 分玩法 × 经济变化分组留存
 ```sql
 SELECT
-    game_mode, channel_category,
+    play_mode, channel_category,
     CASE
         WHEN total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
         WHEN total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
@@ -379,8 +371,8 @@ SELECT
     COUNT(*) AS user_count,
     ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate
 FROM tcy_temp.ddz_user_mode_first_day_features
-WHERE game_mode IN ('经典', '不洗牌', '癞子')
-GROUP BY game_mode, channel_category,
+WHERE play_mode IN (1, 2, 3)  -- 1=经典，2=不洗牌，3=癞子
+GROUP BY play_mode, channel_category,
     CASE
         WHEN total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
         WHEN total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
@@ -389,7 +381,7 @@ GROUP BY game_mode, channel_category,
         WHEN total_diff_money < 50000  THEN 'E: 大赚 (1万~5万)'
         ELSE                                'F: 巨赚 (>5万)'
     END
-ORDER BY game_mode, channel_category, money_change_group;
+ORDER BY play_mode, channel_category, money_change_group;
 ```
 
 ---
@@ -452,7 +444,8 @@ Step 6: 综合结论 → 差异化策略
 > - v2.1：修复 StarRocks 日期函数；优化 Bucket 配置；添加全局留存字段；修正连败/连胜计算；修正首末局特征提取
 > - v2.2：补充共享基础声明（明确引用全局文档一~七章）；承接"游戏模式偏好"分析职责（从全局文档迁入）
 > - v2.3：DWS 表重命名（`dws_ddz_daily_play_by_mode` → `dws_app_gamemode_active`，`dws_ddz_daily_play` → `dws_app_game_active`）；留存 JOIN 补充 `app_id` 条件
-> - **v2.4**：删除 Step C 内联 CREATE TABLE（`dws_app_gamemode_active` 已独立文档维护）；`new_user_reg` CTE 补充 `app_id` 字段；`day_flags_mode` 修复 `a.game_mode` → CASE on `a.play_mode` 转换为中文玩法名
+> - v2.4：删除 Step C 内联 CREATE TABLE（`dws_app_gamemode_active` 已独立文档维护）；`new_user_reg` CTE 补充 `app_id` 字段；`day_flags_mode` 修复字段错误
+> - **v2.5**：`first_day_games_raw` 玩法字段从字符串 `game_mode` 改为整数 `play_mode`，与 `dws_ddz_daily_game` 保持一致；同步更新 `mode_streaks`、`day_flags_mode`、最终 SELECT/JOIN/GROUP BY 及分析 SQL M-01~M-03
 >
 > **关联文档**：
 > - [`retention-global.md`](retention-global.md)（全局分析框架，含共享基础设定）
