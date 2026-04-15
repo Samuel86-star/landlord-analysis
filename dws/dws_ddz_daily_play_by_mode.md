@@ -5,18 +5,18 @@
 | 项目 | 说明 |
 |------|------|
 | 库名 | `tcy_temp` |
-| 表名 | `dws_ddz_app_daily_active_modes` |
-| 全名 | `tcy_temp.dws_ddz_app_daily_active_modes` |
+| 表名 | `dws_ddz_daily_play_by_mode` |
+| 全名 | `tcy_temp.dws_ddz_daily_play_by_mode` |
 | 类型 | DWS 层聚合表（一次性创建） |
 | 描述 | APP 端每日按玩法活跃用户去重清单，**专用于"同玩法留存"flag 计算** |
 | 粒度 | uid × dt × game_mode（一个用户一天一种玩法一行） |
 
-## 与 `dws_ddz_app_daily_active` 的区别
+## 与 `dws_ddz_daily_play` 的区别
 
 | 表 | 用途 |
 |----|------|
-| `dws_ddz_app_daily_active` | 整体留存（任意玩法有对局即算留存）|
-| `dws_ddz_app_daily_active_modes` | 同玩法留存（需在同一玩法有对局才算该玩法留存）|
+| `dws_ddz_daily_play` | 整体留存（任意玩法有对局即算留存）|
+| `dws_ddz_daily_play_by_mode` | 同玩法留存（需在同一玩法有对局才算该玩法留存）|
 
 ## 字段说明
 
@@ -30,7 +30,7 @@
 
 ```sql
 -- 时间范围覆盖注册期 + Day30 观测期（20260210 ~ 20260508）
-CREATE TABLE tcy_temp.dws_ddz_app_daily_active_modes
+CREATE TABLE tcy_temp.dws_ddz_daily_play_by_mode
 DISTRIBUTED BY HASH(uid) BUCKETS 64
 ORDER BY dt, uid, game_mode
 PROPERTIES("replication_num" = "1")

@@ -5,8 +5,8 @@
 | 项目 | 说明 |
 |------|------|
 | 库名 | `tcy_temp` |
-| 表名 | `dws_ddz_app_daily_active` |
-| 全名 | `tcy_temp.dws_ddz_app_daily_active` |
+| 表名 | `dws_ddz_daily_play` |
+| 全名 | `tcy_temp.dws_ddz_daily_play` |
 | 类型 | DWS 层聚合表（一次性创建） |
 | 描述 | APP 端每日有对局的用户去重清单，**专用于留存 flag 计算** |
 | 粒度 | uid × dt（一个用户一天一行） |
@@ -25,7 +25,7 @@
 |------------|-------------|----------------------|
 | 20260210 ~ 20260408 | Day30 | 20260408 + 30天 = **20260508** |
 
-因此 `dws_ddz_app_daily_active` 的时间范围设为 **20260210 ~ 20260508**，比注册期多延伸 30 天。
+因此 `dws_ddz_daily_play` 的时间范围设为 **20260210 ~ 20260508**，比注册期多延伸 30 天。
 
 ## 字段说明
 
@@ -39,7 +39,7 @@
 ```sql
 -- Step 2：构建每日活跃用户去重表（用于留存 flag 计算）
 -- 时间范围覆盖注册期 + 最大留存观测期（Day30），上限延伸 30 天至 20260508
-CREATE TABLE tcy_temp.dws_ddz_app_daily_active
+CREATE TABLE tcy_temp.dws_ddz_daily_play
 DISTRIBUTED BY HASH(uid) BUCKETS 64
 ORDER BY dt, uid
 PROPERTIES("replication_num" = "1")

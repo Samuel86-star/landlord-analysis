@@ -86,8 +86,8 @@ INNER JOIN hive_catalog_cdh5.dim.dim_channel_category t2
 | `dws_ddz_daily_game` | [dws_ddz_daily_game.md](dws/dws_ddz_daily_game.md) | 对局战绩统一字段表 |
 | `dws_ddz_appdaily_game_stat` | [dws_ddz_appdaily_game_stat.md](dws/dws_ddz_appdaily_game_stat.md) | APP端每日游戏行为统计表 |
 | `dws_dq_app_daily_reg` | [dws_dq_app_daily_reg.md](dws/dws_dq_app_daily_reg.md) | APP端每日注册用户宽表 |
-| `dws_ddz_app_daily_active` | [dws_ddz_app_daily_active.md](dws/dws_ddz_app_daily_active.md) | APP端每日活跃用户表 |
-| `dws_ddz_app_daily_active_modes` | [dws_ddz_app_daily_active_modes.md](dws/dws_ddz_app_daily_active_modes.md) | APP端每日活跃用户×玩法聚合表 |
+| `dws_ddz_daily_play` | [dws_ddz_daily_play.md](dws/dws_ddz_daily_play.md) | 每日有对局用户表（整体留存用） |
+| `dws_ddz_daily_play_by_mode` | [dws_ddz_daily_play_by_mode.md](dws/dws_ddz_daily_play_by_mode.md) | 每日有对局用户×玩法表（同玩法留存用） |
 
 ### 处理后数据表 (processed/)
 
