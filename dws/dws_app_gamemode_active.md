@@ -25,40 +25,42 @@
 | uid | bigint | 玩家唯一标识 | 123456789 |
 | dt | int | 对局日期（YYYYMMDD int 格式） | 20260215 |
 | app_id | bigint | 应用 ID | 1880053 |
-| game_mode | string | 玩法名称：'经典' / '不洗牌' / '癞子' / '其他' | '经典' |
+| play_mode | int | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，0=其他 | 1 |
 
 ## 构建 SQL
 
 ```sql
 -- 时间范围覆盖注册期 + Day30 观测期（20260210 ~ 20260508）
 CREATE TABLE tcy_temp.dws_app_gamemode_active
-DISTRIBUTED BY HASH(uid) BUCKETS 64
-ORDER BY dt, uid, game_mode
-PROPERTIES("replication_num" = "1")
 AS
 SELECT
     uid,
     dt,
     app_id,
-    CASE
-        WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-        WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-        WHEN room_id IN (13176, 13177, 13178)                              THEN '癞子'
-        ELSE '其他'
-    END AS game_mode
+    CASE 
+        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
+        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
+        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
+        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
+        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
+        WHEN room_id IN (158,159) THEN 6 -- 好友房
+        ELSE 0 
+    END AS play_mode
 FROM tcy_dwd.dwd_game_combat_si
 WHERE dt BETWEEN 20260210 AND 20260508
   AND game_id = 53
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-  AND room_id NOT IN (11534, 14238, 15458)
 GROUP BY
     uid, dt, app_id,
-    CASE
-        WHEN room_id IN (742, 420, 4484, 12074, 6314, 11168, 10336, 16445) THEN '经典'
-        WHEN room_id IN (421, 22039, 22040, 22041, 22042)                  THEN '不洗牌'
-        WHEN room_id IN (13176, 13177, 13178)                              THEN '癞子'
-        ELSE '其他'
+    CASE 
+        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
+        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
+        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
+        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
+        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
+        WHEN room_id IN (158,159) THEN 6 -- 好友房
+        ELSE 0 
     END;
 ```
 

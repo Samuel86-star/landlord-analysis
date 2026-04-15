@@ -46,13 +46,10 @@
 
 ```sql
 CREATE TABLE tcy_temp.dws_app_game_active
-DISTRIBUTED BY HASH(uid) BUCKETS 64
-ORDER BY dt, uid
-PROPERTIES("replication_num" = "1")
 AS
 SELECT
-    uid,
     dt,
+    uid,
     app_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE dt BETWEEN 20260210 AND 20260508  -- 覆盖注册期 + Day30 观测期
@@ -60,7 +57,7 @@ WHERE dt BETWEEN 20260210 AND 20260508  -- 覆盖注册期 + Day30 观测期
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- APP 端用户
   AND room_id NOT IN (11534, 14238, 15458)           -- 排除积分场/比赛场
-GROUP BY uid, dt, app_id;
+GROUP BY dt, uid, app_id;
 ```
 
 ## 留存计算方式
