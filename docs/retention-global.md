@@ -456,7 +456,7 @@ APP 端注册（dws_dq_app_daily_reg）
 | `dws_dq_daily_login` | 每日登录聚合表 | [dws_dq_daily_login.md](../dws/dws_dq_daily_login.md) |
 | `dws_ddz_daily_game` | 对局战绩统一字段表 | [dws_ddz_daily_game.md](../dws/dws_ddz_daily_game.md) |
 | `dws_ddz_app_game_stat` | 用户每日游戏行为聚合表 | [dws_ddz_app_game_stat.md](../dws/dws_ddz_app_game_stat.md) |
-| `dws_ddz_app_game_stat_by_mode` | 用户每日游戏行为聚合表（按玩法拆分） | [dws_ddz_app_game_stat_by_mode.md](../dws/dws_ddz_app_game_stat_by_mode.md) |
+| `dws_ddz_app_gamemode_stat` | 用户每日游戏行为聚合表（按玩法拆分） | [dws_ddz_app_gamemode_stat.md](../dws/dws_ddz_app_gamemode_stat.md) |
 
 ### 8.2 新增用户留存分析 SQL
 

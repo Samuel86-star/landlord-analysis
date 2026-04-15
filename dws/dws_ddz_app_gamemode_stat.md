@@ -5,8 +5,8 @@
 | 项目 | 说明 |
 | ---- | ---- |
 | 库名 | `tcy_temp` |
-| 表名 | `dws_ddz_app_game_stat_by_mode` |
-| 全名 | `tcy_temp.dws_ddz_app_game_stat_by_mode` |
+| 表名 | `dws_ddz_app_gamemode_stat` |
+| 全名 | `tcy_temp.dws_ddz_app_gamemode_stat` |
 | 类型 | DWS 层聚合表（每日增量） |
 | 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），与 `dws_ddz_app_game_stat` 字段一致，粒度增加 play_mode 维度 |
 | 粒度 | uid × dt × play_mode × app_code（一个用户一天一种玩法一个客户端版本一行） |
@@ -92,7 +92,7 @@
 ### 建表语句
 
 ```sql
-CREATE TABLE tcy_temp.dws_ddz_app_game_stat_by_mode (
+CREATE TABLE tcy_temp.dws_ddz_app_gamemode_stat (
     uid BIGINT,
     dt BIGINT,
     play_mode INT,
@@ -134,7 +134,7 @@ PROPERTIES("replication_num" = "1");
 ### 增量数据导入
 
 ```sql
-INSERT INTO tcy_temp.dws_ddz_app_game_stat_by_mode
+INSERT INTO tcy_temp.dws_ddz_app_gamemode_stat
 WITH game_enriched AS (
     SELECT
         *,
@@ -229,7 +229,7 @@ GROUP BY g.uid, g.dt, g.app_code, g.play_mode;
 tcy_temp.dws_ddz_daily_game              （对局明细表）
             ↓  APP端+银子玩法聚合
 tcy_temp.dws_ddz_app_game_stat         （用户每日统计 - 混合玩法）
-tcy_temp.dws_ddz_app_game_stat_by_mode （用户每日统计 - 按玩法拆分）  ← 本表
+tcy_temp.dws_ddz_app_gamemode_stat （用户每日统计 - 按玩法拆分）  ← 本表
             ↓  关联分析
 tcy_temp.dws_dq_app_daily_reg              （APP 端注册用户宽表）
 tcy_temp.dws_dq_daily_login                （每日登录聚合表）
