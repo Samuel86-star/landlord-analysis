@@ -234,13 +234,13 @@ WHERE game_id = 53
 
 | 源表 | 目标表 |
 |------|--------|
-| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_appdaily_game_stat` |
+| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_app_game_stat` |
 
 ### 增量更新 SQL
 
 ```sql
 -- APP 端每日游戏行为统计增量导入（混合玩法）
-INSERT INTO tcy_temp.dws_ddz_appdaily_game_stat
+INSERT INTO tcy_temp.dws_ddz_app_game_stat
 WITH game_enriched AS (
     -- 1. 预处理：在单层扫描中完成基础过滤和窗口排序
     SELECT
@@ -336,12 +336,12 @@ GROUP BY g.uid, g.dt, g.app_code;
 - 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
 - 包含胜负、倍数、经济等汇总指标
 - `play_modes` 字段记录当天玩过的所有玩法
-- 详细文档：[dws/dws_ddz_appdaily_game_stat.md](../dws/dws_ddz_appdaily_game_stat.md)
+- 详细文档：[dws/dws_ddz_app_game_stat.md](../dws/dws_ddz_app_game_stat.md)
 - **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
 - 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
 - 包含胜负、倍数、经济等汇总指标
 - `play_modes` 字段记录当天玩过的所有玩法
-- 详细文档：[dws/dws_ddz_appdaily_game_stat.md](../dws/dws_ddz_appdaily_game_stat.md)
+- 详细文档：[dws/dws_ddz_app_game_stat.md](../dws/dws_ddz_app_game_stat.md)
 
 ---
 
@@ -351,13 +351,13 @@ GROUP BY g.uid, g.dt, g.app_code;
 
 | 源表 | 目标表 |
 |------|--------|
-| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_appdaily_game_stat_by_mode` |
+| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_app_game_stat_by_mode` |
 
 ### 增量更新 SQL
 
 ```sql
 -- APP 端每日游戏行为统计增量导入（按玩法拆分）
-INSERT INTO tcy_temp.dws_ddz_appdaily_game_stat_by_mode
+INSERT INTO tcy_temp.dws_ddz_app_game_stat_by_mode
 WITH game_enriched AS (
     SELECT
         *,
@@ -442,9 +442,9 @@ GROUP BY g.uid, g.dt, g.app_code, g.play_mode;
 - **新增 `app_code` 维度**：粒度为 uid × dt × play_mode × app_code，支持按客户端开发语言和玩法双维度分析
 - **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
 - 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
-- 与 `dws_ddz_appdaily_game_stat` 字段基本一致，增加 `play_mode` 维度
+- 与 `dws_ddz_app_game_stat` 字段基本一致，增加 `play_mode` 维度
 - 适用于需要控制玩法变量的分析（倍数、胜率、连胜连败、经济变化）
-- 详细文档：[dws/dws_ddz_appdaily_game_stat_by_mode.md](../dws/dws_ddz_appdaily_game_stat_by_mode.md)
+- 详细文档：[dws/dws_ddz_app_game_stat_by_mode.md](../dws/dws_ddz_app_game_stat_by_mode.md)
 
 ---
 
@@ -457,14 +457,14 @@ dws_dq_daily_reg                  ← 无依赖，可优先执行
 dws_dq_daily_login                ← 无依赖，可并行执行
 dws_ddz_daily_game                ← 无依赖，可并行执行
 dws_dq_app_daily_reg              ← 依赖 dws_dq_daily_reg, dws_dq_daily_login
-dws_ddz_appdaily_game_stat           ← 依赖 dws_ddz_daily_game
-dws_ddz_appdaily_game_stat_by_mode   ← 依赖 dws_ddz_daily_game
+dws_ddz_app_game_stat           ← 依赖 dws_ddz_daily_game
+dws_ddz_app_game_stat_by_mode   ← 依赖 dws_ddz_daily_game
 ```
 
 ### 建议执行顺序
 
 1. **每日凌晨 02:00**：并行执行基础表增量导入（dws_dq_daily_reg、dws_dq_daily_login、dws_ddz_daily_game）
-2. **每日凌晨 03:00**：执行依赖表增量导入（dws_dq_app_daily_reg、dws_ddz_appdaily_game_stat、dws_ddz_appdaily_game_stat_by_mode）
+2. **每日凌晨 03:00**：执行依赖表增量导入（dws_dq_app_daily_reg、dws_ddz_app_game_stat、dws_ddz_app_game_stat_by_mode）
 3. **数据校验**：检查导入数据量是否符合预期
 
 ### 批量执行脚本示例

@@ -5,15 +5,15 @@
 | 项目 | 说明 |
 | ---- | ---- |
 | 库名 | `tcy_temp` |
-| 表名 | `dws_ddz_appdaily_game_stat_by_mode` |
-| 全名 | `tcy_temp.dws_ddz_appdaily_game_stat_by_mode` |
+| 表名 | `dws_ddz_app_game_stat_by_mode` |
+| 全名 | `tcy_temp.dws_ddz_app_game_stat_by_mode` |
 | 类型 | DWS 层聚合表（每日增量） |
-| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），与 `dws_ddz_appdaily_game_stat` 字段一致，粒度增加 play_mode 维度 |
+| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），与 `dws_ddz_app_game_stat` 字段一致，粒度增加 play_mode 维度 |
 | 粒度 | uid × dt × play_mode × app_code（一个用户一天一种玩法一个客户端版本一行） |
 
 ## 设计背景
 
-`dws_ddz_appdaily_game_stat` 的粒度为 uid × dt，一天内玩了多种玩法（经典/不洗牌/赖子/比赛）的用户数据混合在一起。但不同玩法的倍数分布差异显著：
+`dws_ddz_app_game_stat` 的粒度为 uid × dt，一天内玩了多种玩法（经典/不洗牌/赖子/比赛）的用户数据混合在一起。但不同玩法的倍数分布差异显著：
 
 | 玩法 | 倍数特点 | 影响 |
 | ---- | ------- | ---- |
@@ -92,7 +92,7 @@
 ### 建表语句
 
 ```sql
-CREATE TABLE tcy_temp.dws_ddz_appdaily_game_stat_by_mode (
+CREATE TABLE tcy_temp.dws_ddz_app_game_stat_by_mode (
     uid BIGINT,
     dt BIGINT,
     play_mode INT,
@@ -134,7 +134,7 @@ PROPERTIES("replication_num" = "1");
 ### 增量数据导入
 
 ```sql
-INSERT INTO tcy_temp.dws_ddz_appdaily_game_stat_by_mode
+INSERT INTO tcy_temp.dws_ddz_app_game_stat_by_mode
 WITH game_enriched AS (
     SELECT
         *,
@@ -215,7 +215,7 @@ GROUP BY g.uid, g.dt, g.app_code, g.play_mode;
 
 ## 注意事项
 
-1. **与原表的关系**：本表是 `dws_ddz_appdaily_game_stat` 的按玩法拆分版本，两表并存互补
+1. **与原表的关系**：本表是 `dws_ddz_app_game_stat` 的按玩法拆分版本，两表并存互补
    - 原表（uid × dt）：适合不需要区分玩法的分析（如按对局数分组、总体经济变化）
    - 本表（uid × dt × play_mode）：适合需要控制玩法变量的分析（如倍数、胜率、连胜连败、经济变化）
 2. **行数膨胀**：一天内玩了 N 种玩法的用户会产生 N 行记录（原表只有 1 行），预计行数约为原表的 1.2-1.5 倍（多数用户只玩一种玩法）
@@ -228,8 +228,8 @@ GROUP BY g.uid, g.dt, g.app_code, g.play_mode;
 ```
 tcy_temp.dws_ddz_daily_game              （对局明细表）
             ↓  APP端+银子玩法聚合
-tcy_temp.dws_ddz_appdaily_game_stat         （用户每日统计 - 混合玩法）
-tcy_temp.dws_ddz_appdaily_game_stat_by_mode （用户每日统计 - 按玩法拆分）  ← 本表
+tcy_temp.dws_ddz_app_game_stat         （用户每日统计 - 混合玩法）
+tcy_temp.dws_ddz_app_game_stat_by_mode （用户每日统计 - 按玩法拆分）  ← 本表
             ↓  关联分析
 tcy_temp.dws_dq_app_daily_reg              （APP 端注册用户宽表）
 tcy_temp.dws_dq_daily_login                （每日登录聚合表）
@@ -239,4 +239,4 @@ tcy_temp.dws_dq_daily_login                （每日登录聚合表）
 > **创建时间**：2026-04-13
 > **更新说明**：
 
-> - v1.0：初始版本，从 `dws_ddz_appdaily_game_stat` 拆分出按玩法维度的聚合表
+> - v1.0：初始版本，从 `dws_ddz_app_game_stat` 拆分出按玩法维度的聚合表
