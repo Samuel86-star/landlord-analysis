@@ -181,6 +181,8 @@ first_day_games_raw AS (
         ROW_NUMBER() OVER (PARTITION BY c.uid ORDER BY c.time_unix) AS global_game_seq
     FROM tcy_temp.dws_ddz_daily_game c
     INNER JOIN new_user_reg r ON c.uid = r.uid AND c.dt = r.reg_date
+    WHERE c.dt BETWEEN 20260210 AND 20260408  -- 仅注册期，首日宽表无需延伸观测期
+      AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- 仅 APP 端
 ),
 -- 3. 算法修正：使用 COUNT(*) 保证 game_seq 连续，避免 gaps-and-islands 错误
 mode_streaks AS (
