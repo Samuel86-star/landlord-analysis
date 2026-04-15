@@ -1,6 +1,10 @@
 # 斗地主分玩法留存分析方案
 
-> 本文档是对 `new-user-retention-analysis.md` 的补充延伸，专注于按**经典 / 不洗牌 / 癞子**三种玩法维度拆分后的新增用户留存分析。所有 SQL 基于 StarRocks 语法，表结构与主文档一致。
+> 本文档是 [`retention-global.md`](retention-global.md) 的补充延伸，专注于按**经典 / 不洗牌 / 癞子**三种玩法维度拆分后的新增用户留存分析。所有 SQL 基于 StarRocks 语法，表结构与主文档一致。
+>
+> **共享基础**：本文档共享全局文档的 **一~七章**（业务背景、数据基础、指标体系、分析方法论），此处不再重复。如需查阅指标定义或方法论，请参见全局文档。
+>
+> **覆盖范围**：本文档承接全局文档中"游戏模式偏好"相关的分析职责，包含各玩法留存对比、玩法内因子分析、玩法行为分析等全部分玩法维度内容。
 
 ---
 
@@ -457,14 +461,16 @@ Step 6: 综合结论 → 差异化策略
 
 ---
 
-> **文档版本**：v2.1
+> **文档版本**：v2.2
 > **创建日期**：2026-03-25
 > **更新说明**：
 > - v2.0：重构 DWS 层架构（对齐主文档 v3.0）；修正字段名（`room_base`/`diff_money` 等）；倍数字段改为直接读列；新增 `device_type` 维度；`dws_ddz_app_daily_active_modes` 时间上限延至 20260508；同玩法留存新增 Day30 指标；修正 `day_flags_mode` 添加 `a.dt > r.reg_date` 限制
-> - **v2.1**：**修复 StarRocks 日期函数**（`reg_date + N` 简化日期计算）；**优化 Bucket 配置**（日活表 32→64）；**添加排序键**（`ORDER BY dt, uid, game_mode`）；**添加全局留存字段**（对比"同玩法留存"和"任意玩法留存"）；**修正连败/连胜计算**（过滤无效局）；**修正首末局特征提取**（使用 `MIN`/`MAX` 保证唯一性）
+> - v2.1：修复 StarRocks 日期函数；优化 Bucket 配置；添加全局留存字段；修正连败/连胜计算；修正首末局特征提取
+> - **v2.2**：**补充共享基础声明**（明确引用全局文档一~七章）；**承接"游戏模式偏好"分析职责**（从全局文档迁入）
 >
 > **关联文档**：
-> - `docs/new-user-retention-analysis.md`（主分析框架）
+> - [`retention-global.md`](retention-global.md)（全局分析框架，含共享基础设定）
+> - [`retention-by-client-lang.md`](retention-by-client-lang.md)（分客户端语言分析）
 > - `dws/dws_dq_app_daily_reg.md`（APP 端注册用户宽表）
 > - `dws/dws_ddz_daily_game.md`（对局战绩统一字段表）
 >

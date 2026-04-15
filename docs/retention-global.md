@@ -4,6 +4,20 @@
 
 ---
 
+## 三层分析体系总览
+
+斗地主新增用户留存分析按粒度分为三层，各层文档独立聚焦、互不重叠：
+
+| 层级 | 文档 | 分析粒度 | 核心问题 |
+|------|------|---------|---------|
+| **全局层**（本文档） | `retention-global.md` | 全体新增用户 | 整体留存水平、各因子对留存的影响 |
+| **分玩法层** | [`retention-by-mode.md`](retention-by-mode.md) | 经典 / 不洗牌 / 癞子 | 各玩法的留存差异、玩法内因子分析、玩法切换行为 |
+| **分客户端语言层** | [`retention-by-client-lang.md`](retention-by-client-lang.md) | Cocos Creator / Cocos Lua | 不同客户端版本的留存差异、技术差异对体验的影响 |
+
+**共享关系**：本文档的 **一~七章**（业务背景、数据基础、指标体系、分析方法论）为三层共享的基础设定，分玩法层和分客户端语言层仅包含各自的增量分析内容，不重复基础章节。
+
+---
+
 ## 目录
 
 1. [业务背景与新手流程](#一业务背景与新手流程)
@@ -269,7 +283,6 @@
 
 | 指标名称 | 定义/计算公式 | 数据来源 | 分析维度 | 与留存的关联假设 |
 | ------- | ----------- | ------- | ------- | -------------- |
-| 游戏模式偏好 | 经典 / 不洗牌 / 赖子各模式的局数占比 | room（需映射到模式） | 按模式分组对比留存 | 不同模式的节奏和随机性不同 |
 | 底分房间分布 | 按 `room_base` 分组的局数分布 | room_base | 低分场 / 中分场 / 高分场 | 新手进入高分场可能被快速淘汰 |
 | 房间切换次数 | 首日在不同 room 间切换的次数 | COUNT(DISTINCT room) | 分组（1 / 2-3 / 4+） | 频繁切换可能是体验不佳的信号 |
 | 最高底分房间 | 首日进入过的最高 `room_base` | MAX(room_base) | 分组 | 选择过高底分是冲动行为信号 |
@@ -277,7 +290,6 @@
 
 **分析要点：**
 
-- 新手默认进入经典玩法，分析「首日是否尝试其他玩法」与留存的关系。
 - 分析新手选择底分房间是否合理——携银 / 房间最低携银的比值过小（如 < 3 倍）意味着高风险。
 
 ---
@@ -557,7 +569,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
 GROUP BY 
@@ -596,7 +608,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
   AND g.game_count > 0  
@@ -633,7 +645,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
 GROUP BY r.reg_date, 
@@ -668,7 +680,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
 GROUP BY r.reg_date, 
@@ -705,7 +717,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
 GROUP BY r.reg_date, 
@@ -742,7 +754,7 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
   AND g.game_count > 0
@@ -779,7 +791,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
   AND g.game_count > 0
@@ -869,7 +881,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
 GROUP BY r.reg_date,
@@ -904,7 +916,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt AND g.app_code IS NOT NULL
+LEFT JOIN tcy_temp.dws_ddz_appdaily_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
 GROUP BY r.reg_date,
@@ -1272,234 +1284,7 @@ ORDER BY r.reg_date, result, multi_level, is_escape;
 - 找到最佳体验组合（如「胜 + 中低倍 + 正常完成」），作为首局体验设计的目标模型
 - 通过各组合的用户占比，判断当前首局体验设计是否让多数用户落入好的区间
 
-### 8.5 按玩法拆分的留存分析
-
-> **分析背景**：不同玩法的倍数分布差异显著（赖子 > 不洗牌 > 经典），而倍数直接影响单局输赢、经济变化、破产概率。因此所有与倍数/经济/胜率/连胜连败相关的分析，都应按玩法拆分后再看。
->
-> 以下 SQL 使用新建的 `dws_ddz_appdaily_game_stat_by_mode` 表（粒度：uid × dt × play_mode），详见 [dws_ddz_appdaily_game_stat_by_mode.md](../dws/dws_ddz_appdaily_game_stat_by_mode.md)。
-
-#### 8.5.1 按玩法 × 胜率分析留存
-
-```sql
--- 按玩法 × 胜率分组分析留存
-SELECT
-    r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
-    CASE 
-        WHEN g.win_rate < 30 THEN 'A: <30%'
-        WHEN g.win_rate < 50 THEN 'B: 30-50%'
-        WHEN g.win_rate < 70 THEN 'C: 50-70%'
-        ELSE 'D: >=70%'
-    END AS win_rate_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(AVG(g.game_count), 1) AS avg_games,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
-  AND g.game_count > 0
-GROUP BY r.reg_date, 
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
-    CASE 
-        WHEN g.win_rate < 30 THEN 'A: <30%'
-        WHEN g.win_rate < 50 THEN 'B: 30-50%'
-        WHEN g.win_rate < 70 THEN 'C: 50-70%'
-        ELSE 'D: >=70%'
-    END
-ORDER BY r.reg_date, play_mode_name, win_rate_group;
-```
-
-**分析要点**：
-- 赖子玩法有万能牌，胜率分布可能与经典不同，30-50% 是否仍是最优区间需分玩法验证
-- 不同玩法的"合理胜率区间"可能不同，新手保护策略需分玩法调整
-
-#### 8.5.2 按玩法 × 倍数分析留存
-
-```sql
--- 按玩法 × 倍数分组分析留存
-SELECT
-    r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
-    CASE
-        WHEN g.avg_magnification <= 6 THEN 'A: <=6'
-        WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
-        WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
-        ELSE 'D: 24+'
-    END AS multi_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(AVG(g.game_count), 1) AS avg_games,
-    ROUND(AVG(g.avg_magnification), 1) AS avg_multi,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
-GROUP BY r.reg_date, 
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
-    CASE
-        WHEN g.avg_magnification <= 6 THEN 'A: <=6'
-        WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
-        WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
-        ELSE 'D: 24+'
-    END
-ORDER BY r.reg_date, play_mode_name, multi_group;
-```
-
-**分析要点**：
-- 经典玩法的 24+ 倍是极端事件，赖子玩法的 24+ 倍可能是常态——"高倍"的定义应按玩法差异化
-- 比较同一倍数区间在不同玩法下的留存差异，可揭示"高倍"对不同玩法用户的影响是否一致
-
-#### 8.5.3 按玩法 × 经济变化分析留存
-
-```sql
--- 按玩法 × 经济变化分组分析留存
-SELECT
-    r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
-    CASE
-        WHEN g.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
-        WHEN g.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
-        WHEN g.total_diff_money < 0 THEN 'C: 小亏(-1万~0)'
-        WHEN g.total_diff_money < 10000 THEN 'D: 小赚(0~1万)'
-        WHEN g.total_diff_money < 50000 THEN 'E: 大赚(1万~5万)'
-        ELSE 'F: 巨赚(>5万)'
-    END AS money_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
-GROUP BY r.reg_date, 
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
-    CASE
-        WHEN g.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
-        WHEN g.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
-        WHEN g.total_diff_money < 0 THEN 'C: 小亏(-1万~0)'
-        WHEN g.total_diff_money < 10000 THEN 'D: 小赚(0~1万)'
-        WHEN g.total_diff_money < 50000 THEN 'E: 大赚(1万~5万)'
-        ELSE 'F: 巨赚(>5万)'
-    END
-ORDER BY r.reg_date, play_mode_name, money_group;
-```
-
-**分析要点**：
-- 赖子玩法倍数高 → 单局输赢金额大 → 经济变化极端值更多，"巨亏"和"巨赚"的占比预期高于经典
-- 同样是"巨亏<-5万"，在经典和赖子中的含义不同——前者可能是连续亏损积累，后者可能一两局就达到
-
-#### 8.5.4 按玩法 × 高倍局经历分析留存
-
-```sql
--- 按玩法 × 高倍局经历分组分析留存
-SELECT
-    r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
-    CASE
-        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
-        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
-        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
-        ELSE 'D: 有赢有输'
-    END AS high_multi_exp,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
-GROUP BY r.reg_date, 
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
-    CASE
-        WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
-        WHEN g.high_multi_wins > 0 AND g.high_multi_losses = 0 THEN 'B: 仅赢高倍'
-        WHEN g.high_multi_wins = 0 AND g.high_multi_losses > 0 THEN 'C: 仅输高倍'
-        ELSE 'D: 有赢有输'
-    END
-ORDER BY r.reg_date, play_mode_name, high_multi_exp;
-```
-
-**分析要点**：
-- 赖子玩法中"未经历高倍"的用户占比预期远低于经典，因为高倍是赖子的常态
-- 关注经典玩法中"仅输高倍"用户的留存——这群人在低风险预期下遭遇了高倍亏损，挫败感可能最强
-
-#### 8.5.5 按玩法 × 连胜连败分析留存
-
-```sql
--- 按玩法 × 连胜连败分组分析留存
-SELECT
-    r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
-    CASE 
-        WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
-        WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
-        WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
-        WHEN g.max_lose_streak >= 3 THEN 'D: 连败3+'
-        WHEN g.max_lose_streak = 2 THEN 'E: 连败2'
-        ELSE 'F: 无连胜连败'
-    END AS streak_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
-  AND g.game_count > 0
-GROUP BY r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
-    CASE 
-        WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
-        WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
-        WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
-        WHEN g.max_lose_streak >= 3 THEN 'D: 连败3+'
-        WHEN g.max_lose_streak = 2 THEN 'E: 连败2'
-        ELSE 'F: 无连胜连败'
-    END
-ORDER BY r.reg_date, play_mode_name, streak_group;
-```
-
-**分析要点**：
-- 赖子玩法随机性更高，连胜/连败模式可能与经典不同
-- 如果赖子玩法的连败3+用户占比显著高于经典，说明赖子的高波动性在制造更多负面体验
-- 连败保护机制是否需要按玩法差异化设计
-
-#### 8.5.6 按玩法 × 疑似破产分析留存
-
-```sql
--- 按玩法 × 疑似破产分组分析留存
-SELECT
-    r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END AS play_mode_name,
-    CASE 
-        WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
-        ELSE 'B: 未破产'
-    END AS bankrupt_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(AVG(g.game_count), 1) AS avg_games,
-    ROUND(AVG(g.total_diff_money), 0) AS avg_diff_money,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_appdaily_game_stat_by_mode g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
-  AND g.game_count > 0
-GROUP BY r.reg_date,
-    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '赖子' WHEN 5 THEN '比赛' END,
-    CASE 
-        WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
-        ELSE 'B: 未破产'
-    END
-ORDER BY r.reg_date, play_mode_name, bankrupt_group;
-```
-
-**分析要点**：
-- 赖子玩法高倍数 → 大额输赢 → 更容易触发破产线，预期赖子的破产率高于经典
-- 如果赖子玩法的破产率显著偏高，可考虑对赖子模式的新手设置更高的经济兜底额度
-- 分玩法的破产数据可为"新手前N局是否应限制赖子/不洗牌入口"的决策提供依据
+> **按玩法拆分的留存分析**已移至专题文档 [`retention-by-mode.md`](retention-by-mode.md)，包含分玩法 × 胜率/倍数/经济变化/高倍局/连胜连败/破产等六个维度的交叉分析。
 
 ---
 
@@ -1651,21 +1436,26 @@ ORDER BY r.reg_date, play_mode_name, bankrupt_group;
 
 ---
 
-> **文档版本**：v4.3
+> **文档版本**：v5.0
 > **创建日期**：2026-03-23
 > **更新说明**：
 > - v2.0：整合同城游平台业务背景、斗地主具体玩法规则、数据表结构及取数 SQL
 > - v2.1：修正 magnification 字段含义；留存口径统一为游戏留存
 > - v3.0：重构 DWS 层架构；修正字段名；倍数相关字段直接读列
 > - v3.1：修复 StarRocks 日期函数；修正新用户分端口径；优化 Bucket 配置
-> - **v4.0**：**修正留存口径**（从"游戏留存"改为"新增用户留存"，分母改为注册用户数）；**更新数据源**（使用 `dws_dq_app_daily_reg`、`dws_dq_daily_login`、`dws_ddz_daily_game`）；**新增字段**（`real_magnification` 实际倍数、`diff_money_pre_tax` 还原服务费输赢）；**简化 SQL 结构**
-> - **v4.1**：**补充 5 个分析维度**（8.3.7 逃跑行为、8.3.8 首局胜负、8.3.9 疑似破产、8.3.10 对局时长、8.3.11 注册时段），覆盖框架中此前未取数的关键指标
-> - **v4.2**：**新增 8.4 首日仅 1 局流失用户专项分析**（8 个 SQL），从胜负×角色、倍数、经济变化、逃跑、时长、玩法、房间底分、综合画像八个维度精细化分析 1 局用户的唯一对局
-> - **v4.3**：**新增 8.5 按玩法拆分的留存分析**（6 个 SQL），基于新建 `dws_ddz_appdaily_game_stat_by_mode` 表，对胜率、倍数、经济变化、高倍局、连胜连败、破产六个维度按玩法拆分分析；8.4.2 倍数分析同步增加玩法交叉维度
+> - v4.0：修正留存口径（从"游戏留存"改为"新增用户留存"）；更新数据源；新增字段；简化 SQL 结构
+> - v4.1：补充 5 个分析维度（逃跑行为、首局胜负、疑似破产、对局时长、注册时段）
+> - v4.2：新增 8.4 首日仅 1 局流失用户专项分析（8 个 SQL）
+> - v4.3：新增 8.5 按玩法拆分的留存分析（6 个 SQL）
+> - **v5.0**：**三层解耦重构** — 新增"三层分析体系总览"；将 8.5 按玩法拆分分析移至 `retention-by-mode.md`；将 4.4 中的玩法偏好指标移至分玩法文档；清理 SQL 中的 `app_code IS NOT NULL` 过滤（全局分析使用全量数据）；`retention-by-client-lang.md` 改为纯增量文档不再重复基础章节；三个文档重命名为 `retention-global.md` / `retention-by-mode.md` / `retention-by-client-lang.md`
 >
 > **适用范围**：同城游·斗地主 APP 端新增用户留存专项分析
+> **关联文档**：
+> - [`retention-by-mode.md`](retention-by-mode.md)（分玩法留存分析）
+> - [`retention-by-client-lang.md`](retention-by-client-lang.md)（分客户端语言留存分析）
 > **使用建议**：
 > 1. 确认 `dws_dq_app_daily_reg`、`dws_dq_daily_login`、`dws_ddz_daily_game` 三个 DWS 表已构建
 > 2. 运行 8.2 节留存分析 SQL，获取各维度留存率
 > 3. 运行 8.3 节游戏行为分析 SQL，分析首日行为与留存关系
 > 4. 将分析结果按「发现卡片」模板输出，推动产品优化
+> 5. 如需按玩法/客户端语言拆分，参见对应关联文档
