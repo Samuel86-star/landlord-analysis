@@ -71,7 +71,7 @@ tcy_temp.dws_dq_app_daily_reg                 （APP 端注册用户宽表）
             ↓  LEFT JOIN uid + app_id，dt > reg_date，game_mode = target_mode
 tcy_temp.dws_app_gamemode_active              （每日游戏活跃用户×玩法表，同玩法留存 flag 专用）  ← 本表
             ↓  用于计算"同玩法留存 flag"
-tcy_temp.ddz_user_mode_first_day_features     （分玩法分析宽表）
+tcy_temp.ddz_gamemode_firstday_features     （分玩法分析宽表）
 ```
 
 > **文档版本**：v2.0
