@@ -15,7 +15,7 @@
 
 留存计算的本质是：判断用户在注册后特定天数（Day1/Day3/Day7/Day14/Day30）是否再次有对局。
 
-如果直接对原始 `dwd_game_combat_si`（日志级别，数亿行）每次都做 JOIN 计算，在 StarRocks 中性能极差。
+如果直接对原始 `dws_ddz_daily_game`（日志级别，数亿行）每次都做 JOIN 计算，在 StarRocks 中性能极差。
 
 **解决方案**：将每日有对局的用户提前聚合到 `uid × dt × app_id` 粒度（数百万行），后续留存计算只需在该轻量表上做 JOIN，大幅提升查询性能。
 
@@ -51,12 +51,11 @@ SELECT
     dt,
     uid,
     app_id
-FROM tcy_dwd.dwd_game_combat_si
+FROM tcy_temp.dws_ddz_daily_game
 WHERE dt BETWEEN 20260210 AND 20260508  -- 覆盖注册期 + Day30 观测期
   AND game_id = 53
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- APP 端用户
-  AND room_id NOT IN (11534, 14238, 15458)           -- 排除积分场/比赛场
 GROUP BY dt, uid, app_id;
 ```
 

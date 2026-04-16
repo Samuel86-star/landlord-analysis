@@ -33,35 +33,13 @@
 -- 时间范围覆盖注册期 + Day30 观测期（20260210 ~ 20260508）
 CREATE TABLE tcy_temp.dws_app_gamemode_active
 AS
-SELECT
-    uid,
-    dt,
-    app_id,
-    CASE 
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
-        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
-        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
-        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
-        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
-        WHEN room_id IN (158,159) THEN 6 -- 好友房
-        ELSE 0 
-    END AS play_mode
-FROM tcy_dwd.dwd_game_combat_si
+SELECT uid, dt, app_id, play_mode
+FROM tcy_temp.dws_ddz_daily_game
 WHERE dt BETWEEN 20260210 AND 20260508
   AND game_id = 53
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-GROUP BY
-    uid, dt, app_id,
-    CASE 
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
-        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
-        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
-        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
-        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
-        WHEN room_id IN (158,159) THEN 6 -- 好友房
-        ELSE 0 
-    END;
+GROUP BY uid, dt, app_id, play_mode;
 ```
 
 ## 与其他 DWS 表的关系
