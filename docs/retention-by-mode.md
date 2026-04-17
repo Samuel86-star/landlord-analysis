@@ -256,6 +256,7 @@ GROUP BY r.uid, r.reg_date, g.play_mode, r.reg_group_id, r.channel_category_name
 > M-09/M-10（首局玩法选择、玩法切换路径）需要全局首局所在玩法字段，宽表暂不支持，待补充。
 
 ### M-01: 各玩法新增用户留存率（含渠道拆分）
+
 ```sql
 SELECT
     play_mode,
@@ -278,42 +279,36 @@ ORDER BY play_mode, channel_category;
 ```
 
 ### M-02: 玩法参与分布与主玩法留存对比
+
 ```sql
 -- first_day_mode_count / first_global_play_mode 已预计算，无需子查询
-SELECT
-    MAX_BY(play_mode, game_count) AS main_play_mode,  -- 首日对局数最多的玩法
+SELECT 
+    main_play_mode,
     first_day_mode_count,
     COUNT(DISTINCT uid) AS user_count,
-    ROUND(SUM(MAX_BY(is_retained_day1_same_mode, game_count)) * 100.0 / COUNT(DISTINCT uid), 2) AS day1_rate_same_mode,
-    ROUND(SUM(MAX_BY(is_retained_day7_same_mode, game_count)) * 100.0 / COUNT(DISTINCT uid), 2) AS day7_rate_same_mode,
-    ROUND(SUM(is_retained_day1_global) * 100.0 / COUNT(DISTINCT uid), 2) AS day1_rate_global
-FROM tcy_temp.ddz_gamemode_firstday_features
-WHERE play_mode IN (1, 2, 3)
-GROUP BY uid, reg_date, first_day_mode_count  -- 先 by uid
--- 外层再聚合
--- 注：StarRocks 不支持嵌套聚合，实际执行时拆分为子查询：
-/*
-SELECT main_play_mode, first_day_mode_count,
-       COUNT(*) AS user_count,
-       ROUND(SUM(is_ret_d1) * 100.0 / COUNT(*), 2) AS day1_rate_same_mode,
-       ROUND(SUM(is_ret_d1_global) * 100.0 / COUNT(*), 2) AS day1_rate_global
+    -- 在外层进行汇总计算
+    ROUND(SUM(is_ret_d1_same) * 100.0 / COUNT(DISTINCT uid), 2) AS day1_rate_same_mode,
+    ROUND(SUM(is_ret_d7_same) * 100.0 / COUNT(DISTINCT uid), 2) AS day7_rate_same_mode,
+    ROUND(SUM(is_ret_d1_global) * 100.0 / COUNT(DISTINCT uid), 2) AS day1_rate_global
 FROM (
-    SELECT uid,
-           MAX_BY(play_mode, game_count)                AS main_play_mode,
-           first_day_mode_count,
-           MAX_BY(is_retained_day1_same_mode, game_count) AS is_ret_d1,
-           MAX_BY(is_retained_day7_same_mode, game_count) AS is_ret_d7,
-           MAX(is_retained_day1_global)                 AS is_ret_d1_global
+    -- 第一步：子查询算出每个 uid 的主玩法状态
+    SELECT
+        uid,
+        reg_date,
+        first_day_mode_count,
+        MAX_BY(play_mode, game_count) AS main_play_mode,
+        MAX_BY(is_retained_day1_same_mode, game_count) AS is_ret_d1_same,
+        MAX_BY(is_retained_day7_same_mode, game_count) AS is_ret_d7_same,
+        MAX(is_retained_day1_global) AS is_ret_d1_global  -- 全局留存只要任意记录为1即为1
     FROM tcy_temp.ddz_gamemode_firstday_features
     WHERE play_mode IN (1, 2, 3)
-    GROUP BY uid, first_day_mode_count
+    GROUP BY uid, reg_date, first_day_mode_count
 ) t
-GROUP BY main_play_mode, first_day_mode_count
-ORDER BY main_play_mode, first_day_mode_count;
-*/
+GROUP BY main_play_mode, first_day_mode_count; -- 第二步：按玩法汇总
 ```
 
 ### M-03: 玩法数量与留存（单玩法 vs 多玩法用户对比）
+
 ```sql
 -- first_day_mode_count 已预计算，uid 去重后直接聚合
 SELECT
@@ -336,6 +331,7 @@ ORDER BY first_day_mode_count;
 ```
 
 ### M-04: 分玩法 × 倍数分组留存
+
 ```sql
 SELECT
     play_mode, channel_category,
@@ -363,6 +359,7 @@ ORDER BY play_mode, channel_category, multi_group;
 ```
 
 ### M-05: 分玩法 × 胜率分组留存
+
 ```sql
 SELECT
     play_mode, channel_category,
@@ -390,6 +387,7 @@ ORDER BY play_mode, channel_category, winrate_group;
 ```
 
 ### M-06: 分玩法 × 对局数分组留存
+
 ```sql
 SELECT
     play_mode, channel_category,
@@ -417,6 +415,7 @@ ORDER BY play_mode, channel_category, game_count_group;
 ```
 
 ### M-07: 分玩法 × 经济变化分组留存
+
 ```sql
 SELECT
     play_mode, channel_category,
@@ -446,6 +445,7 @@ ORDER BY play_mode, channel_category, money_change_group;
 ```
 
 ### M-08: 分玩法 × 最大连败分组留存
+
 ```sql
 SELECT
     play_mode, channel_category,
@@ -473,6 +473,7 @@ ORDER BY play_mode, channel_category, lose_streak_group;
 ```
 
 ### M-11: 玩法 × 倍数 × 胜率 三维交叉留存
+
 ```sql
 SELECT
     play_mode,
@@ -509,6 +510,7 @@ ORDER BY play_mode, multi_group, winrate_group;
 ```
 
 ### M-09: 首局玩法选择与留存
+
 ```sql
 -- first_global_play_mode 已预计算，直接按"首局是否为本玩法"拆分
 -- 每个 uid 只保留一行（避免重复计入）：取对局数最多的那个玩法行代表该用户
@@ -530,7 +532,6 @@ ORDER BY first_global_play_mode, play_mode;
 ---
 
 ## 六、分析思路与预期产出
-
 
 ### 6.1 分析路径
 
