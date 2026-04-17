@@ -62,13 +62,13 @@ GROUP BY dt, uid, app_id;
 ## 留存计算方式
 
 ```sql
--- 示例：计算 Day1 / Day7 / Day30 留存 flag
+-- 示例：计算次留 / 7留 / 30留 的留存 flag
 SELECT
     r.uid,
     r.reg_date,
-    MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS day1_retained,   -- 次留：第2天（注册日=Day1）
-    MAX(CASE WHEN a.dt = r.reg_date + 6  THEN 1 ELSE 0 END) AS day7_retained,   -- 7留：第7天
-    MAX(CASE WHEN a.dt = r.reg_date + 29 THEN 1 ELSE 0 END) AS day30_retained   -- 30留：第30天
+    MAX(CASE WHEN a.dt = r.reg_date + 1  THEN 1 ELSE 0 END) AS day1_retained,   -- 次留：注册日之后的次日登录
+    MAX(CASE WHEN a.dt = r.reg_date + 6  THEN 1 ELSE 0 END) AS day7_retained,   -- 7留：第 7 天登录（注册日记为第 1 天）
+    MAX(CASE WHEN a.dt = r.reg_date + 29 THEN 1 ELSE 0 END) AS day30_retained   -- 30留：第 30 天登录
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON r.uid = a.uid
@@ -77,7 +77,10 @@ LEFT JOIN tcy_temp.dws_app_game_active a
 GROUP BY r.uid, r.reg_date;
 ```
 
-> **留存日期口径**：注册日计为 Day1，因此 Day7 = `reg_date + 6`，Day30 = `reg_date + 29`。
+> **留存日期口径**（Day 0 = 注册日）：
+> - 次留：Day 0 注册的用户在次日（+1）登录的占比 → `reg_date + 1`
+> - 7 留："第 7 天留存"，把注册日记为第 1 天 → `reg_date + 6`
+> - 30 留：同理，第 30 天 → `reg_date + 29`
 >
 > **StarRocks 日期转换说明**：`dt` 为 int 类型，可直接做整数加法（`r.reg_date + 1`）比较，
 > 也可使用 `str_to_date(CAST(dt AS VARCHAR), '%Y%m%d')` 转为 DATE 类型后再做 `datediff`。

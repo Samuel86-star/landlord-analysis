@@ -8,13 +8,20 @@
 
 斗地主新增用户留存分析按粒度分为三层，各层文档独立聚焦、互不重叠：
 
-| 层级 | 文档 | 分析粒度 | 核心问题 |
-|------|------|---------|---------|
-| **全局层**（本文档） | `retention-global.md` | 全体新增用户 | 整体留存水平、各因子对留存的影响 |
-| **分玩法层** | [`retention-by-mode.md`](retention-by-mode.md) | 经典 / 不洗牌 / 癞子 | 各玩法的留存差异、玩法内因子分析、玩法切换行为 |
-| **分客户端语言层** | [`retention-by-client-lang.md`](retention-by-client-lang.md) | Cocos Creator / Cocos Lua | 不同客户端版本的留存差异、技术差异对体验的影响 |
+| 层级 | 文档 | 分析粒度 | 核心问题 | 留存判定数据源 |
+|------|------|---------|---------|-------------|
+| **全局层**（本文档） | `retention-global.md` | 全体新增用户 | 整体留存水平、各因子对留存的影响 | 登录表（`dws_dq_daily_login`） |
+| **分玩法层** | [`retention-by-mode.md`](retention-by-mode.md) | 经典 / 不洗牌 / 癞子 | 各玩法的留存差异、玩法内因子分析、玩法切换行为 | 对局表（`dws_app_game_active` / `dws_app_gamemode_active`） |
+| **分客户端语言层** | [`retention-by-client-lang.md`](retention-by-client-lang.md) | Cocos Creator / Cocos Lua | 不同客户端版本的留存差异、技术差异对体验的影响 | 登录表（`dws_dq_daily_login`） |
 
 **共享关系**：本文档的 **一~七章**（业务背景、数据基础、指标体系、分析方法论）为三层共享的基础设定，分玩法层和分客户端语言层仅包含各自的增量分析内容，不重复基础章节。
+
+**口径统一声明**：
+- **留存分母**：三层均为"当日新增的 APP 端用户数"（不要求有对局行为），即**新增用户留存**口径
+- **留存分子**：
+  - 全局层 / 客户端语言层 → 用**登录表**判定（第 N 日有任一登录即留存）
+  - 分玩法层 → 用**对局表**判定（因为"同玩法留存"必须通过对局才能识别玩法归属）
+- **后果**：全局层与分玩法层的"整体留存"数字会略有差异（登录用户 ≥ 有对局用户），这是预期的；跨文档比较时应注意这一点
 
 ---
 
@@ -479,8 +486,10 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
+    AND l.app_id = r.app_id
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date
 ORDER BY r.reg_date;
 ```
@@ -502,6 +511,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
+    AND l.app_id = r.app_id
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
   AND r.is_login_log_missing = 0
@@ -530,6 +540,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
+    AND l.app_id = r.app_id
     AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
   AND r.is_login_log_missing = 0
@@ -570,8 +581,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY 
     CASE 
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
@@ -598,7 +610,7 @@ SELECT
     r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     CASE 
-        WHEN g.win_rate < 30 OR g.win_rate IS NULL THEN 'A: <30%'
+        WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
         ELSE 'D: >=70%'
@@ -608,14 +620,15 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+INNER JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
-  AND g.game_count > 0  
+  AND r.is_login_log_missing = 0
+  AND g.game_count > 0  -- 胜率分组仅分析有对局用户，NULL 不应混入最低胜率组
 GROUP BY r.reg_date,     
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE 
-        WHEN g.win_rate < 30 OR g.win_rate IS NULL THEN 'A: <30%'
+        WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
         ELSE 'D: >=70%'
@@ -635,7 +648,8 @@ SELECT
     r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     CASE
-        WHEN g.avg_magnification <= 6 OR g.avg_magnification IS NULL THEN 'A: <=6'
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN '0: 无对局'
+        WHEN g.avg_magnification <= 6  THEN 'A: <=6'
         WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
         WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
         ELSE 'D: 24+'
@@ -646,12 +660,14 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date, 
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
-        WHEN g.avg_magnification <= 6 OR g.avg_magnification IS NULL THEN 'A: <=6'
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN '0: 无对局'
+        WHEN g.avg_magnification <= 6  THEN 'A: <=6'
         WHEN g.avg_magnification <= 12 THEN 'B: 6-12'
         WHEN g.avg_magnification <= 24 THEN 'C: 12-24'
         ELSE 'D: 24+'
@@ -681,8 +697,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date, 
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
@@ -706,29 +723,32 @@ SELECT
     r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     CASE
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN '0: 无对局'
         WHEN g.total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
         WHEN g.total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
-        WHEN g.total_diff_money < 0 THEN 'C: 小亏 (-1万~0)'
-        WHEN g.total_diff_money < 10000 THEN 'D: 小赚 (0~1万)'
-        WHEN g.total_diff_money < 50000 THEN 'E: 大赚 (1万~5万)'
-        ELSE 'F: 巨赚 (>5万)'
+        WHEN g.total_diff_money < 0      THEN 'C: 小亏 (-1万~0)'
+        WHEN g.total_diff_money < 10000  THEN 'D: 小赚 (0~1万)'
+        WHEN g.total_diff_money < 50000  THEN 'E: 大赚 (1万~5万)'
+        ELSE                                  'F: 巨赚 (>5万)'
     END AS money_change_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date, 
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
+        WHEN g.game_count IS NULL OR g.game_count = 0 THEN '0: 无对局'
         WHEN g.total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
         WHEN g.total_diff_money < -10000 THEN 'B: 大亏 (-5万~-1万)'
-        WHEN g.total_diff_money < 0 THEN 'C: 小亏 (-1万~0)'
-        WHEN g.total_diff_money < 10000 THEN 'D: 小赚 (0~1万)'
-        WHEN g.total_diff_money < 50000 THEN 'E: 大赚 (1万~5万)'
-        ELSE 'F: 巨赚 (>5万)'
+        WHEN g.total_diff_money < 0      THEN 'C: 小亏 (-1万~0)'
+        WHEN g.total_diff_money < 10000  THEN 'D: 小赚 (0~1万)'
+        WHEN g.total_diff_money < 50000  THEN 'E: 大赚 (1万~5万)'
+        ELSE                                  'F: 巨赚 (>5万)'
     END
 ORDER BY r.reg_date, case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end, money_change_group;
 ```
@@ -755,8 +775,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date between 20260210 and 20260414
+  AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY r.reg_date,
     CASE 
@@ -792,8 +813,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY r.reg_date,
     CASE 
@@ -848,8 +870,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN first_game fg ON r.uid = fg.uid AND r.reg_date = fg.dt AND fg.rn = 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE 
         WHEN fg.first_game_result = 1 THEN 'A: 首局胜'
@@ -882,8 +905,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE 
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'C: 无对局'
@@ -917,8 +941,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE 
         WHEN g.total_play_seconds IS NULL OR g.total_play_seconds = 0 THEN 'A: 无对局'
@@ -952,8 +977,9 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day6_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE 
         WHEN HOUR(r.reg_datetime) BETWEEN 0 AND 5 THEN 'A: 凌晨(0-6)'
@@ -995,8 +1021,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE 
         WHEN g.role = 1 AND g.result_id = 1 THEN 'A: 地主-胜'
@@ -1038,8 +1065,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE g.play_mode
         WHEN 1 THEN '经典'
@@ -1082,8 +1110,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE
         WHEN g.diff_money_pre_tax < -5000 THEN 'A: 大亏(<-5000)'
@@ -1116,8 +1145,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE 
         WHEN g.cut < 0 THEN 'A: 逃跑'
@@ -1151,8 +1181,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE
         WHEN g.timecost < 60 THEN 'A: <1分钟'
@@ -1190,8 +1221,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE g.play_mode
         WHEN 1 THEN 'A: 经典'
@@ -1230,8 +1262,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE
         WHEN g.room_base <= 50 THEN 'A: 新手场(<=50)'
@@ -1270,8 +1303,9 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat s ON r.uid = s.uid AND r.reg_date = s.dt AND s.game_count = 1
 INNER JOIN tcy_temp.dws_ddz_daily_game g ON r.uid = g.uid AND r.reg_date = g.dt AND g.robot != 1
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date BETWEEN 20260210 AND 20260414
+  AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
     CASE WHEN g.result_id = 1 THEN '胜' ELSE '负' END,
     CASE WHEN g.magnification <= 12 THEN '低中倍(<=12)' ELSE '高倍(>12)' END,
