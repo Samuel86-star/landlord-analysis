@@ -117,7 +117,7 @@ END AS client_lang
 
 ## 四、基础数据准备
 
-> 分析时间段：**20260210 至 20260414**。
+> 分析时间段：**20260210 至 20260416**。
 > 本文档不需要额外建宽表，直接基于全局文档的 DWS 表加 `reg_app_code`/`app_code` 维度即可。
 
 **依赖的 DWS 表**（详见全局文档 8.1 节）：
@@ -159,7 +159,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.app_id = r.app_id
     AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code
@@ -190,7 +190,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.app_id = r.app_id
     AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -221,7 +221,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.app_id = r.app_id
     AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -252,7 +252,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -289,7 +289,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY
@@ -328,7 +328,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -368,7 +368,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -410,7 +410,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -450,7 +450,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login login1
     ON r.uid = login1.uid AND r.app_id = login1.app_id
     AND login1.login_date = str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -488,7 +488,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -530,7 +530,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
     CASE
@@ -573,7 +573,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260414
+WHERE r.reg_date BETWEEN 20260210 AND 20260416
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,

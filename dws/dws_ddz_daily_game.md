@@ -157,7 +157,7 @@ SELECT
     game_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE game_id = 53
-  AND dt BETWEEN 20260210 AND 20260414;
+  AND dt BETWEEN 20260210 AND 20260416;
 ```
 
 ## 更新SQL
