@@ -194,32 +194,56 @@ day_flags_agg AS (
     WHERE a.dt > r.reg_date 
       AND a.dt <= 20260530 
     GROUP BY r.uid, a.play_mode
+),
+uid_mode_meta AS (
+    -- uid 级别属性：首日体验玩法数 + 全局首局所在玩法（用于 M-02/M-03/M-09）
+    SELECT
+        uid,
+        COUNT(DISTINCT play_mode)           AS first_day_mode_count,
+        MIN_BY(play_mode, global_game_seq)  AS first_global_play_mode
+    FROM first_day_games_raw
+    GROUP BY uid
 )
 SELECT
-    r.uid, r.reg_date, g.play_mode, r.reg_group_id, r.channel_category_name, r.channel_category_tag_id,
-    COUNT(*) AS game_count,
-    SUM(g.timecost) AS total_play_seconds,
-    
-    MIN(CASE WHEN g.mode_game_seq = 1 THEN g.result_id END) AS first_mode_game_result,
-    MAX(CASE WHEN g.mode_game_seq_desc = 1 THEN g.result_id END) AS last_mode_game_result,
-
-    SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END) AS win_count,
+    r.uid, r.reg_date, g.play_mode, r.reg_group_id,
+    r.channel_category_name AS channel_category, r.channel_category_tag_id,
+    -- 对局量与时长
+    COUNT(*)                                                               AS game_count,
+    SUM(g.timecost)                                                        AS total_play_seconds,
+    ROUND(SUM(g.timecost) * 1.0 / NULLIF(COUNT(*), 0), 1)                 AS avg_timecost,
+    -- 倍数
+    ROUND(AVG(g.magnification), 2)                                         AS avg_magnification,
+    MAX(g.magnification)                                                   AS max_magnification,
+    -- 经济
+    SUM(g.diff_money_pre_tax)                                              AS total_diff_money,
+    SUM(g.room_fee)                                                        AS total_room_fee,
+    -- 逃跑
+    SUM(CASE WHEN g.cut < 0 THEN 1 ELSE 0 END)                            AS escape_count,
+    -- 首末局结果
+    MIN(CASE WHEN g.mode_game_seq = 1 THEN g.result_id END)               AS first_mode_game_result,
+    MAX(CASE WHEN g.mode_game_seq_desc = 1 THEN g.result_id END)          AS last_mode_game_result,
+    -- 胜负
+    SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END)                      AS win_count,
     ROUND(SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS win_rate,
-    COALESCE(MAX(ms.max_win_streak), 0) AS max_win_streak,
-    COALESCE(MAX(ms.max_lose_streak), 0) AS max_lose_streak,
-
-    COALESCE(MAX(df.is_ret_d1), 0) AS is_retained_day1_same_mode,
-    COALESCE(MAX(df.is_ret_d7), 0) AS is_retained_day7_same_mode,
-    COALESCE(MAX(df.is_ret_d30), 0) AS is_retained_day30_same_mode,
-    
-    COALESCE(MAX(dfg.is_ret_d1_global), 0) AS is_retained_day1_global,
-    COALESCE(MAX(dfg.is_ret_d7_global), 0) AS is_retained_day7_global,
-    COALESCE(MAX(dfg.is_ret_d30_global), 0) AS is_retained_day30_global
+    COALESCE(MAX(ms.max_win_streak), 0)                                    AS max_win_streak,
+    COALESCE(MAX(ms.max_lose_streak), 0)                                   AS max_lose_streak,
+    -- 玩法探索（uid 级，每行重复同一值）
+    MAX(um.first_day_mode_count)                                           AS first_day_mode_count,
+    MAX(um.first_global_play_mode)                                         AS first_global_play_mode,
+    -- 同玩法留存
+    COALESCE(MAX(df.is_ret_d1), 0)                                         AS is_retained_day1_same_mode,
+    COALESCE(MAX(df.is_ret_d7), 0)                                         AS is_retained_day7_same_mode,
+    COALESCE(MAX(df.is_ret_d30), 0)                                        AS is_retained_day30_same_mode,
+    -- 整体留存
+    COALESCE(MAX(dfg.is_ret_d1_global), 0)                                 AS is_retained_day1_global,
+    COALESCE(MAX(dfg.is_ret_d7_global), 0)                                 AS is_retained_day7_global,
+    COALESCE(MAX(dfg.is_ret_d30_global), 0)                                AS is_retained_day30_global
 FROM first_day_games_raw g
 INNER JOIN new_user_reg r ON g.uid = r.uid
 LEFT JOIN mode_streaks ms ON g.uid = ms.uid AND g.play_mode = ms.play_mode
 LEFT JOIN day_flags_agg df ON g.uid = df.uid AND g.play_mode = df.play_mode
 LEFT JOIN day_flags_global dfg ON g.uid = dfg.uid
+LEFT JOIN uid_mode_meta um ON g.uid = um.uid
 GROUP BY r.uid, r.reg_date, g.play_mode, r.reg_group_id, r.channel_category_name, r.channel_category_tag_id;
 ```
 
@@ -228,7 +252,8 @@ GROUP BY r.uid, r.reg_date, g.play_mode, r.reg_group_id, r.channel_category_name
 ## 五、分析SQL
 
 > 以下所有 SQL 均基于 `tcy_temp.ddz_gamemode_firstday_features` 宽表。
-> 注意：宽表中不再重复携带"全局留存"字段以节约空间，本部分分析主要考察 **同玩法留存**（`is_retained_day1_same_mode`）。
+> M-01 同时输出同玩法留存和整体留存，M-02～M-08 主要考察**同玩法留存**（`is_retained_day1_same_mode`）。
+> M-09/M-10（首局玩法选择、玩法切换路径）需要全局首局所在玩法字段，宽表暂不支持，待补充。
 
 ### M-01: 各玩法新增用户留存率（含渠道拆分）
 ```sql
@@ -252,7 +277,65 @@ GROUP BY play_mode, channel_category
 ORDER BY play_mode, channel_category;
 ```
 
-### M-02: 分玩法 × 倍数分组留存
+### M-02: 玩法参与分布与主玩法留存对比
+```sql
+-- first_day_mode_count / first_global_play_mode 已预计算，无需子查询
+SELECT
+    MAX_BY(play_mode, game_count) AS main_play_mode,  -- 首日对局数最多的玩法
+    first_day_mode_count,
+    COUNT(DISTINCT uid) AS user_count,
+    ROUND(SUM(MAX_BY(is_retained_day1_same_mode, game_count)) * 100.0 / COUNT(DISTINCT uid), 2) AS day1_rate_same_mode,
+    ROUND(SUM(MAX_BY(is_retained_day7_same_mode, game_count)) * 100.0 / COUNT(DISTINCT uid), 2) AS day7_rate_same_mode,
+    ROUND(SUM(is_retained_day1_global) * 100.0 / COUNT(DISTINCT uid), 2) AS day1_rate_global
+FROM tcy_temp.ddz_gamemode_firstday_features
+WHERE play_mode IN (1, 2, 3)
+GROUP BY uid, reg_date, first_day_mode_count  -- 先 by uid
+-- 外层再聚合
+-- 注：StarRocks 不支持嵌套聚合，实际执行时拆分为子查询：
+/*
+SELECT main_play_mode, first_day_mode_count,
+       COUNT(*) AS user_count,
+       ROUND(SUM(is_ret_d1) * 100.0 / COUNT(*), 2) AS day1_rate_same_mode,
+       ROUND(SUM(is_ret_d1_global) * 100.0 / COUNT(*), 2) AS day1_rate_global
+FROM (
+    SELECT uid,
+           MAX_BY(play_mode, game_count)                AS main_play_mode,
+           first_day_mode_count,
+           MAX_BY(is_retained_day1_same_mode, game_count) AS is_ret_d1,
+           MAX_BY(is_retained_day7_same_mode, game_count) AS is_ret_d7,
+           MAX(is_retained_day1_global)                 AS is_ret_d1_global
+    FROM tcy_temp.ddz_gamemode_firstday_features
+    WHERE play_mode IN (1, 2, 3)
+    GROUP BY uid, first_day_mode_count
+) t
+GROUP BY main_play_mode, first_day_mode_count
+ORDER BY main_play_mode, first_day_mode_count;
+*/
+```
+
+### M-03: 玩法数量与留存（单玩法 vs 多玩法用户对比）
+```sql
+-- first_day_mode_count 已预计算，uid 去重后直接聚合
+SELECT
+    first_day_mode_count,
+    COUNT(*) AS user_count,
+    ROUND(SUM(is_ret_d1_global) * 100.0 / COUNT(*), 2) AS day1_rate_global,
+    ROUND(SUM(is_ret_d7_global) * 100.0 / COUNT(*), 2) AS day7_rate_global,
+    ROUND(SUM(is_ret_d30_global) * 100.0 / COUNT(*), 2) AS day30_rate_global
+FROM (
+    SELECT uid, first_day_mode_count,
+           MAX(is_retained_day1_global)  AS is_ret_d1_global,
+           MAX(is_retained_day7_global)  AS is_ret_d7_global,
+           MAX(is_retained_day30_global) AS is_ret_d30_global
+    FROM tcy_temp.ddz_gamemode_firstday_features
+    WHERE play_mode IN (1, 2, 3)
+    GROUP BY uid, first_day_mode_count
+) t
+GROUP BY first_day_mode_count
+ORDER BY first_day_mode_count;
+```
+
+### M-04: 分玩法 × 倍数分组留存
 ```sql
 SELECT
     play_mode, channel_category,
@@ -264,9 +347,10 @@ SELECT
         ELSE                              'E: 48+'
     END AS multi_group,
     COUNT(*) AS user_count,
-    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate
+    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate,
+    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate
 FROM tcy_temp.ddz_gamemode_firstday_features
-WHERE play_mode IN (1, 2, 3)  -- 1=经典，2=不洗牌，3=癞子
+WHERE play_mode IN (1, 2, 3)
 GROUP BY play_mode, channel_category,
     CASE
         WHEN avg_magnification <= 6  THEN 'A: <=6'
@@ -278,7 +362,61 @@ GROUP BY play_mode, channel_category,
 ORDER BY play_mode, channel_category, multi_group;
 ```
 
-### M-03: 分玩法 × 经济变化分组留存
+### M-05: 分玩法 × 胜率分组留存
+```sql
+SELECT
+    play_mode, channel_category,
+    CASE
+        WHEN win_rate < 30 THEN 'A: <30%'
+        WHEN win_rate < 40 THEN 'B: 30-40%'
+        WHEN win_rate < 50 THEN 'C: 40-50%'
+        WHEN win_rate < 60 THEN 'D: 50-60%'
+        ELSE                    'E: 60%+'
+    END AS winrate_group,
+    COUNT(*) AS user_count,
+    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate,
+    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate
+FROM tcy_temp.ddz_gamemode_firstday_features
+WHERE play_mode IN (1, 2, 3)
+GROUP BY play_mode, channel_category,
+    CASE
+        WHEN win_rate < 30 THEN 'A: <30%'
+        WHEN win_rate < 40 THEN 'B: 30-40%'
+        WHEN win_rate < 50 THEN 'C: 40-50%'
+        WHEN win_rate < 60 THEN 'D: 50-60%'
+        ELSE                    'E: 60%+'
+    END
+ORDER BY play_mode, channel_category, winrate_group;
+```
+
+### M-06: 分玩法 × 对局数分组留存
+```sql
+SELECT
+    play_mode, channel_category,
+    CASE
+        WHEN game_count = 1   THEN 'A: 1局'
+        WHEN game_count <= 3  THEN 'B: 2-3局'
+        WHEN game_count <= 5  THEN 'C: 4-5局'
+        WHEN game_count <= 10 THEN 'D: 6-10局'
+        ELSE                       'E: 10局+'
+    END AS game_count_group,
+    COUNT(*) AS user_count,
+    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate,
+    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate
+FROM tcy_temp.ddz_gamemode_firstday_features
+WHERE play_mode IN (1, 2, 3)
+GROUP BY play_mode, channel_category,
+    CASE
+        WHEN game_count = 1   THEN 'A: 1局'
+        WHEN game_count <= 3  THEN 'B: 2-3局'
+        WHEN game_count <= 5  THEN 'C: 4-5局'
+        WHEN game_count <= 10 THEN 'D: 6-10局'
+        ELSE                       'E: 10局+'
+    END
+ORDER BY play_mode, channel_category, game_count_group;
+```
+
+### M-07: 分玩法 × 经济变化分组留存
 ```sql
 SELECT
     play_mode, channel_category,
@@ -291,9 +429,10 @@ SELECT
         ELSE                                'F: 巨赚 (>5万)'
     END AS money_change_group,
     COUNT(*) AS user_count,
-    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate
+    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate,
+    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate
 FROM tcy_temp.ddz_gamemode_firstday_features
-WHERE play_mode IN (1, 2, 3)  -- 1=经典，2=不洗牌，3=癞子
+WHERE play_mode IN (1, 2, 3)
 GROUP BY play_mode, channel_category,
     CASE
         WHEN total_diff_money < -50000 THEN 'A: 巨亏 (<-5万)'
@@ -304,6 +443,88 @@ GROUP BY play_mode, channel_category,
         ELSE                                'F: 巨赚 (>5万)'
     END
 ORDER BY play_mode, channel_category, money_change_group;
+```
+
+### M-08: 分玩法 × 最大连败分组留存
+```sql
+SELECT
+    play_mode, channel_category,
+    CASE
+        WHEN max_lose_streak = 0  THEN 'A: 无连败'
+        WHEN max_lose_streak <= 2 THEN 'B: 1-2连败'
+        WHEN max_lose_streak <= 5 THEN 'C: 3-5连败'
+        WHEN max_lose_streak <= 9 THEN 'D: 6-9连败'
+        ELSE                           'E: 10连败+'
+    END AS lose_streak_group,
+    COUNT(*) AS user_count,
+    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate,
+    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate
+FROM tcy_temp.ddz_gamemode_firstday_features
+WHERE play_mode IN (1, 2, 3)
+GROUP BY play_mode, channel_category,
+    CASE
+        WHEN max_lose_streak = 0  THEN 'A: 无连败'
+        WHEN max_lose_streak <= 2 THEN 'B: 1-2连败'
+        WHEN max_lose_streak <= 5 THEN 'C: 3-5连败'
+        WHEN max_lose_streak <= 9 THEN 'D: 6-9连败'
+        ELSE                           'E: 10连败+'
+    END
+ORDER BY play_mode, channel_category, lose_streak_group;
+```
+
+### M-11: 玩法 × 倍数 × 胜率 三维交叉留存
+```sql
+SELECT
+    play_mode,
+    CASE
+        WHEN avg_magnification <= 12 THEN 'A: <=12'
+        WHEN avg_magnification <= 24 THEN 'B: 12-24'
+        WHEN avg_magnification <= 48 THEN 'C: 24-48'
+        ELSE                              'D: 48+'
+    END AS multi_group,
+    CASE
+        WHEN win_rate < 40 THEN 'L: <40%'
+        WHEN win_rate < 50 THEN 'M: 40-50%'
+        ELSE                    'H: 50%+'
+    END AS winrate_group,
+    COUNT(*) AS user_count,
+    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate,
+    ROUND(SUM(is_retained_day7_same_mode) * 100.0 / COUNT(*), 2) AS day7_rate
+FROM tcy_temp.ddz_gamemode_firstday_features
+WHERE play_mode IN (1, 2, 3)
+GROUP BY play_mode,
+    CASE
+        WHEN avg_magnification <= 12 THEN 'A: <=12'
+        WHEN avg_magnification <= 24 THEN 'B: 12-24'
+        WHEN avg_magnification <= 48 THEN 'C: 24-48'
+        ELSE                              'D: 48+'
+    END,
+    CASE
+        WHEN win_rate < 40 THEN 'L: <40%'
+        WHEN win_rate < 50 THEN 'M: 40-50%'
+        ELSE                    'H: 50%+'
+    END
+HAVING COUNT(*) >= 30  -- 过滤样本过少的分组
+ORDER BY play_mode, multi_group, winrate_group;
+```
+
+### M-09: 首局玩法选择与留存
+```sql
+-- first_global_play_mode 已预计算，直接按"首局是否为本玩法"拆分
+-- 每个 uid 只保留一行（避免重复计入）：取对局数最多的那个玩法行代表该用户
+SELECT
+    first_global_play_mode,
+    play_mode,
+    CASE WHEN play_mode = first_global_play_mode THEN '是' ELSE '否' END AS is_first_mode,
+    COUNT(*) AS user_count,
+    ROUND(SUM(is_retained_day1_same_mode) * 100.0 / COUNT(*), 2) AS day1_rate_same_mode,
+    ROUND(SUM(is_retained_day1_global)    * 100.0 / COUNT(*), 2) AS day1_rate_global,
+    ROUND(SUM(is_retained_day7_global)    * 100.0 / COUNT(*), 2) AS day7_rate_global
+FROM tcy_temp.ddz_gamemode_firstday_features
+WHERE play_mode IN (1, 2, 3)
+  AND first_global_play_mode IN (1, 2, 3)
+GROUP BY first_global_play_mode, play_mode, is_first_mode
+ORDER BY first_global_play_mode, play_mode;
 ```
 
 ---
@@ -368,7 +589,10 @@ Step 6: 综合结论 → 差异化策略
 > - v2.3：DWS 表重命名（`dws_ddz_daily_play_by_mode` → `dws_app_gamemode_active`，`dws_ddz_daily_play` → `dws_app_game_active`）；留存 JOIN 补充 `app_id` 条件
 > - v2.4：删除 Step C 内联 CREATE TABLE（`dws_app_gamemode_active` 已独立文档维护）；`new_user_reg` CTE 补充 `app_id` 字段；`day_flags_mode` 修复字段错误
 > - v2.5：`first_day_games_raw` 玩法字段从字符串 `game_mode` 改为整数 `play_mode`，与 `dws_ddz_daily_game` 保持一致；同步更新 `mode_streaks`、`day_flags_mode`、最终 SELECT/JOIN/GROUP BY 及分析 SQL M-01~M-03
-> - **v2.6**：`first_day_games_raw` 数据源从 `dwd_game_combat_si` 切换为 `dws_ddz_daily_game`；`play_mode`/字段名/WHERE 过滤均由 DWS 层承担，CTE 大幅简化；`diff_money` → `diff_money_pre_tax`
+> - v2.6：`first_day_games_raw` 数据源从 `dwd_game_combat_si` 切换为 `dws_ddz_daily_game`；`play_mode`/字段名/WHERE 过滤均由 DWS 层承担，CTE 大幅简化；`diff_money` → `diff_money_pre_tax`
+> - v2.7：补充 CREATE TABLE 中缺失的 `avg_magnification`、`total_diff_money` 字段；统一渠道字段名为 `channel_category`（原 `channel_category_name`）
+> - v2.8：补全分析 SQL M-02～M-08、M-11（原仅有 M-01、M-04、M-07）；对现有 M-02/M-03 重新编号为 M-04/M-07 与框架对齐；修正分析段注释（全局留存字段已存在）；说明 M-09/M-10 因宽表缺少全局首局玩法字段暂不实现
+> - **v2.9**：宽表补充 6 个字段（`avg_timecost`、`max_magnification`、`total_room_fee`、`escape_count`、`first_day_mode_count`、`first_global_play_mode`）；新增 `uid_mode_meta` CTE；M-02/M-03 SQL 利用预计算字段简化；补充 M-09 首局玩法选择分析；修复 M-11 WHERE 聚合别名问题（改为 HAVING）
 >
 > **关联文档**：
 > - [`retention-global.md`](retention-global.md)（全局分析框架，含共享基础设定）
