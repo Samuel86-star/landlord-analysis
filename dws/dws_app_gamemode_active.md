@@ -54,6 +54,7 @@ tcy_temp.ddz_gamemode_firstday_features     （分玩法分析宽表）
 
 > **文档版本**：v2.0
 > **更新说明**：
+
 > - v1.0：初始版本（原名 `dws_ddz_daily_play_by_mode`）
 > - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid, game_mode`）
 > - **v2.0**：重命名为 `dws_app_gamemode_active`；新增 `app_id` 字段；更新与配对表的对比说明

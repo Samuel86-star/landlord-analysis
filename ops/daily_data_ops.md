@@ -212,10 +212,11 @@ SELECT
     channel_id,
     group_id,
     app_id,
+    app_code,
     game_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE game_id = 53
-  AND dt BETWEEN 20260401 AND 20260408;
+  AND dt BETWEEN 20260210 AND 20260416;
 ```
 
 ### 说明
@@ -251,7 +252,7 @@ WITH game_enriched AS (
         -- 为连胜连败计算准备：生成全天对局序号
         ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix ASC) AS game_seq
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt = ${DATE}  -- 替换为实际日期
+    WHERE dt = 20260408
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- 仅 APP 端
       AND play_mode IN (1, 2, 3, 5)  -- 仅银子玩法
@@ -365,7 +366,7 @@ WITH game_enriched AS (
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY time_unix DESC) AS rank_desc,
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY time_unix ASC) AS game_seq
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt = ${DATE}  -- 替换为实际日期
+    WHERE dt between 20260415 and 20260416
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND play_mode IN (1, 2, 3, 5)
@@ -402,8 +403,8 @@ max_streaks AS (
 SELECT
     g.uid,
     g.dt,
-    g.app_code,
     g.play_mode,
+    g.app_code,
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
     ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
