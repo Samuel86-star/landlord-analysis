@@ -106,58 +106,56 @@ CASE WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee ELSE
 ## 构建 SQL
 
 ```sql
-CREATE TABLE tcy_temp.dws_ddz_daily_game
-AS
-SELECT 
-    dt,
-    time_unix,
-    resultguid,
-    timecost,
-    room_id,
-    CASE 
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
-        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
-        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
-        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
-        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
-        WHEN room_id IN (158,159) THEN 6 -- 好友房
-        ELSE 0 
-    END AS play_mode,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
-    room_currency_lower,
-    room_currency_upper,
-    uid,
-    robot,
-    role,
-    chairno,
-    result_id,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
-    CASE 
-        WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee 
-        ELSE depositdiff + fee 
-    END AS diff_money_pre_tax,
-    cut,
-    safebox_deposit,
-    magnification,
-    magnification_stacked,
-    CASE 
-        WHEN room_id IN (11534,14238,15458,158,159) 
-        THEN ROUND((scorediff + score_fee) / NULLIF(basescore, 0), 2)
-        ELSE ROUND((depositdiff + fee) / NULLIF(basedeposit, 0), 2)
-    END AS real_magnification,
-    get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet') AS grab_landlord_bet,
-    get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet') AS complete_victory_bet,
-    get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet,
-    channel_id,
-    group_id,
-    app_id,
-    app_code,
-    game_id
-FROM tcy_dwd.dwd_game_combat_si
-WHERE game_id = 53
-  AND dt BETWEEN 20260210 AND 20260416;
+CREATE TABLE tcy_temp.dws_ddz_daily_game (
+  `app_id` int(11) NOT NULL COMMENT "应用ID",
+  `dt` DATE NOT NULL COMMENT "日期",
+  `uid` int(11) NOT NULL COMMENT "用户ID",
+  `game_datetime` datetime NOT NULL COMMENT "对局时间",
+  `resultguid` varchar(64) NULL COMMENT "对局GUID",
+  `timecost` int(11) NULL COMMENT "耗时",
+  `room_id` int(11) NULL COMMENT "房间ID",
+  `play_mode` tinyint(4) NULL COMMENT "玩法模式",
+  `room_base` int(11) NULL COMMENT "底分",
+  `room_fee` int(11) NULL COMMENT "台费",
+  `room_currency_lower` bigint(20) NULL,
+  `room_currency_upper` bigint(20) NULL,
+  `robot` tinyint(4) NULL COMMENT "是否机器人",
+  `role` tinyint(4) NULL COMMENT "角色",
+  `chairno` tinyint(4) NULL COMMENT "座位号",
+  `result_id` tinyint(4) NULL COMMENT "结果ID",
+  `start_money` bigint(20) NULL,
+  `end_money` bigint(20) NULL,
+  `diff_money_pre_tax` bigint(20) NULL COMMENT "输赢数值",
+  `cut` int(11) NULL,
+  `safebox_deposit` int(11) NULL,
+  `magnification` int(11) NULL COMMENT "倍数",
+  `magnification_stacked` int(11) NULL,
+  `real_magnification` decimal(10, 2) NULL COMMENT "实际倍数",
+  `grab_landlord_bet` tinyint(4) NULL,
+  `complete_victory_bet` tinyint(4) NULL,
+  `bomb_bet` int(11) NULL,
+  `channel_id` int(11) NULL,
+  `group_id` int(11) NULL,
+  `app_code` varchar(32) NULL,
+  `game_id` int(11) NULL
+) ENGINE=OLAP 
+DUPLICATE KEY(`app_id`, `dt`, `uid`)
+COMMENT "斗地主每日游戏明细表"
+PARTITION BY RANGE(`dt`) (
+    START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
+)
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8 
+PROPERTIES (
+    "replication_num" = "1",
+    "compression" = "LZ4",
+    "dynamic_partition.enable" = "true",
+    "dynamic_partition.time_unit" = "DAY",
+    "dynamic_partition.start" = "-80", 
+    "dynamic_partition.end" = "3",
+    "dynamic_partition.prefix" = "p"
+);
+
+ALTER TABLE tcy_temp.dws_ddz_daily_game SET ("colocate_with" = "group_daily_data");
 ```
 
 ## 更新SQL
@@ -165,11 +163,7 @@ WHERE game_id = 53
 ```sql
 INSERT INTO tcy_temp.dws_ddz_daily_game
 SELECT 
-    dt,
-    time_unix,
-    resultguid,
-    timecost,
-    room_id,
+    IFNULL(app_id, 1880053), dt, uid, FROM_UNIXTIME(time_unix / 1000) as game_datetime, resultguid, timecost, room_id,
     CASE 
         WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
         WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
@@ -181,23 +175,14 @@ SELECT
     END AS play_mode,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
-    room_currency_lower,
-    room_currency_upper,
-    uid,
-    robot,
-    role,
-    chairno,
-    result_id,
+    room_currency_lower, room_currency_upper, robot, role, chairno, result_id,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
     CASE 
         WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee 
         ELSE depositdiff + fee 
     END AS diff_money_pre_tax,
-    cut,
-    safebox_deposit,
-    magnification,
-    magnification_stacked,
+    cut, safebox_deposit, magnification, magnification_stacked,
     CASE 
         WHEN room_id IN (11534,14238,15458,158,159) 
         THEN ROUND((scorediff + score_fee) / NULLIF(basescore, 0), 2)
@@ -205,15 +190,10 @@ SELECT
     END AS real_magnification,
     get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet') AS grab_landlord_bet,
     get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet') AS complete_victory_bet,
-    get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet,
-    channel_id,
-    group_id,
-    app_id,
-    app_code,
-    game_id
+    get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet, channel_id, group_id, app_code, game_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE game_id = 53
-  AND dt BETWEEN 20260401 AND 20260408;
+  AND dt BETWEEN 20260210 AND 20260416;
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)

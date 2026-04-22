@@ -45,19 +45,43 @@
 ## 构建 SQL
 
 ```sql
-CREATE TABLE tcy_temp.dws_app_game_active
-AS
-SELECT
-    dt,
-    uid,
-    app_id
-FROM tcy_temp.dws_ddz_daily_game
-WHERE dt BETWEEN 20260210 AND 20260508  -- 覆盖注册期 + Day30 观测期
-  AND game_id = 53
-  AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- APP 端用户
-GROUP BY dt, uid, app_id;
+CREATE TABLE tcy_temp.dws_app_game_active (
+  `app_id` INT NOT NULL COMMENT "应用ID",
+  `uid` INT NOT NULL COMMENT "用户ID",
+  `dt` date NOT NULL COMMENT "日期如20260422"
+) ENGINE=OLAP
+DUPLICATE KEY(`app_id`, `uid`, `dt`)
+COMMENT "用户游戏活跃信息表"
+PARTITION BY RANGE(`dt`) (
+    START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
+)
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
+PROPERTIES (
+    "replication_num" = "1",
+    "compression" = "LZ4",
+    "dynamic_partition.enable" = "true",
+    "dynamic_partition.time_unit" = "DAY",
+    "dynamic_partition.start" = "-80", 
+    "dynamic_partition.end" = "3",   
+    "dynamic_partition.prefix" = "p", 
+    "dynamic_partition.history_partition_num" = "80",
+    "colocate_with" = "group_daily_data"
+);
 ```
+
+## 初始化数据
+
+```sql
+INSERT INTO tcy_temp.dws_app_game_active
+SELECT app_id, uid, date(dt)
+FROM tcy_temp.dws_ddz_daily_game
+WHERE app_id = 1880053
+  AND dt BETWEEN '2026-02-10' AND '2026-04-21'
+  AND robot != 1
+  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  
+GROUP BY 1, 2, 3;
+```
+
 
 ## 留存计算方式
 

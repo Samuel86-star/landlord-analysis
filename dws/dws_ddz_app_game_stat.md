@@ -81,133 +81,127 @@
 
 ```sql
 CREATE TABLE tcy_temp.dws_ddz_app_game_stat (
-    uid BIGINT,
-    dt BIGINT,
-    app_code STRING,
-    game_count BIGINT,
-    total_play_seconds BIGINT,
-    avg_game_seconds DOUBLE,
-    win_count BIGINT,
-    lose_count BIGINT,
-    win_rate DOUBLE,
-    max_win_streak INT,
-    max_lose_streak INT,
-    avg_magnification DOUBLE,
-    max_magnification INT,
-    avg_real_magnification DOUBLE,
-    low_multi_games BIGINT,
-    mid_multi_games BIGINT,
-    high_multi_games BIGINT,
-    high_multi_wins BIGINT,
-    high_multi_losses BIGINT,
-    total_bomb_count BIGINT,
-    games_with_grab BIGINT,
-    games_player_doubled BIGINT,
-    start_money BIGINT,
-    end_money BIGINT,
-    money_peak BIGINT,
-    money_valley BIGINT,
-    total_diff_money BIGINT,
-    total_fee_paid BIGINT,
-    escape_count BIGINT,
-    distinct_rooms BIGINT,
-    play_modes STRING
+  `app_id` int(11) NOT NULL COMMENT "应用ID",
+  `uid` int(11) NOT NULL COMMENT "用户ID",
+  `dt` DATE NOT NULL COMMENT "游戏日期",
+  `app_code` varchar(64) NULL COMMENT "",
+  `game_count` int(11) NULL COMMENT "",
+  `total_play_seconds` int(11) NULL COMMENT "",
+  `avg_game_seconds` double NULL COMMENT "",
+  `win_count` int(11) NULL COMMENT "",
+  `lose_count` int(11) NULL COMMENT "",
+  `win_rate` double NULL COMMENT "",
+  `max_win_streak` int(11) NULL COMMENT "",
+  `max_lose_streak` int(11) NULL COMMENT "",
+  `avg_magnification` double NULL COMMENT "",
+  `max_magnification` int(11) NULL COMMENT "",
+  `avg_real_magnification` double NULL COMMENT "",
+  `low_multi_games` int(11) NULL COMMENT "",
+  `mid_multi_games` int(11) NULL COMMENT "",
+  `high_multi_games` int(11) NULL COMMENT "",
+  `high_multi_wins` int(11) NULL COMMENT "",
+  `high_multi_losses` int(11) NULL COMMENT "",
+  `total_bomb_count` int(11) NULL COMMENT "",
+  `games_with_grab` int(11) NULL COMMENT "",
+  `games_player_doubled` int(11) NULL COMMENT "",
+  `start_money` bigint(20) NULL COMMENT "",
+  `end_money` bigint(20) NULL COMMENT "",
+  `money_peak` bigint(20) NULL COMMENT "",
+  `money_valley` bigint(20) NULL COMMENT "",
+  `total_diff_money` bigint(20) NULL COMMENT "",
+  `total_fee_paid` int(11) NULL COMMENT "",
+  `escape_count` int(11) NULL COMMENT "",
+  `distinct_rooms` tinyint(4) NULL COMMENT "",
+  `play_modes` varchar(256) NULL COMMENT ""
+) ENGINE=OLAP 
+DUPLICATE KEY(`app_id`, `uid`, `dt`) 
+COMMENT "游戏用户对局聚合信息表"
+PARTITION BY RANGE(`dt`) (
+    START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
-DUPLICATE KEY(uid, dt, app_code)
-DISTRIBUTED BY HASH(uid) BUCKETS 32
-ORDER BY dt, uid, app_code
-PROPERTIES("replication_num" = "1");
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
+PROPERTIES (
+    "replication_num" = "1",
+    "colocate_with" = "group_daily_data", 
+    "dynamic_partition.enable" = "true",
+    "dynamic_partition.time_unit" = "DAY",
+    "dynamic_partition.start" = "-80",
+    "dynamic_partition.end" = "3",
+    "dynamic_partition.prefix" = "p"
+);
 ```
 
 ### 增量数据导入
 
 ```sql
-INSERT INTO tcy_temp.dws_ddz_app_game_stat
+insert into tcy_temp.dws_ddz_app_game_stat
 WITH game_enriched AS (
-    -- 1. 预处理：在单层扫描中完成基础过滤和窗口排序
     SELECT
         *,
-        -- 确定玩家全天首局和末局顺序，为后续提取 start/end_money 做准备
-        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix ASC) AS rank_asc,
-        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix DESC) AS rank_desc,
-        -- 为连胜连败计算准备：生成全天对局序号
-        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY time_unix ASC) AS game_seq
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY game_datetime ASC) AS game_seq,
+        ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt = 20260408
+    WHERE dt between '2026-04-01' and '2026-04-21'
       AND robot != 1
-      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  -- 仅 APP 端
-      AND play_mode IN (1, 2, 3, 5)  -- 仅银子玩法
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  
+      AND play_mode IN (1, 2, 3, 5)  
 ),
 streaks_calc AS (
-    -- 2. 连胜连败逻辑：利用 game_seq - 内部序号的差值分组（经典 Gaps and Islands 算法）
     SELECT 
-        uid, 
-        app_code,
-        result_id,
-        COUNT(*) AS streak_len
+        uid, app_code, result_id, MAX(streak_len) as max_streak
     FROM (
         SELECT 
-            uid, 
-            app_code,
-            result_id,
-            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, app_code, result_id ORDER BY game_seq) AS grp
-        FROM game_enriched
-        WHERE result_id IN (1, 2)
-    ) t
-    GROUP BY uid, app_code, result_id, grp
+            uid, app_code, result_id, 
+            COUNT(*) OVER(PARTITION BY uid, app_code, result_id, grp) AS streak_len
+        FROM (
+            SELECT uid, app_code, result_id, 
+              game_seq - ROW_NUMBER() OVER (PARTITION BY uid, app_code, result_id ORDER BY game_seq) AS grp
+            FROM game_enriched
+            WHERE result_id IN (1, 2)
+        ) t1
+    ) t2
+    GROUP BY uid, app_code, result_id
 ),
 max_streaks AS (
-    -- 3. 汇总最大连胜连败
-    SELECT 
-        uid,
-        app_code,
-        MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
-        MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
+    SELECT uid, app_code, 
+        MAX(CASE WHEN result_id = 1 THEN max_streak ELSE 0 END) AS max_win_streak,
+        MAX(CASE WHEN result_id = 2 THEN max_streak ELSE 0 END) AS max_lose_streak
     FROM streaks_calc
     GROUP BY uid, app_code
 )
--- 4. 最终聚合
 SELECT
-    g.uid,
-    g.dt,
-    g.app_code,
-    -- 对局及时间统计
+    g.app_id, g.uid, g.dt, g.app_code,
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
     ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
-    -- 胜负统计
     COUNT(CASE WHEN g.result_id = 1 THEN 1 END) AS win_count,
     COUNT(CASE WHEN g.result_id = 2 THEN 1 END) AS lose_count,
     ROUND(COUNT(CASE WHEN g.result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
-    ANY_VALUE(s.max_win_streak) AS max_win_streak,
-    ANY_VALUE(s.max_lose_streak) AS max_lose_streak,
-    -- 倍数统计（使用更简洁的条件聚合）
-    ROUND(AVG(g.magnification), 2) AS avg_magnification,
-    MAX(g.magnification) AS max_magnification,
-    ROUND(AVG(ABS(g.real_magnification)), 2) AS avg_real_magnification,
-    COUNT(CASE WHEN g.magnification <= 6 THEN 1 END) AS low_multi_games,
-    COUNT(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 END) AS mid_multi_games,
-    COUNT(CASE WHEN g.magnification > 24 THEN 1 END) AS high_multi_games,
-    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 END) AS high_multi_wins,
-    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 END) AS high_multi_losses,
-    -- 特征特征
-    SUM(g.bomb_bet / 2) AS total_bomb_count,
-    COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END) AS games_with_grab,
-    COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END) AS games_player_doubled,
-    -- 经济统计
-    MAX(CASE WHEN g.rank_asc = 1 THEN g.start_money END) AS start_money,
-    MAX(CASE WHEN g.rank_desc = 1 THEN g.end_money END) AS end_money,
-    MAX(g.end_money) AS money_peak,
-    MIN(g.end_money) AS money_valley,
-    SUM(g.diff_money_pre_tax) AS total_diff_money,
-    SUM(g.room_fee) AS total_fee_paid,
-    -- 逃跑和房间
-    COUNT(CASE WHEN g.cut < 0 THEN 1 END) AS escape_count,
-    COUNT(DISTINCT g.room_id) AS distinct_rooms,
-    GROUP_CONCAT(DISTINCT CAST(g.play_mode AS VARCHAR) ORDER BY g.play_mode) AS play_modes
+    ANY_VALUE(s.max_win_streak),
+    ANY_VALUE(s.max_lose_streak),
+    ROUND(AVG(g.magnification), 2),
+    MAX(g.magnification),
+    ROUND(AVG(ABS(g.real_magnification)), 2),
+    COUNT(CASE WHEN g.magnification <= 6 THEN 1 END),
+    COUNT(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 END),
+    COUNT(CASE WHEN g.magnification > 24 THEN 1 END),
+    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 END),
+    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 END),
+    SUM(g.bomb_bet / 2),
+    COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END),
+    COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END),
+    MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END), 
+    MAX(CASE WHEN g.rank_desc = 1 THEN g.end_money END),
+    MAX(g.end_money),
+    MIN(g.end_money),
+    SUM(g.diff_money_pre_tax),
+    SUM(g.room_fee),
+    COUNT(CASE WHEN g.cut < 0 THEN 1 END),
+    COUNT(DISTINCT g.room_id),
+    GROUP_CONCAT(DISTINCT CAST(g.play_mode AS VARCHAR) ORDER BY g.play_mode)
 FROM game_enriched g
 LEFT JOIN max_streaks s ON g.uid = s.uid AND g.app_code = s.app_code
-GROUP BY g.uid, g.dt, g.app_code;
+GROUP BY g.app_id, g.uid, g.dt, g.app_code;
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)

@@ -58,22 +58,39 @@
 
 ```sql
 CREATE TABLE tcy_temp.dws_dq_app_daily_reg (
-    uid BIGINT,
-    app_id BIGINT,
-    reg_date INT,
-    reg_datetime DATETIME,
-    reg_group_id INT,
-    reg_channel_id BIGINT,
-    reg_app_code STRING,
-    channel_category_id INT,
-    channel_category_name STRING,
-    channel_category_tag_id INT,
-    is_login_log_missing INT,
-    first_day_login_cnt BIGINT
+  `app_id` bigint(20) NOT NULL COMMENT "应用ID",
+  `reg_date` date NOT NULL COMMENT "注册日期",
+  `reg_channel_id` bigint(20) NULL COMMENT "注册渠道ID",
+  `uid` bigint(20) NOT NULL COMMENT "用户ID",
+  `reg_datetime` datetime NULL COMMENT "注册具体时间",
+  `reg_group_id` int(11) NULL COMMENT "注册组ID",
+  `reg_app_code` varchar(64) NULL COMMENT "注册代码",
+  `channel_category_id` int(11) NULL COMMENT "渠道分类ID",
+  `channel_category_name` varchar(128) NULL COMMENT "渠道分类名称",
+  `channel_category_tag_id` int(11) NULL COMMENT "渠道标签ID",
+  `is_login_log_missing` tinyint(4) NULL DEFAULT '0' COMMENT "是否缺失登录日志: 0-否, 1-是",
+  `first_day_login_cnt` int(11) NULL DEFAULT '0' COMMENT "首日登录次数"
+) ENGINE=OLAP 
+DUPLICATE KEY(`app_id`, `reg_date`, `reg_channel_id`)
+COMMENT "App端用户注册首日行为汇总宽表"
+-- 分区策略：按天分区，支持动态管理
+PARTITION BY RANGE(`reg_date`) (
+    START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
-DUPLICATE KEY(uid, app_id)
-DISTRIBUTED BY HASH(uid) BUCKETS 4
-PROPERTIES("replication_num" = "1");
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8 
+PROPERTIES (
+    "replication_num" = "1",                
+    "compression" = "LZ4",
+    "storage_format" = "V2",
+    "enable_persistent_index" = "true",
+    "dynamic_partition.enable" = "true",
+    "dynamic_partition.time_unit" = "DAY",
+    "dynamic_partition.start" = "-80", 
+    "dynamic_partition.end" = "3",   
+    "dynamic_partition.prefix" = "p",
+    "dynamic_partition.history_partition_num" = "80",
+    "bloom_filter_columns" = "uid"
+);
 ```
 
 ### 增量数据导入
@@ -81,12 +98,12 @@ PROPERTIES("replication_num" = "1");
 ```sql
 insert into tcy_temp.dws_dq_app_daily_reg
 SELECT 
-    r.uid,
     r.app_id,
     r.reg_date,
+    COALESCE(l.first_channel_id, -1) AS reg_channel_id,
+    r.uid,
     r.reg_datetime,
     COALESCE(l.first_group_id, -1) AS reg_group_id,
-    COALESCE(l.first_channel_id, -1) AS reg_channel_id,
     COALESCE(l.first_app_code, '') AS reg_app_code,
     COALESCE(chn.channel_category_id, -1) AS channel_category_id,
     COALESCE(chn.channel_category_name, '未知/日志丢失') AS channel_category_name,
@@ -95,13 +112,13 @@ SELECT
     COALESCE(l.login_count, 0) AS first_day_login_cnt
 FROM tcy_temp.dws_dq_daily_reg r
 INNER JOIN tcy_temp.dws_dq_daily_login l 
-    ON r.uid = l.uid 
-    AND r.app_id = l.app_id 
-    AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
+    ON r.app_id = l.app_id 
+    AND r.reg_date = l.login_date
+    AND r.uid = l.uid 
 LEFT JOIN tcy_temp.dws_channel_category_map chn 
     ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
-  AND r.reg_date between 20260210 and 20260410
+  AND r.reg_date between '2026-02-10' and '2026-04-21'
   AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88);
 ```
 

@@ -29,28 +29,43 @@
 
 ```sql
 CREATE TABLE tcy_temp.dws_dq_daily_reg (
-    uid BIGINT,
-    app_id BIGINT,
-    reg_datetime DATETIME,
-    reg_date INT
+  `app_id` int(11) NOT NULL COMMENT "应用ID",
+  `uid` int(11) NOT NULL COMMENT "用户ID",
+  `reg_date` DATE NOT NULL COMMENT "注册日期",
+  `reg_datetime` datetime NULL COMMENT "注册具体时间"
+) ENGINE=OLAP 
+DUPLICATE KEY(`app_id`, `uid`, `reg_date`)
+COMMENT "用户日注册汇总表"
+PARTITION BY RANGE(`reg_date`) (
+    START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
-DUPLICATE KEY(uid, app_id)
-DISTRIBUTED BY HASH(uid) BUCKETS 16
-PROPERTIES("replication_num" = "1");
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
+PROPERTIES (
+    "replication_num" = "1",
+    "compression" = "LZ4",
+    "dynamic_partition.enable" = "true",
+    "dynamic_partition.time_unit" = "DAY",
+    "dynamic_partition.start" = "-80", 
+    "dynamic_partition.end" = "3",   
+    "dynamic_partition.prefix" = "p", 
+    "dynamic_partition.history_partition_num" = "80"
+);
+
+ALTER TABLE tcy_temp.dws_dq_daily_reg SET ("colocate_with" = "group_daily_data");
 ```
 
 ### 增量数据导入
 
 ```sql
-INSERT INTO tcy_temp.dws_dq_daily_reg
+INSERT INTO tcy_temp.dws_dq_daily_reg 
 SELECT
-    uid,
     app_id,
-    FROM_UNIXTIME(first_login_ts / 1000) AS reg_datetime,  -- 毫秒级时间戳转 datetime
-    dt AS reg_date
+    uid,
+    str_to_date(CAST(dt AS STRING), '%Y%m%d'),
+    FROM_UNIXTIME(first_login_ts / 1000) AS reg_datetime
 FROM hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st
 WHERE app_id = 1880053
-  AND dt = 20260409;  -- 替换为实际日期
+  AND dt between 20260210 and 20260420;
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)

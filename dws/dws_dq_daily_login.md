@@ -69,10 +69,51 @@
 ## 构建 SQL
 
 ```sql
-CREATE TABLE tcy_temp.dws_dq_daily_login AS
+CREATE TABLE tcy_temp.dws_dq_daily_login (
+  `app_id` int(11) NOT NULL COMMENT "应用ID",
+  `login_date` date NOT NULL COMMENT "登录日期",
+  `uid` int(11) NOT NULL COMMENT "用户ID",
+  `first_login_time` datetime NULL,
+  `first_app_code` varchar(64) NULL, 
+  `first_channel_id` bigint(20) NULL,
+  `first_group_id` int(11) NULL,
+  `last_login_time` datetime NULL,
+  `last_app_code` varchar(64) NULL,
+  `last_channel_id` bigint(20) NULL,
+  `last_group_id` int(11) NULL,
+  `most_freq_channel_id` bigint(20) NULL,
+  `most_freq_group_id` int(11) NULL,
+  `most_freq_app_code` varchar(64) NULL,
+  `channel_id_count` bigint(20) NOT NULL,
+  `group_id_count` bigint(20) NOT NULL,
+  `app_code_count` bigint(20) NOT NULL,
+  `login_count` bigint(20) NOT NULL
+) ENGINE=OLAP 
+DUPLICATE KEY(`app_id`, `login_date`, `uid`)
+COMMENT "玩家日登录汇总表"
+PARTITION BY RANGE(`login_date`) (
+    START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
+)
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
+PROPERTIES (
+    "replication_num" = "1",
+    "compression" = "LZ4",
+    "dynamic_partition.enable" = "true",
+    "dynamic_partition.time_unit" = "DAY",
+    "dynamic_partition.start" = "-80",
+    "dynamic_partition.end" = "3",
+    "dynamic_partition.prefix" = "p"
+);
+```
+
+## 数据SQL
+
+```sql
+insert into tcy_temp.dws_dq_daily_login 
 SELECT 
-    uid, app_id,
+    app_id,
     DATE(dt) AS login_date,
+    uid, 
     MIN(dt) AS first_login_time,
     MIN_BY(app_code, time_unix) AS first_app_code,
     MIN_BY(channel_id, time_unix) AS first_channel_id,
@@ -97,9 +138,11 @@ FROM (
     FROM tcy_dwd.dwd_tcy_userlogin_si
     WHERE app_id = 1880053
       AND dt >= '2026-02-10 00:00:00' 
-      AND dt <= '2026-04-14 23:59:59'
+      AND dt <= '2026-04-20 23:59:59'
 ) t
-GROUP BY uid, app_id, DATE(dt);
+GROUP BY app_id, DATE(dt), uid;
+
+ALTER TABLE tcy_temp.dws_dq_daily_reg SET ("colocate_with" = "group_daily_data");
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
