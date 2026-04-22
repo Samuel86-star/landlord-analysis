@@ -146,7 +146,7 @@ AS
 WITH new_user_reg AS (
     SELECT uid, app_id, reg_date, reg_group_id, channel_category_name, channel_category_tag_id
     FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE reg_date BETWEEN 20260210 AND 20260414
+    WHERE reg_date BETWEEN '2026-02-10' AND '2026-04-21'
 ),
 first_day_games_raw AS (
     SELECT
@@ -157,7 +157,7 @@ first_day_games_raw AS (
         ROW_NUMBER() OVER (PARTITION BY c.uid ORDER BY c.time_unix) AS global_game_seq
     FROM tcy_temp.dws_ddz_daily_game c
     INNER JOIN new_user_reg r ON c.uid = r.uid AND c.dt = r.reg_date
-    WHERE c.dt BETWEEN 20260210 AND 20260414
+    WHERE c.dt BETWEEN '2026-02-10' AND '2026-04-21'
       AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 ),
 mode_streaks AS (
@@ -177,26 +177,26 @@ mode_streaks AS (
 day_flags_global AS (
     SELECT 
         r.uid,
-        MAX(CASE WHEN a.dt = CAST(date_format(date_add(str_to_date(r.reg_date, '%Y%m%d'), 1), '%Y%m%d') AS INT)   THEN 1 ELSE 0 END) AS is_ret_d1_global,
-        MAX(CASE WHEN a.dt = CAST(date_format(date_add(str_to_date(r.reg_date, '%Y%m%d'), 6), '%Y%m%d') AS INT)  THEN 1 ELSE 0 END) AS is_ret_d7_global,
-        MAX(CASE WHEN a.dt = CAST(date_format(date_add(str_to_date(r.reg_date, '%Y%m%d'), 29), '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_ret_d30_global
+        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)   THEN 1 ELSE 0 END) AS is_ret_d1_global,
+        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 6 DAY)  THEN 1 ELSE 0 END) AS is_ret_d7_global,
+        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY) THEN 1 ELSE 0 END) AS is_ret_d30_global
     FROM new_user_reg r
     INNER JOIN tcy_temp.dws_app_game_active a ON r.uid = a.uid AND r.app_id = a.app_id
     WHERE a.dt > r.reg_date 
-      AND a.dt <= 20260530 
+      AND a.dt <= '2026-05-30' 
     GROUP BY r.uid
 ),
 day_flags_agg AS (
     SELECT 
         r.uid,
         a.play_mode,
-        MAX(CASE WHEN a.dt = CAST(date_format(date_add(str_to_date(r.reg_date, '%Y%m%d'), 1), '%Y%m%d') AS INT)   THEN 1 ELSE 0 END) AS is_ret_d1,
-        MAX(CASE WHEN a.dt = CAST(date_format(date_add(str_to_date(r.reg_date, '%Y%m%d'), 6), '%Y%m%d') AS INT)  THEN 1 ELSE 0 END) AS is_ret_d7,
-        MAX(CASE WHEN a.dt = CAST(date_format(date_add(str_to_date(r.reg_date, '%Y%m%d'), 29), '%Y%m%d') AS INT) THEN 1 ELSE 0 END) AS is_ret_d30
+        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)   THEN 1 ELSE 0 END) AS is_ret_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 6 DAY)  THEN 1 ELSE 0 END) AS is_ret_d7,
+        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY) THEN 1 ELSE 0 END) AS is_ret_d30
     FROM new_user_reg r
     INNER JOIN tcy_temp.dws_app_gamemode_active a ON r.uid = a.uid AND r.app_id = a.app_id
     WHERE a.dt > r.reg_date 
-      AND a.dt <= 20260530 
+      AND a.dt <= '2026-05-30' 
     GROUP BY r.uid, a.play_mode
 ),
 uid_mode_meta AS (

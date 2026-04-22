@@ -136,8 +136,8 @@ END AS client_lang
 > 仅列出有差异的核心 SQL，其余维度可按相同方式扩展。
 
 > **日期偏移约定**（下方所有 SQL 通用）：
-> - 次留（`day1_rate`）= `l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY)`
-> - 7留（`day7_rate`）= `l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY)`
+> - 次留（`day1_rate`）= `l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)`
+> - 7留（`day7_rate`）= `l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)`
 > - LEFT JOIN 补充 `l.app_id = r.app_id` 防止多应用串数据
 
 ### L-01: 各客户端版本新增用户留存率
@@ -152,14 +152,14 @@ SELECT
     END AS client_lang,
     r.reg_date,
     COUNT(DISTINCT r.uid) AS reg_user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.app_id = r.app_id
-    AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+    AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code
@@ -183,14 +183,14 @@ SELECT
     END AS client_lang,
     CASE WHEN r.channel_category_name IN ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') THEN r.channel_category_name ELSE '其他' END AS channel_category_name,
     COUNT(DISTINCT r.uid) AS reg_user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.app_id = r.app_id
-    AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+    AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -208,20 +208,20 @@ SELECT
         WHEN 'zgdx' THEN 'Cocos-Creator'
         ELSE '其他'
     END AS client_lang,
-    CASE 
+    CASE
         WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
         WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         ELSE '其他'
     END AS platform,
     COUNT(DISTINCT r.uid) AS reg_user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON r.uid = l.uid
     AND l.app_id = r.app_id
-    AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+    AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -239,7 +239,7 @@ SELECT
         WHEN 'zgdx' THEN 'Cocos-Creator'
         ELSE '其他'
     END AS client_lang,
-    CASE 
+    CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
         WHEN g.game_count = 1 THEN 'B: 1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
@@ -247,16 +247,16 @@ SELECT
         ELSE 'E: 10局以上'
     END AS game_count_group,
     COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
-    CASE 
+    CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
         WHEN g.game_count = 1 THEN 'B: 1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
@@ -276,7 +276,7 @@ SELECT
         WHEN 'zgdx' THEN 'Cocos-Creator'
         ELSE '其他'
     END AS client_lang,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -284,17 +284,17 @@ SELECT
     END AS win_rate_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(g.game_count), 1) AS avg_games,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -323,12 +323,12 @@ SELECT
     END AS multi_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -363,12 +363,12 @@ SELECT
         ELSE                                  'F: 巨赚 (>5万)'
     END AS money_change_group,
     COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -405,12 +405,12 @@ SELECT
     END AS high_multi_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.high_multi_games, 0)), 1) AS avg_high_multi_games,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -442,15 +442,15 @@ SELECT
         ELSE 'B: 版本已切换（到 ' || login1.first_app_code || '）'
     END AS switch_status,
     COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 -- 取注册当日最后一次登录使用的客户端版本（可能与 reg_app_code 不同）
 LEFT JOIN tcy_temp.dws_dq_daily_login login1
     ON r.uid = login1.uid AND r.app_id = login1.app_id
-    AND login1.login_date = str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+    AND login1.login_date = r.reg_date
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -473,7 +473,7 @@ SELECT
         WHEN 'zgdx' THEN 'Cocos-Creator'
         ELSE '其他'
     END AS client_lang,
-    CASE 
+    CASE
         WHEN g.total_play_seconds IS NULL OR g.total_play_seconds = 0 THEN '0: 无对局'
         WHEN g.total_play_seconds < 300  THEN 'A: <5分钟'
         WHEN g.total_play_seconds < 900  THEN 'B: 5-15分钟'
@@ -483,16 +483,16 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.game_count, 0)), 1) AS avg_games,
     ROUND(AVG(g.avg_game_seconds), 0) AS avg_game_seconds,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
-    CASE 
+    CASE
         WHEN g.total_play_seconds IS NULL OR g.total_play_seconds = 0 THEN '0: 无对局'
         WHEN g.total_play_seconds < 300  THEN 'A: <5分钟'
         WHEN g.total_play_seconds < 900  THEN 'B: 5-15分钟'
@@ -526,11 +526,11 @@ SELECT
     END AS login_cnt_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(r.first_day_login_cnt), 1) AS avg_login_cnt,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
     CASE
@@ -568,12 +568,12 @@ SELECT
     END AS escape_rate_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(AVG(COALESCE(g.escape_count, 0)), 1) AS avg_escape_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = date_add(str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > str_to_date(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
-WHERE r.reg_date BETWEEN 20260210 AND 20260416
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
