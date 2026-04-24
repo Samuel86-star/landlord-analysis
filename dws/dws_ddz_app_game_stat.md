@@ -21,37 +21,38 @@
 
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
-| uid | bigint | 玩家唯一标识 | 123456789 |
-| dt | bigint | 对局日期（YYYYMMDD） | 20260210 |
-| app_code | string | 客户端代码（zgdx=cocos creator, zgda=cocos lua） | "zgdx" |
-| game_count | bigint | 当日对局总数 | 12 |
-| total_play_seconds | bigint | 当日总游戏时长（秒） | 3600 |
+| app_id | int | 应用 ID | 1880053 |
+| uid | int | 玩家唯一标识 | 123456789 |
+| dt | date | 对局日期 | 2026-02-10 |
+| app_code | varchar(32) | 客户端代码（zgdx=cocos creator, zgda=cocos lua） | "zgdx" |
+| game_count | int | 当日对局总数 | 12 |
+| total_play_seconds | int | 当日总游戏时长（秒） | 3600 |
 | avg_game_seconds | double | 平均每局时长 | 180.5 |
-| win_count | bigint | 当日胜利局数 | 7 |
-| lose_count | bigint | 当日失败局数 | 5 |
+| win_count | int | 当日胜利局数 | 7 |
+| lose_count | int | 当日失败局数 | 5 |
 | win_rate | double | 当日胜率（百分比） | 58.33 |
 | max_win_streak | int | 当日最大连胜 | 3 |
 | max_lose_streak | int | 当日最大连败 | 2 |
 | avg_magnification | double | 平均理论倍数 | 12.5 |
 | max_magnification | int | 最大理论倍数 | 48 |
 | avg_real_magnification | double | 平均实际倍数（ABS） | 10.2 |
-| low_multi_games | bigint | 低倍局数（magnification <= 6） | 5 |
-| mid_multi_games | bigint | 中倍局数（6 < magnification <= 24） | 4 |
-| high_multi_games | bigint | 高倍局数（magnification > 24） | 3 |
-| high_multi_wins | bigint | 高倍局胜利数 | 2 |
-| high_multi_losses | bigint | 高倍局失败数 | 1 |
-| total_bomb_count | bigint | 当日炸弹总数 | 8 |
-| games_with_grab | bigint | 抢地主局数 | 6 |
-| games_player_doubled | bigint | 玩家加倍局数 | 4 |
+| low_multi_games | int | 低倍局数（magnification <= 6） | 5 |
+| mid_multi_games | int | 中倍局数（6 < magnification <= 24） | 4 |
+| high_multi_games | int | 高倍局数（magnification > 24） | 3 |
+| high_multi_wins | int | 高倍局胜利数 | 2 |
+| high_multi_losses | int | 高倍局失败数 | 1 |
+| total_bomb_count | int | 当日炸弹总数 | 8 |
+| games_with_grab | int | 抢地主局数 | 6 |
+| games_player_doubled | int | 玩家加倍局数 | 4 |
 | start_money | bigint | 首局前货币数量（按时间第一局） | 10000 |
 | end_money | bigint | 末局后货币数量（按时间最后一局） | 15000 |
 | money_peak | bigint | 当日货币峰值（所有对局 end_money 最大值） | 18000 |
 | money_valley | bigint | 当日货币谷值（所有对局 end_money 最小值） | 8000 |
 | total_diff_money | bigint | 当日总输赢（含服务费还原） | 5000 |
-| total_fee_paid | bigint | 当日总服务费 | 1200 |
-| escape_count | bigint | 当日逃跑次数 | 0 |
-| distinct_rooms | bigint | 当日游玩房间数 | 3 |
-| play_modes | string | 当日游玩玩法（逗号分隔） | "1,2,5" |
+| total_fee_paid | int | 当日总服务费 | 1200 |
+| escape_count | int | 当日逃跑次数 | 0 |
+| distinct_rooms | int | 当日游玩房间数 | 3 |
+| play_modes | varchar(256) | 当日游玩玩法（逗号分隔） | "1,2,5" |
 
 ## 客户端开发语言说明
 
@@ -84,7 +85,7 @@ CREATE TABLE tcy_temp.dws_ddz_app_game_stat (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `dt` DATE NOT NULL COMMENT "游戏日期",
-  `app_code` varchar(64) NULL COMMENT "",
+  `app_code` varchar(32) NULL COMMENT "",
   `game_count` int(11) NULL COMMENT "",
   `total_play_seconds` int(11) NULL COMMENT "",
   `avg_game_seconds` double NULL COMMENT "",

@@ -21,24 +21,24 @@
 
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
-| uid | bigint | 玩家唯一标识 | 123456789 |
-| app_id | bigint | 应用 ID | 1880053 |
+| app_id | int | 应用 ID | 1880053 |
 | login_date | date | 登录日期（天级聚合） | 2026-02-10 |
+| uid | int | 玩家唯一标识 | 123456789 |
 | first_login_time | datetime | 当日首次登录时间 | 2026-02-10 09:30:00 |
-| first_app_code | string | 当日首次登录应用code | zgdx |
-| first_channel_id | bigint | 当日首次登录渠道号 | 1001 |
+| first_app_code | varchar(32) | 当日首次登录应用code | zgdx |
+| first_channel_id | int | 当日首次登录渠道号 | 1001 |
 | first_group_id | int | 当日首次登录分端 ID | 6 |
 | last_login_time | datetime | 当日最后登录时间 | 2026-02-10 22:15:00 |
-| last_app_code | string | 当日最后登录应用code | zgdx |
-| last_channel_id | bigint | 当日最后登录渠道号 | 1001 |
+| last_app_code | varchar(32) | 当日最后登录应用code | zgdx |
+| last_channel_id | int | 当日最后登录渠道号 | 1001 |
 | last_group_id | int | 当日最后登录分端 ID | 6 |
-| most_freq_channel_id | bigint | 当日最频繁登录渠道号 | 1001 |
-| most_freq_group_id | bigint | 当日最频繁登录分端 ID | 6 |
-| most_freq_app_code | string | 当日最频繁登录应用code | zgdx |
-| channel_id_count | bigint | 当日接触渠道数（去重） | 2 |
-| group_id_count | bigint | 当日切换分端数（去重） | 1 |
-| app_code_count | bigint | 当日切换应用code数（去重） | 1 |
-| login_count | bigint | 当日总登录次数 | 5 |
+| most_freq_channel_id | int | 当日最频繁登录渠道号 | 1001 |
+| most_freq_group_id | int | 当日最频繁登录分端 ID | 6 |
+| most_freq_app_code | varchar(32) | 当日最频繁登录应用code | zgdx |
+| channel_id_count | int | 当日接触渠道数（去重） | 2 |
+| group_id_count | int | 当日切换分端数（去重） | 1 |
+| app_code_count | int | 当日切换应用code数（去重） | 1 |
+| login_count | int | 当日总登录次数 | 5 |
 
 ## 字段分类
 
@@ -74,20 +74,20 @@ CREATE TABLE tcy_temp.dws_dq_daily_login (
   `login_date` date NOT NULL COMMENT "登录日期",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `first_login_time` datetime NULL,
-  `first_app_code` varchar(64) NULL, 
-  `first_channel_id` bigint(20) NULL,
+  `first_app_code` varchar(32) NULL, 
+  `first_channel_id` int(11) NULL,
   `first_group_id` int(11) NULL,
   `last_login_time` datetime NULL,
-  `last_app_code` varchar(64) NULL,
-  `last_channel_id` bigint(20) NULL,
+  `last_app_code` varchar(32) NULL,
+  `last_channel_id` int(11) NULL,
   `last_group_id` int(11) NULL,
-  `most_freq_channel_id` bigint(20) NULL,
+  `most_freq_channel_id` int(11) NULL,
   `most_freq_group_id` int(11) NULL,
-  `most_freq_app_code` varchar(64) NULL,
-  `channel_id_count` bigint(20) NOT NULL,
-  `group_id_count` bigint(20) NOT NULL,
-  `app_code_count` bigint(20) NOT NULL,
-  `login_count` bigint(20) NOT NULL
+  `most_freq_app_code` varchar(32) NULL,
+  `channel_id_count` int(11) NOT NULL,
+  `group_id_count` int(11) NOT NULL,
+  `app_code_count` int(11) NOT NULL,
+  `login_count` int(11) NOT NULL
 ) ENGINE=OLAP 
 DUPLICATE KEY(`app_id`, `login_date`, `uid`)
 COMMENT "玩家日登录汇总表"
@@ -102,7 +102,8 @@ PROPERTIES (
     "dynamic_partition.time_unit" = "DAY",
     "dynamic_partition.start" = "-80",
     "dynamic_partition.end" = "3",
-    "dynamic_partition.prefix" = "p"
+    "dynamic_partition.prefix" = "p",
+    "colocate_with" = "group_daily_data"
 );
 ```
 

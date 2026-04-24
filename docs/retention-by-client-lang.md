@@ -117,7 +117,7 @@ END AS client_lang
 
 ## 四、基础数据准备
 
-> 分析时间段：**20260210 至 20260416**。
+> 分析时间段：**20260210 至 20260422**。
 > 本文档不需要额外建宽表，直接基于全局文档的 DWS 表加 `reg_app_code`/`app_code` 维度即可。
 
 **依赖的 DWS 表**（详见全局文档 8.1 节）：
@@ -156,10 +156,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON r.uid = l.uid
-    AND l.app_id = r.app_id
-    AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+    ON l.app_id = r.app_id
+    AND r.uid = l.uid
+    AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code
@@ -187,10 +187,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON r.uid = l.uid
-    AND l.app_id = r.app_id
-    AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+    ON l.app_id = r.app_id
+    AND r.uid = l.uid
+    AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -218,10 +218,11 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON r.uid = l.uid
-    AND l.app_id = r.app_id
-    AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+    ON l.app_id = r.app_id
+    AND r.uid = l.uid
+    AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -250,9 +251,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -287,9 +289,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+INNER JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY
@@ -326,9 +329,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -366,9 +370,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -408,9 +413,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -447,10 +453,11 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 -- 取注册当日最后一次登录使用的客户端版本（可能与 reg_app_code 不同）
 LEFT JOIN tcy_temp.dws_dq_daily_login login1
-    ON r.uid = login1.uid AND r.app_id = login1.app_id
+    ON r.app_id = login1.app_id AND r.uid = login1.uid
     AND login1.login_date = r.reg_date
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -486,9 +493,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -503,6 +511,7 @@ ORDER BY client_lang, duration_group;
 ```
 
 **分析要点**：
+
 - 对比两个版本的 `avg_game_seconds`（平均单局时长），如果 Cocos-Creator 版本显著偏长，可能存在性能问题
 - 极短时长（<5分钟）在两个版本中的占比差异，可能反映客户端稳定性差异
 
@@ -529,8 +538,8 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
     CASE
@@ -544,6 +553,7 @@ ORDER BY client_lang, login_cnt_group;
 ```
 
 **分析要点**：
+
 - 核心观察量：**"多次登录组"的占比差异**。如果 Cocos-Creator 中 3 次以上登录的用户占比显著高于 Lua，强烈暗示稳定性问题
 - "多次登录组"的留存通常偏低——如果某版本的"多次登录组占比高且该组留存特别低"，两个信号叠加定位客户端问题
 
@@ -571,9 +581,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.app_id = r.app_id AND l.login_date > r.reg_date
-WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-21'
+LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY
     CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END,
@@ -589,6 +600,7 @@ ORDER BY client_lang, escape_rate_group;
 ```
 
 **分析要点**：
+
 - 对比两版本的**高逃跑率组占比**：如果 Creator 版中"逃跑≥15%"的用户占比显著偏高，可能有操作体验问题
 - 结合 L-11 登录次数：**多次登录 + 高逃跑率**的组合强烈指向"运行不稳定导致被动逃跑"
 

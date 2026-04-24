@@ -21,17 +21,18 @@
 
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
-| uid | bigint | 玩家唯一标识 | 123456789 |
-| reg_date | int | 注册日期（YYYYMMDD） | 20260210 |
+| app_id | int | 应用 ID | 1880053 |
+| reg_date | date | 注册日期 | 2026-02-10 |
+| reg_channel_id | int | 首次登录渠道号 | 1001 |
+| uid | int | 玩家唯一标识 | 123456789 |
 | reg_datetime | datetime | 注册时间 | 2026-02-10 08:00:00 |
 | reg_group_id | int | 首次登录分端 ID | 6 |
-| reg_channel_id | bigint | 首次登录渠道号 | 1001 |
-| reg_app_code | string | 首次登录应用code | zgda |
+| reg_app_code | varchar(32) | 首次登录应用code | zgda |
 | channel_category_id | int | 渠道分类 ID | 1 |
-| channel_category_name | string | 渠道分类名称 | '官方' |
-| channel_category_tag_id | int | 渠道分类标签：1=官方，2=渠道，3=小游戏 | 1 |
-| is_login_log_missing | int | 是否登录日志缺失：1=缺失，0=正常 | 0 |
-| first_day_login_cnt | bigint | 首日登录次数 | 5 |
+| channel_category_name | varchar(255) | 渠道分类名称 | '官方' |
+| channel_category_tag_id | tinyint | 渠道分类标签：1=官方，2=渠道，3=小游戏 | 1 |
+| is_login_log_missing | tinyint | 是否登录日志缺失：1=缺失，0=正常 | 0 |
+| first_day_login_cnt | int | 首日登录次数 | 5 |
 
 ## APP 端分端规则
 
@@ -58,16 +59,16 @@
 
 ```sql
 CREATE TABLE tcy_temp.dws_dq_app_daily_reg (
-  `app_id` bigint(20) NOT NULL COMMENT "应用ID",
+  `app_id` int(11) NOT NULL COMMENT "应用ID",
   `reg_date` date NOT NULL COMMENT "注册日期",
-  `reg_channel_id` bigint(20) NULL COMMENT "注册渠道ID",
-  `uid` bigint(20) NOT NULL COMMENT "用户ID",
+  `reg_channel_id` int(11) NULL COMMENT "注册渠道ID",
+  `uid` int(11) NOT NULL COMMENT "用户ID",
   `reg_datetime` datetime NULL COMMENT "注册具体时间",
   `reg_group_id` int(11) NULL COMMENT "注册组ID",
-  `reg_app_code` varchar(64) NULL COMMENT "注册代码",
+  `reg_app_code` varchar(32) NULL COMMENT "注册代码",
   `channel_category_id` int(11) NULL COMMENT "渠道分类ID",
-  `channel_category_name` varchar(128) NULL COMMENT "渠道分类名称",
-  `channel_category_tag_id` int(11) NULL COMMENT "渠道标签ID",
+  `channel_category_name` varchar(255) NULL COMMENT "渠道分类名称",
+  `channel_category_tag_id` tinyint(4) NULL COMMENT "渠道标签ID",
   `is_login_log_missing` tinyint(4) NULL DEFAULT '0' COMMENT "是否缺失登录日志: 0-否, 1-是",
   `first_day_login_cnt` int(11) NULL DEFAULT '0' COMMENT "首日登录次数"
 ) ENGINE=OLAP 
@@ -89,7 +90,8 @@ PROPERTIES (
     "dynamic_partition.end" = "3",   
     "dynamic_partition.prefix" = "p",
     "dynamic_partition.history_partition_num" = "80",
-    "bloom_filter_columns" = "uid"
+    "bloom_filter_columns" = "uid",
+    "colocate_with" = "group_daily_data"
 );
 ```
 

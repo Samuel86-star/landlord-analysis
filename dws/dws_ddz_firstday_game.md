@@ -1,14 +1,14 @@
-# DWS 中间表：每日对局战绩统一字段表
+# DWS 中间表：首日对局战绩统一字段表
 
 ## 表基本信息
 
 | 项目 | 说明 |
 | ---- | ---- |
 | 库名 | `tcy_temp` |
-| 表名 | `dws_ddz_daily_game` |
-| 全名 | `tcy_temp.dws_ddz_daily_game` |
-| 类型 | DWS 层中间表（每日增量） |
-| 描述 | 对局战绩统一字段表，将不同玩法的货币、倍数字段统一，简化分析查询 |
+| 表名 | `dws_ddz_firstday_game` |
+| 全名 | `tcy_temp.dws_ddz_firstday_game` |
+| 类型 | DWS 层中间表（首日快照） |
+| 描述 | 首日对局战绩统一字段表，仅存储注册当日的游戏战绩，用于分析新用户首日游戏行为 |
 | 粒度 | resultguid + uid（一个对局的单个玩家一行） |
 
 ## 设计背景
@@ -29,13 +29,14 @@
 3. 添加玩法分类字段：`play_mode`
 4. 提取 JSON 倍数字段到独立列：`grab_landlord_bet`、`complete_victory_bet`、`bomb_bet`
 5. 计算实际输赢倍数：`real_magnification`
+6. 关联注册表，仅筛选注册当日对局
 
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
 | app_id | int | 应用 ID | 1880053 |
-| dt | date | 对局日期 | 2026-04-08 |
+| dt | date | 游戏日期（同时也是注册日期） | 2026-04-08 |
 | uid | int | 玩家 ID | 123456789 |
 | game_datetime | datetime | 对局时间 | 2026-04-08 10:30:00 |
 | resultguid | varchar(64) | 本局战绩 ID | "abc123xyz" |
@@ -106,9 +107,9 @@ CASE WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee ELSE
 ## 构建 SQL
 
 ```sql
-CREATE TABLE tcy_temp.dws_ddz_daily_game (
+CREATE TABLE tcy_temp.dws_ddz_firstday_game (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
-  `dt` DATE NOT NULL COMMENT "日期",
+  `dt` DATE NOT NULL COMMENT "游戏日期",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `game_datetime` datetime NOT NULL COMMENT "对局时间",
   `resultguid` varchar(64) NULL COMMENT "对局GUID",
@@ -140,7 +141,7 @@ CREATE TABLE tcy_temp.dws_ddz_daily_game (
   `game_id` int(11) NULL
 ) ENGINE=OLAP 
 DUPLICATE KEY(`app_id`, `dt`, `uid`)
-COMMENT "斗地主每日游戏明细表"
+COMMENT "斗地主首日游戏明细表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
@@ -155,52 +156,33 @@ PROPERTIES (
     "dynamic_partition.prefix" = "p",
     "colocate_with" = "group_daily_data"
 );
-
 ```
 
 ## 更新SQL
 
 ```sql
-INSERT INTO tcy_temp.dws_ddz_daily_game
+INSERT INTO tcy_temp.dws_ddz_firstday_game
 SELECT 
-    IFNULL(app_id, 1880053), dt, uid, FROM_UNIXTIME(time_unix / 1000) as game_datetime, resultguid, timecost, room_id,
-    CASE 
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
-        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
-        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
-        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
-        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
-        WHEN room_id IN (158,159) THEN 6 -- 好友房
-        ELSE 0 
-    END AS play_mode,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
-    room_currency_lower, room_currency_upper, robot, role, chairno, result_id,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
-    CASE 
-        WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee 
-        ELSE depositdiff + fee 
-    END AS diff_money_pre_tax,
-    cut, safebox_deposit, magnification, magnification_stacked,
-    CASE 
-        WHEN room_id IN (11534,14238,15458,158,159) 
-        THEN ROUND((scorediff + score_fee) / NULLIF(basescore, 0), 2)
-        ELSE ROUND((depositdiff + fee) / NULLIF(basedeposit, 0), 2)
-    END AS real_magnification,
-    get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet') AS grab_landlord_bet,
-    get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet') AS complete_victory_bet,
-    get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet, channel_id, group_id, app_code, game_id
-FROM tcy_dwd.dwd_game_combat_si
-WHERE game_id = 53
-  AND dt BETWEEN 20260210 AND 20260416;
+    g.app_id,
+    g.dt,
+    g.uid, g.game_datetime, g.resultguid, g.timecost, g.room_id, g.play_mode,
+    g.room_base, g.room_fee, g.room_currency_lower, g.room_currency_upper,
+    g.robot, g.role, g.chairno, g.result_id,
+    g.start_money, g.end_money, g.diff_money_pre_tax,
+    g.cut, g.safebox_deposit, g.magnification, g.magnification_stacked, g.real_magnification,
+    g.grab_landlord_bet, g.complete_victory_bet, g.bomb_bet,
+    g.channel_id, g.group_id, g.app_code, g.game_id
+FROM tcy_temp.dws_ddz_daily_game g
+INNER JOIN tcy_temp.dws_dq_daily_reg r 
+    ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
+WHERE g.dt BETWEEN '2026-02-10' AND '2026-04-22';
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
 
 ## 使用示例
 
-### 1. 按玩法统计对局数据
+### 1. 统计首日游戏概况
 
 ```sql
 SELECT
@@ -219,8 +201,8 @@ SELECT
     ROUND(AVG(timecost), 1) AS avg_timecost,
     ROUND(AVG(magnification), 2) AS avg_magnification,
     ROUND(AVG(ABS(real_magnification)), 2) AS avg_real_magnification
-FROM tcy_temp.dws_ddz_daily_game
-WHERE dt BETWEEN 20260210 AND 20260210
+FROM tcy_temp.dws_ddz_firstday_game
+WHERE reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND robot != 1               -- 仅真人
   AND play_mode IN (1, 2, 3)  -- 仅银子玩法
 GROUP BY play_mode
@@ -232,53 +214,77 @@ ORDER BY play_mode;
 ```sql
 SELECT
     uid,
+    reg_date,
+    COUNT(*) AS first_day_game_cnt,
     SUM(diff_money_pre_tax) AS total_diff_money,
     SUM(room_fee) AS total_fee,
     SUM(diff_money_pre_tax) - SUM(room_fee) AS net_diff_money,
     SUM(CASE WHEN result_id = 1 THEN 1 ELSE 0 END) AS win_count,
     SUM(CASE WHEN result_id = 2 THEN 1 ELSE 0 END) AS lose_count,
     ROUND(SUM(CASE WHEN result_id = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS win_rate
-FROM tcy_temp.dws_ddz_daily_game
-WHERE dt = 20260210
+FROM tcy_temp.dws_ddz_firstday_game
+WHERE reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND robot != 1               -- 仅真人
   AND play_mode IN (1, 2, 3)  -- 仅银子玩法
-GROUP BY uid;
+GROUP BY uid, reg_date;
 ```
 
-### 3. 高倍局分析
+### 3. 首日局数分布分析
 
 ```sql
 SELECT
+    CASE 
+        WHEN game_cnt = 0 THEN '0局'
+        WHEN game_cnt BETWEEN 1 AND 5 THEN '1-5局'
+        WHEN game_cnt BETWEEN 6 AND 10 THEN '6-10局'
+        WHEN game_cnt BETWEEN 11 AND 20 THEN '11-20局'
+        WHEN game_cnt > 20 THEN '20局以上'
+    END AS game_cnt_range,
+    COUNT(*) AS user_count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER(), 2) AS user_pct
+FROM (
+    SELECT uid, COUNT(*) AS game_cnt
+    FROM tcy_temp.dws_ddz_firstday_game
+    WHERE reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+      AND robot != 1
+      AND play_mode IN (1, 2, 3)
+    GROUP BY uid
+) t
+GROUP BY CASE 
+    WHEN game_cnt = 0 THEN '0局'
+    WHEN game_cnt BETWEEN 1 AND 5 THEN '1-5局'
+    WHEN game_cnt BETWEEN 6 AND 10 THEN '6-10局'
+    WHEN game_cnt BETWEEN 11 AND 20 THEN '11-20局'
+    WHEN game_cnt > 20 THEN '20局以上'
+END
+ORDER BY MIN(game_cnt);
+```
+
+### 4. 首日流失用户游戏特征分析
+
+```sql
+-- 分析首日仅玩1-5局后流失的用户特征
+SELECT
     play_mode,
-    CASE WHEN magnification > 24 THEN '高倍' ELSE '非高倍' END AS multi_type,
-    COUNT(*) AS game_count,
     COUNT(DISTINCT uid) AS user_count,
+    ROUND(AVG(timecost), 1) AS avg_timecost,
     ROUND(AVG(ABS(real_magnification)), 2) AS avg_real_multi,
-    SUM(CASE WHEN result_id = 1 THEN 1 ELSE 0 END) AS win_count,
-    ROUND(SUM(CASE WHEN result_id = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS win_rate
-FROM tcy_temp.dws_ddz_daily_game
-WHERE dt BETWEEN 20260210 AND 20260215
-  AND robot != 1               -- 仅真人
-  AND play_mode IN (1, 2, 3)
-GROUP BY play_mode, CASE WHEN magnification > 24 THEN '高倍' ELSE '非高倍' END
-ORDER BY play_mode, multi_type;
-```
-
-### 4. 炸弹频率分析
-
-```sql
-SELECT
-    play_mode,
-    CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END AS bomb_type,
-    COUNT(*) AS game_count,
-    ROUND(AVG(magnification), 2) AS avg_magnification,
-    ROUND(AVG(ABS(real_magnification)), 2) AS avg_real_magnification,
-    ROUND(AVG(timecost), 1) AS avg_timecost
-FROM tcy_temp.dws_ddz_daily_game
-WHERE dt BETWEEN 20260210 AND 20260215
-  AND robot != 1               -- 仅真人
-  AND play_mode IN (1, 2, 3)
-GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END;
+    ROUND(SUM(CASE WHEN result_id = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS win_rate,
+    ROUND(AVG(room_base), 2) AS avg_room_base
+FROM tcy_temp.dws_ddz_firstday_game g
+INNER JOIN (
+    SELECT uid
+    FROM tcy_temp.dws_ddz_firstday_game
+    WHERE reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+      AND robot != 1
+      AND play_mode IN (1, 2, 3)
+    GROUP BY uid
+    HAVING COUNT(*) BETWEEN 1 AND 5
+) low_players ON g.app_id = 1880053 AND g.uid = low_players.uid
+WHERE g.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND g.robot != 1
+  AND g.play_mode IN (1, 2, 3)
+GROUP BY play_mode;
 ```
 
 ## 注意事项
@@ -301,14 +307,20 @@ GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END
    - 使用 `get_json_int` 函数从 `magnification_subdivision` 提取
    - 如果 JSON 无对应字段，返回 NULL（建议用 `COALESCE` 处理）
 
-5. **时间范围**：
-   - 默认覆盖 `20260210` 至 `20260508`（注册期 + Day30 观测期）
-   - 可根据实际需求调整
+5. **首日限定**：
+   - 本表仅包含注册当日的对局数据
+   - 通过关联 `dws_dq_daily_reg` 表筛选 `dt = reg_date` 的对局
+   - 如需分析多日数据，请使用 `dws_ddz_daily_game` 表
 
 6. **机器人标记**：
    - 表中包含机器人和真人数据，通过 `robot` 字段区分
    - `robot = 1` 为机器人，其他为真人
    - 分析时建议添加 `robot != 1` 条件过滤真人数据
+
+7. **与 daily_game 的关系**：
+   - `dws_ddz_firstday_game` 是 `dws_ddz_daily_game` 的子集
+   - 首日数据可从两个表查询，结果一致
+   - 本表专为首日行为分析优化，查询更高效
 
 ## 与原始表的字段映射
 
@@ -322,16 +334,19 @@ GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END
 
 ## 与其他 DWS 表的关系
 
-```
+```structure
 tcy_dwd.dwd_game_combat_si        （原始对局日志，多货币字段）
             ↓  字段统一
-tcy_temp.dws_ddz_daily_game       （统一字段对局表）
+tcy_temp.dws_ddz_daily_game       （统一字段对局表，每日增量）
+            ↓  关联注册表筛选首日
+tcy_temp.dws_ddz_firstday_game    （首日对局战绩表）
             ↓  聚合分析
-tcy_temp.dws_dq_app_daily_reg        （APP 端注册用户宽表）
-tcy_temp.dws_dq_daily_login       （每日登录聚合表）
+tcy_temp.dws_dq_daily_reg         （注册表）
+tcy_temp.dws_dq_daily_login       （登录表）
 ```
 
 > **文档版本**：v1.0
-> **创建时间**：2026-04-09
+> **创建时间**：2026-04-24
 > **更新说明**：
-> - v1.0：初始版本，统一货币字段、添加玩法分类、提取 JSON 倍数字段
+
+- v1.0：初始版本，参照 dws_ddz_daily_game 结构，限定首日数据范围

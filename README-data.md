@@ -18,12 +18,12 @@ landlord-analysis/
 
 | 字段名 | 类型 | 说明 | 示例值 | 是否必填 |
 | ----- | ---- | ---- | ------ | ------- |
-| uid | bigint | 玩家唯一标识 ID | 123456789 | 是 |
-| app_id | bigint | 应用 ID | 1880053 | 是 |
-| app_code | string | 应用code | zgda（可以跟group_id结合一起区分客户端开发语言） | 否 |
+| uid | int | 玩家唯一标识 ID | 123456789 | 是 |
+| app_id | int | 应用 ID | 1880053 | 是 |
+| app_code | varchar(32) | 应用code | zgda（可以跟group_id结合一起区分客户端开发语言） | 否 |
 | game_id | int | 游戏 ID（部分表包含） | 1 | 否 |
-| group_id | bigint | 平台分组 ID（区分 PC/APP/小游戏） | 6 | 是 |
-| channel_id | bigint | 渠道号 | 1001 | 是 |
+| group_id | int | 平台分组 ID（区分 PC/APP/小游戏） | 6 | 是 |
+| channel_id | int | 渠道号 | 1001 | 是 |
 
 **应用与游戏映射说明：**
 

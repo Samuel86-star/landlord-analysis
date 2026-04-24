@@ -14,10 +14,10 @@
 
 | 字段名 | 类型 | 说明 | 示例值 | 是否必填 |
 | ----- | ---- | ---- | ------ | ------- |
-| uid | bigint | 玩家唯一标识 ID | 123456789 | 是 |
-| app_id | bigint | 应用 ID | 1880053 | 是 |
+| app_id | int | 应用 ID | 1880053 | 是 |
+| uid | int | 玩家唯一标识 ID | 123456789 | 是 |
+| reg_date | date | 注册日期（格式：YYYY-MM-DD） | 2026-02-10 | 是 |
 | reg_datetime | datetime | 游戏注册时间 | 2026-02-10 08:00:00 | 是 |
-| reg_date | int | 注册日期（格式：YYYYMMDD） | 20260210 | 是 |
 
 ## 构建 SQL
 
@@ -48,7 +48,8 @@ PROPERTIES (
     "dynamic_partition.start" = "-80", 
     "dynamic_partition.end" = "3",   
     "dynamic_partition.prefix" = "p", 
-    "dynamic_partition.history_partition_num" = "80"
+    "dynamic_partition.history_partition_num" = "80",
+    "colocate_with" = "group_daily_data"
 );
 
 ALTER TABLE tcy_temp.dws_dq_daily_reg SET ("colocate_with" = "group_daily_data");

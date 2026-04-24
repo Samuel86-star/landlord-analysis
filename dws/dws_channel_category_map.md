@@ -18,7 +18,7 @@ CREATE TABLE tcy_temp.dws_channel_category_map (
   `channel_id` int(11) NOT NULL COMMENT "渠道ID",
   `channel_category_id` int(11) NULL COMMENT "分类ID",
   `channel_category_name` varchar(255) NULL COMMENT "分类名称",
-  `channel_category_tag_id` int(11) NULL COMMENT "标签ID"
+  `channel_category_tag_id` tinyint(4) NULL COMMENT "标签ID"
 ) ENGINE=OLAP 
 DUPLICATE KEY(`channel_id`)
 COMMENT "渠道分类映射配置表"
@@ -48,10 +48,10 @@ GROUP BY t1.channel_id;
 
 | 字段名 | 类型 | 说明 | 示例值 | 是否必填 |
 | ------ | ---- | ---- | ------ | ------- |
-| channel_id | bigint | 渠道号 | 1001 | 是 |
+| channel_id | int | 渠道号 | 1001 | 是 |
 | channel_category_id | int | 渠道分类 ID | 1 | 是 |
-| channel_category_name | string | 渠道分类名称 | "官方" | 是 |
-| channel_category_tag_id | int | 渠道分类标签 ID | 1 | 是 |
+| channel_category_name | varchar(255) | 渠道分类名称 | "官方" | 是 |
+| channel_category_tag_id | tinyint | 渠道分类标签 ID | 1 | 是 |
 
 ## 渠道分类层级说明
 
