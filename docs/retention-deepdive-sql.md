@@ -47,6 +47,12 @@
 - 完成情况：100% 正常完成（无逃跑）
 - 经济：小亏 54.2%、小赚 44.2%
 
+### 产品设计上下文（必须验证）
+
+> **设计意图**：第一局必匹配 2 个机器人，对新手做保护（让赢/降低难度），避免被真人按地上摩擦后流失。
+>
+> 因此，1 局用户的首局对手构成是必查项 —— 如果数据反过来出现真人对手，说明"新手保护"设计没落地，是首要修复点。详见 [Q1.7](#q17-1-局用户首局对手构成机器人-vs-真人)。
+
 ### 下钻假设清单
 
 | ID | 假设 | 对应 SQL |
@@ -57,6 +63,7 @@
 | H1.4 | 1 局用户首局相比 2-5 局用户的首局，体验有何系统差异？ | [Q1.4](#q14-1-局-vs-2-5-局首局体验对比) |
 | H1.5 | 1 局用户次留下来的 10% 与流失的 90%，首局有何关键区别？ | [Q1.5](#q15-1-局用户内部留存差异画像) |
 | H1.6 | 1 局用户中是否存在"系统秒退"信号（首日登录次数异常）？ | [Q1.6](#q16-1-局用户首日登录次数与渠道交叉) |
+| H1.7 | 1 局用户的首局对手是机器人还是真人？是否符合"首局匹配 2 机器人"的新手保护设计？ | [Q1.7](#q17-1-局用户首局对手构成机器人-vs-真人) |
 
 ---
 
@@ -374,6 +381,220 @@ ORDER BY channel, client_lang, login_cnt_group;
 
 - 若某渠道/客户端组合下「5+ 次登录」占比高 → 怀疑闪退/掉线
 - 若「1 次登录」占比极高 → 玩完一局直接关 App，是产品体验/任务完成型流失
+
+---
+
+### Q1.7 1 局用户首局对手构成（机器人 vs 真人）
+
+> 验证 H1.7：**产品设计上"首局必匹配 2 机器人"做新手保护**。如果数据反过来——大量 1 局用户首局碰到了真人对手，说明保护机制失效或被绕过；同时机器人对手的"输赢倾向"（让赢/正常对抗）也直接决定首局体验。
+>
+> **判定方法**：通过 `resultguid`（同桌 3 人共享）反查同桌另外 2 人的 `robot` 字段（1=机器人，其他=真人）。
+>
+> **数据源**：必须用 `dws_ddz_daily_game`（含全部玩家的对局记录），不能只用 `dws_ddz_firstday_game`（后者只覆盖首日新增用户的对局，对手如果不是首日新增就不在表里）。
+
+#### Q1.7.1 1 局用户首局对手机器人数量分布
+
+```sql
+WITH one_game_users AS (
+    -- 找出 1 局用户
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    INNER JOIN tcy_temp.dws_ddz_app_game_stat s
+        ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
+        AND s.game_count = 1
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+      AND r.is_login_log_missing = 0
+),
+first_game_resultguid AS (
+    -- 取这些用户首局的 resultguid（1 局用户的"首局"=唯一一局）
+    SELECT
+        u.uid           AS new_uid,
+        u.reg_date,
+        u.app_id,
+        g.resultguid,
+        g.dt,
+        g.role          AS new_user_role,
+        g.result_id     AS new_user_result,
+        g.diff_money_pre_tax AS new_user_diff
+    FROM one_game_users u
+    INNER JOIN tcy_temp.dws_ddz_firstday_game g
+        ON g.app_id = u.app_id AND g.uid = u.uid AND g.dt = u.reg_date
+        AND g.robot != 1
+        AND g.play_mode IN (1, 2, 3, 5)
+),
+table_composition AS (
+    -- 反查同桌 3 个座位的机器人/真人数量（不含新手自己）
+    SELECT
+        f.new_uid,
+        f.reg_date,
+        f.resultguid,
+        f.new_user_role,
+        f.new_user_result,
+        f.new_user_diff,
+        SUM(CASE WHEN d.uid <> f.new_uid AND d.robot = 1  THEN 1 ELSE 0 END) AS opp_robot_cnt,
+        SUM(CASE WHEN d.uid <> f.new_uid AND d.robot <> 1 THEN 1 ELSE 0 END) AS opp_human_cnt,
+        COUNT(*)                                                            AS total_seats
+    FROM first_game_resultguid f
+    INNER JOIN tcy_temp.dws_ddz_daily_game d
+        ON d.dt = f.dt AND d.resultguid = f.resultguid
+    GROUP BY f.new_uid, f.reg_date, f.resultguid,
+             f.new_user_role, f.new_user_result, f.new_user_diff
+)
+SELECT
+    CASE
+        WHEN total_seats <> 3                  THEN 'Z: 异常（座位数≠3）'
+        WHEN opp_robot_cnt = 2                 THEN 'A: 2 机器人（符合新手保护）'
+        WHEN opp_robot_cnt = 1                 THEN 'B: 1 机器人 + 1 真人'
+        WHEN opp_robot_cnt = 0                 THEN 'C: 2 真人（无新手保护）'
+        ELSE                                        'Z: 异常'
+    END AS opponent_pattern,
+    COUNT(*)                                                          AS user_count,
+    ROUND(COUNT(*) * 100.0 / SUM(COUNT(*)) OVER (), 2)                AS pct,
+    -- 当前组中"地主"占比
+    ROUND(SUM(CASE WHEN new_user_role = 1 THEN 1.0 ELSE 0 END)*100.0
+          / COUNT(*), 2)                                              AS pct_landlord,
+    -- 当前组中"胜"占比
+    ROUND(SUM(CASE WHEN new_user_result = 1 THEN 1.0 ELSE 0 END)*100.0
+          / COUNT(*), 2)                                              AS first_win_rate,
+    -- 平均输赢
+    ROUND(AVG(new_user_diff), 0)                                      AS avg_diff_money
+FROM table_composition
+GROUP BY 1
+ORDER BY 1;
+```
+
+**预期产出**：
+
+| opponent_pattern | 期望 | 异常信号 |
+|---|---|---|
+| A: 2 机器人 | 占比应接近 100%（设计意图） | 占比 <80% → 新手保护失效 |
+| B: 1 机器人 + 1 真人 | 应极低 | 出现即设计漏洞 |
+| C: 2 真人 | 应近 0 | 出现即新手保护被完全绕过 |
+
+- 如果实际 A 占比 < 80%，说明"首局必匹配 2 机器人"的设计未落地或存在漏出
+- 对比 A/B/C 三组的 `first_win_rate` 与 `avg_diff_money`：
+  - 若 A 组胜率仍偏低（<50%）→ 机器人配合"放水"逻辑失效
+  - 若 C 组胜率显著低于 A 组 → 真人对手把新手按地上摩擦，是流失关键来源
+
+#### Q1.7.2 对手构成 × 留存交叉
+
+> 在 Q1.7.1 基础上叠加次留判定，看哪种对手组合的留存最差。
+
+```sql
+WITH one_game_users AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    INNER JOIN tcy_temp.dws_ddz_app_game_stat s
+        ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
+        AND s.game_count = 1
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+      AND r.is_login_log_missing = 0
+),
+first_game_resultguid AS (
+    SELECT u.uid AS new_uid, u.reg_date, u.app_id, g.resultguid, g.dt
+    FROM one_game_users u
+    INNER JOIN tcy_temp.dws_ddz_firstday_game g
+        ON g.app_id = u.app_id AND g.uid = u.uid AND g.dt = u.reg_date
+        AND g.robot != 1
+        AND g.play_mode IN (1, 2, 3, 5)
+),
+table_composition AS (
+    SELECT
+        f.new_uid, f.reg_date, f.app_id,
+        SUM(CASE WHEN d.uid <> f.new_uid AND d.robot = 1  THEN 1 ELSE 0 END) AS opp_robot_cnt,
+        SUM(CASE WHEN d.uid <> f.new_uid AND d.robot <> 1 THEN 1 ELSE 0 END) AS opp_human_cnt
+    FROM first_game_resultguid f
+    INNER JOIN tcy_temp.dws_ddz_daily_game d
+        ON d.dt = f.dt AND d.resultguid = f.resultguid
+    GROUP BY f.new_uid, f.reg_date, f.app_id
+)
+SELECT
+    CASE
+        WHEN t.opp_robot_cnt = 2 THEN 'A: 2 机器人'
+        WHEN t.opp_robot_cnt = 1 THEN 'B: 1 机器人 + 1 真人'
+        WHEN t.opp_robot_cnt = 0 THEN 'C: 2 真人'
+        ELSE                          'Z: 异常'
+    END AS opponent_pattern,
+    COUNT(DISTINCT t.new_uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(t.reg_date, INTERVAL 1 DAY)
+              THEN t.new_uid END) * 100.0 / COUNT(DISTINCT t.new_uid), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(t.reg_date, INTERVAL 6 DAY)
+              THEN t.new_uid END) * 100.0 / COUNT(DISTINCT t.new_uid), 2) AS day7_rate
+FROM table_composition t
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON l.app_id = t.app_id AND l.uid = t.new_uid
+    AND l.login_date IN (DATE_ADD(t.reg_date, INTERVAL 1 DAY),
+                         DATE_ADD(t.reg_date, INTERVAL 6 DAY))
+GROUP BY 1
+ORDER BY 1;
+```
+
+**预期产出**：
+
+- 直接对比"匹配到机器人 vs 真人"对留存的影响量级
+- 若 A 组（2 机器人）的 day1_rate 仍只有 10% 左右 → 机器人匹配做了，但首局体验本身仍有问题（参见 Q1.3 的倍数/加倍维度）
+- 若 C 组（2 真人）的 day1_rate 显著低于 A 组（如低 5+ pp）→ "首局碰真人"是独立的负面因素，应优先修复匹配逻辑
+
+#### Q1.7.3 推广到 0 局/2-5 局/6+局用户的首局对手构成对比
+
+> 把分析扩展到所有局数分组，看新手保护是否随局数推进而退出（设计应是只前 N 局保护）。
+
+```sql
+WITH active_users AS (
+    SELECT r.uid, r.reg_date, r.app_id,
+        CASE
+            WHEN s.game_count = 1            THEN 'A: 1 局'
+            WHEN s.game_count BETWEEN 2 AND 5 THEN 'B: 2-5 局'
+            WHEN s.game_count BETWEEN 6 AND 10 THEN 'C: 6-10 局'
+            ELSE                                  'D: 10+ 局'
+        END AS user_seg
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    INNER JOIN tcy_temp.dws_ddz_app_game_stat s
+        ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
+        AND s.game_count >= 1
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+      AND r.is_login_log_missing = 0
+),
+first_game_resultguid AS (
+    -- 取每个用户的首局（按 time_unix 最小）
+    SELECT
+        u.user_seg, u.uid AS new_uid, u.reg_date, u.app_id,
+        MIN_BY(g.resultguid, g.time_unix) AS resultguid,
+        u.reg_date AS dt
+    FROM active_users u
+    INNER JOIN tcy_temp.dws_ddz_firstday_game g
+        ON g.app_id = u.app_id AND g.uid = u.uid AND g.dt = u.reg_date
+        AND g.robot != 1
+        AND g.play_mode IN (1, 2, 3, 5)
+    GROUP BY u.user_seg, u.uid, u.reg_date, u.app_id
+),
+table_composition AS (
+    SELECT
+        f.user_seg, f.new_uid,
+        SUM(CASE WHEN d.uid <> f.new_uid AND d.robot = 1  THEN 1 ELSE 0 END) AS opp_robot_cnt
+    FROM first_game_resultguid f
+    INNER JOIN tcy_temp.dws_ddz_daily_game d
+        ON d.dt = f.dt AND d.resultguid = f.resultguid
+    GROUP BY f.user_seg, f.new_uid
+)
+SELECT
+    user_seg,
+    COUNT(*) AS user_count,
+    ROUND(SUM(CASE WHEN opp_robot_cnt = 2 THEN 1.0 ELSE 0 END)*100.0/COUNT(*), 2) AS pct_2robot,
+    ROUND(SUM(CASE WHEN opp_robot_cnt = 1 THEN 1.0 ELSE 0 END)*100.0/COUNT(*), 2) AS pct_1robot,
+    ROUND(SUM(CASE WHEN opp_robot_cnt = 0 THEN 1.0 ELSE 0 END)*100.0/COUNT(*), 2) AS pct_0robot
+FROM table_composition
+GROUP BY user_seg
+ORDER BY user_seg;
+```
+
+**预期产出**：
+
+- 验证"首局必匹配 2 机器人"是否对所有局数分组都成立（首局总是新手第 1 局）
+- 如果 A（1 局用户）和 B-D（多局用户）的 `pct_2robot` 显著不同，说明匹配逻辑可能有"用户标记/路径差异"分支，需要追溯设计
 
 ---
 
@@ -991,12 +1212,13 @@ WHERE r.app_id = 1880053
 2. **优先级建议**（按数据信号强度）：
    - **P0：Cocos-Lua iOS** — 单一变量影响 15.6 pp，技术问题易定位易修复，先跑 Q2.1 → Q2.4
    - **P0：咪咕渠道** — 留存仅 5%，先跑 Q3.1 + Q3.3 判定是刷量还是体验问题
-   - **P1：1 局用户** — 影响最大但成因复杂，先跑 Q1.1 + Q1.4 + Q1.5 三组对比
+   - **P0：1 局用户首局对手构成（Q1.7）** — 直接验证"新手保护设计"是否落地，**只需一个 SQL 即可证伪/证实**，是性价比最高的下钻
+   - **P1：1 局用户其他维度** — 成因复杂，先跑 Q1.1 + Q1.4 + Q1.5 三组对比
 3. **每个 SQL 跑完后**，回填到 [`retention-analysis-2026-04-22.md`](retention-analysis-2026-04-22.md) 的对应问题章节
 
 ---
 
-> **文档版本**：v1.0  
+> **文档版本**：v1.1（新增 Q1.7：1 局用户首局对手机器人/真人识别）  
 > **创建日期**：2026-04-27  
 > **关联文档**：
 > - [`retention-analysis-2026-04-22.md`](retention-analysis-2026-04-22.md)（数据分析报告）
