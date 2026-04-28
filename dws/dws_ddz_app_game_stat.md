@@ -331,7 +331,7 @@ GROUP BY r.reg_date,
 ORDER BY r.reg_date, high_multi_exp;
 ```
 
-## 注意事项
+## 字段使用注意
 
 1. **玩法过滤**：本表仅聚合银子玩法（play_mode IN 1,2,3,5），排除积分玩法
 2. **比赛玩法**：play_mode=5 为 APP/小游戏端的比赛玩法，使用银子币种
@@ -339,9 +339,9 @@ ORDER BY r.reg_date, high_multi_exp;
 4. **连胜连败**：仅统计胜负局，排除无效局
 5. **数据完整性**：如用户当日无对局，本表无对应记录
 
-## 与其他 DWS 表的关系
+## 表数据流向
 
-```
+```text
 tcy_temp.dws_ddz_daily_game        （对局明细表）
             ↓  APP端+银子玩法聚合
 tcy_temp.dws_ddz_app_game_stat   （APP端用户每日游戏统计表）
@@ -350,7 +350,7 @@ tcy_temp.dws_dq_app_daily_reg      （APP 端注册用户宽表）
 tcy_temp.dws_dq_daily_login        （每日登录聚合表）
 ```
 
-## 关联查询示例
+## 留存分析示例
 
 ### 1. 计算新增用户留存（注册日有对局的用户）
 

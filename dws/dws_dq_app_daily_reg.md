@@ -52,7 +52,6 @@
 | cocos-lua | zgda |
 | cocos-creator | zgdx |
 
-
 ## 构建 SQL
 
 ### 建表语句
@@ -211,7 +210,7 @@ WHERE r.reg_date = 20260210
 GROUP BY r.uid, r.reg_date, r.reg_group_id, r.channel_category_name;
 ```
 
-## 注意事项
+## 字段使用注意
 
 1. **APP 端过滤**：本表仅包含 APP 端用户（Android + iOS），通过 `reg_group_id` 区分
 2. **登录日志缺失**：`is_login_log_missing = 1` 表示注册当日无登录日志，可能是数据缺失或异常
@@ -219,7 +218,7 @@ GROUP BY r.uid, r.reg_date, r.reg_group_id, r.channel_category_name;
 4. **与 dws_dq_daily_reg 的关系**：本表是 `dws_dq_daily_reg` 的 APP 端扩展视图，包含更多维度字段
 5. **留存口径**：新增用户留存 = Day1注册且Day2登录 / Day1注册人数，与是否游戏无关
 
-## 与其他 DWS 表的关系
+## 表数据流向
 
 ```
 tcy_temp.dws_dq_daily_reg          （全端注册信息）

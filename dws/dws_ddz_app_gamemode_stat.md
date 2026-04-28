@@ -217,7 +217,7 @@ LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode AND g.app
 GROUP BY g.app_id, g.play_mode, g.uid, g.dt, g.app_code;
 ```
 
-## 注意事项
+## 字段使用注意
 
 1. **与原表的关系**：本表是 `dws_ddz_app_game_stat` 的按玩法拆分版本，两表并存互补
    - 原表（uid × dt）：适合不需要区分玩法的分析（如按对局数分组、总体经济变化）
@@ -227,7 +227,7 @@ GROUP BY g.app_id, g.play_mode, g.uid, g.dt, g.app_code;
 4. **连胜连败**：按玩法内的对局序列计算，跨玩法的连胜连败不统计
 5. **数据完整性**：如用户当日在某玩法下无对局，本表无对应记录
 
-## 与其他 DWS 表的关系
+## 表数据流向
 
 ```
 tcy_temp.dws_ddz_daily_game              （对局明细表）

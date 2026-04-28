@@ -228,7 +228,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
 WHERE r.reg_date = 20260210;
 ```
 
-## 注意事项
+## 字段使用注意
 
 1. **时间戳精度**：`dwd_tcy_userlogin_si.time_unix` 为毫秒级时间戳，`MIN_BY/MAX_BY` 基于此排序
 2. **最频繁维度实现**：通过字符串拼接 `LPAD(count, 10, '0') + channel_id` 取 MAX，再截取后半部分实现
@@ -236,7 +236,7 @@ WHERE r.reg_date = 20260210;
 4. **去重统计**：`channel_id_count` 和 `group_id_count` 为去重计数，反映用户当日接触的渠道/分端多样性
 5. **关联使用**：可与 `dws_dq_app_daily_reg` 等表关联，丰富用户行为分析维度
 
-## 与其他 DWS 表的关系
+## 表数据流向
 
 ```
 tcy_dwd.dwd_tcy_userlogin_si        （原始登录日志，分钟级）

@@ -287,7 +287,7 @@ WHERE g.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
 GROUP BY play_mode;
 ```
 
-## 注意事项
+## 字段使用注意
 
 1. **货币类型区分**：
    - `play_mode IN (1, 2, 3)`：银子玩法，货币单位为银子
@@ -332,7 +332,7 @@ GROUP BY play_mode;
 | `end_money` | `end_deposit` | `end_score` |
 | `diff_money_pre_tax` | `depositdiff + fee` | `scorediff + score_fee` |
 
-## 与其他 DWS 表的关系
+## 表数据流向
 
 ```structure
 tcy_dwd.dwd_game_combat_si        （原始对局日志，多货币字段）

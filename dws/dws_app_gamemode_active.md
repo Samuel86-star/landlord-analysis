@@ -67,9 +67,9 @@ WHERE app_id = 1880053
 GROUP BY 1,2,3,4;
 ```
 
-## 与其他 DWS 表的关系
+## 表依赖关系
 
-```
+```text
 tcy_temp.dws_dq_app_daily_reg                 （APP 端注册用户宽表）
             ↓  LEFT JOIN uid + app_id，dt > reg_date，game_mode = target_mode
 tcy_temp.dws_app_gamemode_active              （每日游戏活跃用户×玩法表，同玩法留存 flag 专用）  ← 本表

@@ -189,7 +189,6 @@ PROPERTIES (
     "colocate_with" = "group_daily_data"
 );
 
-
 -- 分玩法首日宽表（核心分析数据集）
 insert into tcy_temp.ddz_gamemode_firstday_features
 WITH new_user_reg AS (

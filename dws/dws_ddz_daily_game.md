@@ -281,7 +281,7 @@ WHERE dt BETWEEN 20260210 AND 20260215
 GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END;
 ```
 
-## 注意事项
+## 字段使用注意
 
 1. **货币类型区分**：
    - `play_mode IN (1, 2, 3)`：银子玩法，货币单位为银子
@@ -320,7 +320,7 @@ GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END
 | `end_money` | `end_deposit` | `end_score` |
 | `diff_money_pre_tax` | `depositdiff + fee` | `scorediff + score_fee` |
 
-## 与其他 DWS 表的关系
+## 表数据流向
 
 ```
 tcy_dwd.dwd_game_combat_si        （原始对局日志，多货币字段）

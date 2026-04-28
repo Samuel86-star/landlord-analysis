@@ -82,7 +82,6 @@ WHERE app_id = 1880053
 GROUP BY 1, 2, 3;
 ```
 
-
 ## 留存计算方式
 
 ```sql
@@ -110,9 +109,9 @@ GROUP BY r.uid, r.reg_date;
 > **StarRocks 日期转换说明**：`dt` 为 int 类型，可直接做整数加法（`r.reg_date + 1`）比较，
 > 也可使用 `str_to_date(CAST(dt AS VARCHAR), '%Y%m%d')` 转为 DATE 类型后再做 `datediff`。
 
-## 与其他 DWS 表的关系
+## 表依赖关系
 
-```
+```text
 tcy_temp.dws_dq_app_daily_reg         （APP 端注册用户宽表）
             ↓  LEFT JOIN uid + app_id，dt > reg_date
 tcy_temp.dws_app_game_active          （每日游戏活跃用户表，留存 flag 专用）  ← 本表
