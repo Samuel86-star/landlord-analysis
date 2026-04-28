@@ -29,8 +29,19 @@
 ## 文档目录结构
 
 ```text
-dws/          # DWS 表说明文档
+raw/          # ODS 源数据表说明文档
+dws/          # DWS 层中间表说明文档
 docs/         # 分析文档
 ops/          # 运维操作手册
 style/        # 编码/书写规范
 ```
+
+---
+
+## 数据源表（ODS 层）
+
+| 表名 | 库名 | 说明 | 文档 |
+| ---- | ---- | ---- | ---- |
+| `dwd_game_combat_si` | `tcy_dwd` | 玩家游戏对局战绩日志 | [raw/dwd_game_combat_si.md](raw/dwd_game_combat_si.md) |
+| `dwd_tcy_userlogin_si` | `tcy_dwd` | 玩家登录日志 | [raw/dwd_tcy_userlogin_si.md](raw/dwd_tcy_userlogin_si.md) |
+| `olap_tcy_userapp_d_p_login1st` | `hive_catalog_cdh5.dm` | 游戏用户首次注册登录信息 | [raw/olap_tcy_userapp_d_p_login1st.md](raw/olap_tcy_userapp_d_p_login1st.md) |
