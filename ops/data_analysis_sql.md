@@ -25,28 +25,28 @@ SELECT
     t.reg_date,
     t.uid,
     t.reg_datetime,
-    -- 通过判断对局表的某个必填字段（如 game_datetime）是否为空，来识别"未游戏"用户
     IF(t.game_datetime IS NULL, '未游戏', '已游戏') AS play_status,
-    t.* -- 包含对局表的明细
+    t.* 
 FROM (
     SELECT 
         r.reg_date,
         r.reg_datetime,
         r.uid,
         g.game_datetime,
-        g.play_mode,
-        -- 注意：ROW_NUMBER 对 LEFT JOIN 产生的 NULL 行也会标记为 1
-        ROW_NUMBER() OVER (PARTITION BY r.uid ORDER BY g.game_datetime ASC) as rank_num
+        ROW_NUMBER() OVER (PARTITION BY r.uid ORDER BY g.game_datetime ASC) as rank_num,
+        g.room_id, g.play_mode, g.role, g.chairno, g.result_id, g.start_money,
+        g.end_money, diff_money_pre_tax, cut, safebox_deposit, 
+        magnification, magnification_stacked, real_magnification,
+        grab_landlord_bet, complete_victory_bet, bomb_bet
     FROM tcy_temp.dws_dq_app_daily_reg r
     LEFT JOIN tcy_temp.dws_ddz_firstday_game g 
         ON r.app_id = g.app_id
         AND r.uid = g.uid 
         AND r.reg_date = g.dt 
-        AND g.play_mode = 1 -- 这里的条件放在 JOIN 里，确保没玩该模式的人也能留存
     WHERE r.app_id = 1880053
       AND r.reg_datetime BETWEEN '2026-04-27 18:00:00' AND '2026-04-27 23:59:59'
 ) t
-WHERE t.rank_num = 1
+WHERE t.rank_num <= 1
 ORDER BY t.reg_datetime DESC;
 ```
 
