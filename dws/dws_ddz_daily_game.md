@@ -138,19 +138,19 @@ CREATE TABLE tcy_temp.dws_ddz_daily_game (
   `group_id` int(11) NULL,
   `app_code` varchar(32) NULL,
   `game_id` int(11) NULL
-) ENGINE=OLAP 
+) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `dt`, `uid`)
 COMMENT "斗地主每日游戏明细表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
-DISTRIBUTED BY HASH(`uid`) BUCKETS 8 
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
 PROPERTIES (
     "replication_num" = "1",
     "compression" = "LZ4",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80", 
+    "dynamic_partition.start" = "-80",
     "dynamic_partition.end" = "3",
     "dynamic_partition.prefix" = "p",
     "colocate_with" = "group_daily_data"
@@ -162,29 +162,29 @@ PROPERTIES (
 
 ```sql
 INSERT INTO tcy_temp.dws_ddz_daily_game
-SELECT 
+SELECT
     IFNULL(app_id, 1880053), dt, uid, FROM_UNIXTIME(time_unix / 1000) as game_datetime, resultguid, timecost, room_id,
-    CASE 
+    CASE
         WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
         WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
         WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
         WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
         WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
         WHEN room_id IN (158,159) THEN 6 -- 好友房
-        ELSE 0 
+        ELSE 0
     END AS play_mode,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
     room_currency_lower, room_currency_upper, robot, role, chairno, result_id,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
     CASE WHEN room_id IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
-    CASE 
-        WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee 
-        ELSE depositdiff + fee 
+    CASE
+        WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee
+        ELSE depositdiff + fee
     END AS diff_money_pre_tax,
     cut, safebox_deposit, magnification, magnification_stacked,
-    CASE 
-        WHEN room_id IN (11534,14238,15458,158,159) 
+    CASE
+        WHEN room_id IN (11534,14238,15458,158,159)
         THEN ROUND((scorediff + score_fee) / NULLIF(basescore, 0), 2)
         ELSE ROUND((depositdiff + fee) / NULLIF(basedeposit, 0), 2)
     END AS real_magnification,
@@ -322,7 +322,7 @@ GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END
 
 ## 表数据流向
 
-```
+```text
 tcy_dwd.dwd_game_combat_si        （原始对局日志，多货币字段）
             ↓  字段统一
 tcy_temp.dws_ddz_daily_game       （统一字段对局表）
@@ -334,4 +334,5 @@ tcy_temp.dws_dq_daily_login       （每日登录聚合表）
 > **文档版本**：v1.0
 > **创建时间**：2026-04-09
 > **更新说明**：
+>
 > - v1.0：初始版本，统一货币字段、添加玩法分类、提取 JSON 倍数字段

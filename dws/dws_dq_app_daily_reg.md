@@ -70,23 +70,23 @@ CREATE TABLE tcy_temp.dws_dq_app_daily_reg (
   `channel_category_tag_id` tinyint(4) NULL COMMENT "渠道标签ID",
   `is_login_log_missing` tinyint(4) NULL DEFAULT '0' COMMENT "是否缺失登录日志: 0-否, 1-是",
   `first_day_login_cnt` int(11) NULL DEFAULT '0' COMMENT "首日登录次数"
-) ENGINE=OLAP 
+) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `reg_date`, `reg_channel_id`)
 COMMENT "App端用户注册首日行为汇总宽表"
 -- 分区策略：按天分区，支持动态管理
 PARTITION BY RANGE(`reg_date`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
-DISTRIBUTED BY HASH(`uid`) BUCKETS 8 
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
 PROPERTIES (
-    "replication_num" = "1",                
+    "replication_num" = "1",
     "compression" = "LZ4",
     "storage_format" = "V2",
     "enable_persistent_index" = "true",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80", 
-    "dynamic_partition.end" = "3",   
+    "dynamic_partition.start" = "-80",
+    "dynamic_partition.end" = "3",
     "dynamic_partition.prefix" = "p",
     "dynamic_partition.history_partition_num" = "80",
     "bloom_filter_columns" = "uid",
@@ -98,7 +98,7 @@ PROPERTIES (
 
 ```sql
 insert into tcy_temp.dws_dq_app_daily_reg
-SELECT 
+SELECT
     r.app_id,
     r.reg_date,
     COALESCE(l.first_channel_id, -1) AS reg_channel_id,
@@ -112,11 +112,11 @@ SELECT
     CASE WHEN l.uid IS NULL THEN 1 ELSE 0 END AS is_login_log_missing,
     COALESCE(l.login_count, 0) AS first_day_login_cnt
 FROM tcy_temp.dws_dq_daily_reg r
-INNER JOIN tcy_temp.dws_dq_daily_login l 
-    ON r.app_id = l.app_id 
+INNER JOIN tcy_temp.dws_dq_daily_login l
+    ON r.app_id = l.app_id
     AND r.reg_date = l.login_date
-    AND r.uid = l.uid 
-LEFT JOIN tcy_temp.dws_channel_category_map chn 
+    AND r.uid = l.uid
+LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
   AND r.reg_date between '2026-02-10' and '2026-04-21'
@@ -148,7 +148,7 @@ ORDER BY reg_date;
 SELECT
     reg_date,
     channel_category_name,
-    CASE 
+    CASE
         WHEN reg_group_id IN (8, 88) THEN 'iOS'
         WHEN reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         ELSE '其他'
@@ -157,8 +157,8 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg
 WHERE reg_date = 20260210
   AND is_login_log_missing = 0
-GROUP BY reg_date, channel_category_name, 
-    CASE 
+GROUP BY reg_date, channel_category_name,
+    CASE
         WHEN reg_group_id IN (8, 88) THEN 'iOS'
         WHEN reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         ELSE '其他'
@@ -170,7 +170,7 @@ ORDER BY reg_date, channel_category_name, platform;
 
 ```sql
 SELECT
-    CASE 
+    CASE
         WHEN first_day_login_cnt = 1 THEN '0：1次'
         WHEN first_day_login_cnt BETWEEN 2 AND 5 THEN '1：2-5次'
         WHEN first_day_login_cnt > 5 THEN '2：5次以上'
@@ -181,7 +181,7 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg
 WHERE reg_date BETWEEN 20260210 AND 20260215
 GROUP BY reg_date,
-    CASE 
+    CASE
         WHEN first_day_login_cnt = 1 THEN '0：1次'
         WHEN first_day_login_cnt BETWEEN 2 AND 5 THEN '1：2-5次'
         WHEN first_day_login_cnt > 5 THEN '2：5次以上'
@@ -220,7 +220,7 @@ GROUP BY r.uid, r.reg_date, r.reg_group_id, r.channel_category_name;
 
 ## 表数据流向
 
-```
+```text
 tcy_temp.dws_dq_daily_reg          （全端注册信息）
             ↓  关联登录聚合表
 tcy_temp.dws_dq_daily_login        （每日登录多维度聚合）
@@ -232,7 +232,7 @@ tcy_temp.dws_ddz_daily_game        （对局战绩统一字段表）
 
 ## 数据流向
 
-```
+```text
 dws_dq_daily_reg ──┐
                    ├── INNER JOIN ──→ dws_dq_app_daily_reg
 dws_dq_daily_login ─┘
@@ -243,4 +243,5 @@ dws_dq_daily_login ─┘
 > **文档版本**：v1.0
 > **创建时间**：2026-04-09
 > **更新说明**：
+>
 > - v1.0：初始版本，基于 `dws_dq_daily_reg` 方案2扩展设计，专用于 APP 端注册用户分析

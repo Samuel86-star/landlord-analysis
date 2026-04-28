@@ -139,19 +139,19 @@ CREATE TABLE tcy_temp.dws_ddz_firstday_game (
   `group_id` int(11) NULL,
   `app_code` varchar(32) NULL,
   `game_id` int(11) NULL
-) ENGINE=OLAP 
+) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `dt`, `uid`)
 COMMENT "斗地主首日游戏明细表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
-DISTRIBUTED BY HASH(`uid`) BUCKETS 8 
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
 PROPERTIES (
     "replication_num" = "1",
     "compression" = "LZ4",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80", 
+    "dynamic_partition.start" = "-80",
     "dynamic_partition.end" = "3",
     "dynamic_partition.prefix" = "p",
     "colocate_with" = "group_daily_data"
@@ -162,7 +162,7 @@ PROPERTIES (
 
 ```sql
 INSERT INTO tcy_temp.dws_ddz_firstday_game
-SELECT 
+SELECT
     g.app_id,
     g.dt,
     g.uid, g.game_datetime, g.resultguid, g.timecost, g.room_id, g.play_mode,
@@ -173,7 +173,7 @@ SELECT
     g.grab_landlord_bet, g.complete_victory_bet, g.bomb_bet,
     g.channel_id, g.group_id, g.app_code, g.game_id
 FROM tcy_temp.dws_ddz_daily_game g
-INNER JOIN tcy_temp.dws_dq_daily_reg r 
+INNER JOIN tcy_temp.dws_dq_daily_reg r
     ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
 WHERE g.dt BETWEEN '2026-02-10' AND '2026-04-22';
 ```
@@ -233,7 +233,7 @@ GROUP BY uid, reg_date;
 
 ```sql
 SELECT
-    CASE 
+    CASE
         WHEN game_cnt = 0 THEN '0局'
         WHEN game_cnt BETWEEN 1 AND 5 THEN '1-5局'
         WHEN game_cnt BETWEEN 6 AND 10 THEN '6-10局'
@@ -250,7 +250,7 @@ FROM (
       AND play_mode IN (1, 2, 3)
     GROUP BY uid
 ) t
-GROUP BY CASE 
+GROUP BY CASE
     WHEN game_cnt = 0 THEN '0局'
     WHEN game_cnt BETWEEN 1 AND 5 THEN '1-5局'
     WHEN game_cnt BETWEEN 6 AND 10 THEN '6-10局'

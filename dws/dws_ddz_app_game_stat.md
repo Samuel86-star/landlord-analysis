@@ -114,8 +114,8 @@ CREATE TABLE tcy_temp.dws_ddz_app_game_stat (
   `escape_count` int(11) NULL COMMENT "",
   `distinct_rooms` tinyint(4) NULL COMMENT "",
   `play_modes` varchar(256) NULL COMMENT ""
-) ENGINE=OLAP 
-DUPLICATE KEY(`app_id`, `uid`, `dt`) 
+) ENGINE=OLAP
+DUPLICATE KEY(`app_id`, `uid`, `dt`)
 COMMENT "游戏用户对局聚合信息表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
@@ -123,7 +123,7 @@ PARTITION BY RANGE(`dt`) (
 DISTRIBUTED BY HASH(`uid`) BUCKETS 8
 PROPERTIES (
     "replication_num" = "1",
-    "colocate_with" = "group_daily_data", 
+    "colocate_with" = "group_daily_data",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
     "dynamic_partition.start" = "-80",
@@ -144,18 +144,18 @@ WITH game_enriched AS (
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt between '2026-04-01' and '2026-04-21'
       AND robot != 1
-      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  
-      AND play_mode IN (1, 2, 3, 5)  
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+      AND play_mode IN (1, 2, 3, 5)
 ),
 streaks_calc AS (
-    SELECT 
+    SELECT
         uid, app_code, result_id, MAX(streak_len) as max_streak
     FROM (
-        SELECT 
-            uid, app_code, result_id, 
+        SELECT
+            uid, app_code, result_id,
             COUNT(*) OVER(PARTITION BY uid, app_code, result_id, grp) AS streak_len
         FROM (
-            SELECT uid, app_code, result_id, 
+            SELECT uid, app_code, result_id,
               game_seq - ROW_NUMBER() OVER (PARTITION BY uid, app_code, result_id ORDER BY game_seq) AS grp
             FROM game_enriched
             WHERE result_id IN (1, 2)
@@ -164,7 +164,7 @@ streaks_calc AS (
     GROUP BY uid, app_code, result_id
 ),
 max_streaks AS (
-    SELECT uid, app_code, 
+    SELECT uid, app_code,
         MAX(CASE WHEN result_id = 1 THEN max_streak ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN max_streak ELSE 0 END) AS max_lose_streak
     FROM streaks_calc
@@ -191,7 +191,7 @@ SELECT
     SUM(g.bomb_bet / 2),
     COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END),
     COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END),
-    MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END), 
+    MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END),
     MAX(CASE WHEN g.rank_desc = 1 THEN g.end_money END),
     MAX(g.end_money),
     MIN(g.end_money),
@@ -218,7 +218,7 @@ GROUP BY g.app_id, g.uid, g.dt, g.app_code;
 
 ## 与其他 DWS 表的关系
 
-```
+```text
 tcy_temp.dws_ddz_daily_game        （对局明细表）
             ↓  APP端+银子玩法聚合
 tcy_temp.dws_ddz_app_game_stat   （APP端用户每日游戏统计表）
@@ -252,7 +252,7 @@ ORDER BY r.reg_date;
 ```sql
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.game_count = 1 THEN '1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN '2-5局'
         WHEN g.game_count BETWEEN 6 AND 10 THEN '6-10局'
@@ -266,7 +266,7 @@ LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.d
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260210
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.game_count = 1 THEN '1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN '2-5局'
         WHEN g.game_count BETWEEN 6 AND 10 THEN '6-10局'
@@ -280,7 +280,7 @@ ORDER BY r.reg_date, game_count_group;
 ```sql
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -295,7 +295,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE
 WHERE r.reg_date = 20260210
   AND g.game_count > 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -375,7 +375,7 @@ ORDER BY r.reg_date;
 ```sql
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.game_count = 1 THEN '0:1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN '1:2-5局'
         WHEN g.game_count BETWEEN 6 AND 10 THEN '2:6-10局'
@@ -389,7 +389,7 @@ LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.uid = g.uid AND r.reg_date = g.d
 LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260210
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.game_count = 1 THEN '0:1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN '1:2-5局'
         WHEN g.game_count BETWEEN 6 AND 10 THEN '2:6-10局'
@@ -403,7 +403,7 @@ ORDER BY r.reg_date, game_count_group;
 ```sql
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -418,7 +418,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE
 WHERE r.reg_date = 20260210
   AND g.game_count > 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -457,5 +457,6 @@ ORDER BY r.reg_date, high_multi_exp;
 > **文档版本**：v2.0
 > **创建时间**：2026-04-09
 > **更新说明**：
+>
 > - v1.0：初始版本
 > - **v2.0**：重命名为 `dws_ddz_app_game_stat`，增加 `group_id IN (6,66,8,88,33,44,77,99)` APP 端过滤

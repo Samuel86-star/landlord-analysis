@@ -1,5 +1,5 @@
 ﻿|client_lang|channel_category_name|reg_user_count|day1_rate|day7_rate|
-|-----------|---------------------|--------------|---------|---------|
+| ----------- | --------------------- | -------------- | --------- | --------- |
 |Cocos-Creator|IOS|4506|27.30|12.07|
 |Cocos-Creator|OPPO|15|6.67|6.67|
 |Cocos-Creator|vivo|7|14.29|14.29|

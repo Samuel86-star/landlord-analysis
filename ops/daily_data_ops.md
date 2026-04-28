@@ -13,8 +13,8 @@
 5. [对局数据增量更新](#5-对局数据增量更新)
 6. [APP 端每日游戏活跃用户表初始化](#6-app-端每日游戏活跃用户表初始化)
 7. [APP 端每日游戏活跃用户×玩法表初始化](#7-app-端每日游戏活跃用户玩法表初始化)
-8. [用户每日游戏行为聚合增量更新（混合玩法）](#8-用户每日游戏行为聚合增量更新-混合玩法)
-9. [用户每日游戏行为聚合增量更新（按玩法拆分）](#9-用户每日游戏行为聚合增量更新-按玩法拆分)
+8. [用户每日游戏行为聚合增量更新（混合玩法）](#8-用户每日游戏行为聚合增量更新混合玩法)
+9. [用户每日游戏行为聚合增量更新（按玩法拆分）](#9-用户每日游戏行为聚合增量更新按玩法拆分)
 10. [首日对局数据初始化](#10-首日对局数据初始化)
 11. [分玩法首日对局特征宽表初始化](#11-分玩法首日对局特征宽表初始化)
 12. [执行顺序与依赖关系](#12-执行顺序与依赖关系)
@@ -146,7 +146,7 @@ GROUP BY app_id, DATE(dt), uid;
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_temp.dws_dq_daily_reg`、`tcy_temp.dws_dq_daily_login` | `tcy_temp.dws_dq_app_daily_reg` |
 
 ### 增量更新 SQL
@@ -195,7 +195,7 @@ WHERE r.app_id = 1880053
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_dwd.dwd_game_combat_si` | `tcy_temp.dws_ddz_daily_game` |
 
 ### 增量更新 SQL
@@ -254,7 +254,7 @@ WHERE game_id = 53
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_app_game_active` |
 
 ### 初始化 SQL
@@ -284,7 +284,7 @@ GROUP BY 1, 2, 3;
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_app_gamemode_active` |
 
 ### 初始化 SQL
@@ -314,7 +314,7 @@ GROUP BY 1,2,3,4;
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_app_game_stat` |
 
 ### 增量更新 SQL
@@ -408,7 +408,7 @@ GROUP BY g.app_id, g.uid, g.dt, g.app_code;
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_app_gamemode_stat` |
 
 ### 增量更新 SQL
@@ -502,7 +502,7 @@ GROUP BY g.app_id, g.play_mode, g.uid, g.dt, g.app_code;
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_temp.dws_ddz_daily_game`、`tcy_temp.dws_dq_daily_reg` | `tcy_temp.dws_ddz_firstday_game` |
 
 ### 初始化 SQL
@@ -538,7 +538,7 @@ WHERE g.dt = '2026-04-27';
 ### 源表与目标表
 
 | 源表 | 目标表 |
-|------|--------|
+| ------ | -------- |
 | `tcy_temp.dws_dq_app_daily_reg`、`tcy_temp.dws_ddz_firstday_game`、`tcy_temp.dws_app_game_active`、`tcy_temp.dws_app_gamemode_active` | `tcy_temp.ddz_gamemode_firstday_features` |
 
 ### 初始化 SQL
@@ -666,7 +666,7 @@ GROUP BY g.app_id, r.uid, g.play_mode, r.reg_date, r.reg_group_id, r.channel_cat
 
 ### 表依赖关系
 
-```
+```text
 dws_channel_category_map       ← 维表，优先初始化（其他表可能关联）
 dws_dq_daily_reg               ← 无依赖，可并行执行
 dws_dq_daily_login             ← 无依赖，可并行执行

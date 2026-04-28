@@ -61,9 +61,9 @@ PROPERTIES (
     "compression" = "LZ4",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80", 
-    "dynamic_partition.end" = "3",   
-    "dynamic_partition.prefix" = "p", 
+    "dynamic_partition.start" = "-80",
+    "dynamic_partition.end" = "3",
+    "dynamic_partition.prefix" = "p",
     "dynamic_partition.history_partition_num" = "80",
     "colocate_with" = "group_daily_data"
 );
@@ -78,7 +78,7 @@ FROM tcy_temp.dws_ddz_daily_game
 WHERE app_id = 1880053
   AND dt BETWEEN '2026-02-10' AND '2026-04-21'
   AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)  
+  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 GROUP BY 1, 2, 3;
 ```
 
@@ -102,6 +102,7 @@ GROUP BY r.uid, r.reg_date;
 
 > **留存日期口径**（Day 0 = 注册日）：
 
+>
 > - 次留：Day 0 注册的用户在次日（+1）登录的占比 → `reg_date + 1`
 > - 7 留："第 7 天留存"，把注册日记为第 1 天 → `reg_date + 6`
 > - 30 留：同理，第 30 天 → `reg_date + 29`
@@ -120,6 +121,7 @@ tcy_temp.dws_app_game_active          （每日游戏活跃用户表，留存 fl
 > **文档版本**：v2.0
 > **更新说明**：
 
+>
 > - v1.0：初始版本（原名 `dws_ddz_daily_play`）
 > - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid`）
 > - **v2.0**：重命名为 `dws_app_game_active`；新增 `app_id` 字段；补充与 `dws_app_game_stat` 的对比说明

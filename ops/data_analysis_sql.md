@@ -21,28 +21,28 @@
 ### SQL 查询语句
 
 ```sql
-SELECT 
+SELECT
     t.reg_date,
     t.uid,
     t.reg_datetime,
     IF(t.game_datetime IS NULL, '未游戏', '已游戏') AS play_status,
-    t.* 
+    t.*
 FROM (
-    SELECT 
+    SELECT
         r.reg_date,
         r.reg_datetime,
         r.uid,
         g.game_datetime,
         ROW_NUMBER() OVER (PARTITION BY r.uid ORDER BY g.game_datetime ASC) as rank_num,
         g.room_id, g.play_mode, g.role, g.chairno, g.result_id, g.start_money,
-        g.end_money, diff_money_pre_tax, cut, safebox_deposit, 
+        g.end_money, diff_money_pre_tax, cut, safebox_deposit,
         magnification, magnification_stacked, real_magnification,
         grab_landlord_bet, complete_victory_bet, bomb_bet
     FROM tcy_temp.dws_dq_app_daily_reg r
-    LEFT JOIN tcy_temp.dws_ddz_firstday_game g 
+    LEFT JOIN tcy_temp.dws_ddz_firstday_game g
         ON r.app_id = g.app_id
-        AND r.uid = g.uid 
-        AND r.reg_date = g.dt 
+        AND r.uid = g.uid
+        AND r.reg_date = g.dt
     WHERE r.app_id = 1880053
       AND r.reg_datetime BETWEEN '2026-04-27 18:00:00' AND '2026-04-27 23:59:59'
 ) t
@@ -87,26 +87,26 @@ ORDER BY t.reg_datetime DESC;
 ### 统计 SQL 语句
 
 ```sql
-SELECT 
+SELECT
   dt,
-  count(1) as play_cnt, 
+  count(1) as play_cnt,
   count(case when result_id = 1 then 1 end) as win_cnt,
   round(count(case when result_id = 1 then 1 end) / count(1), 4) as win_rate,
   round(avg(magnification), 2) as avg_magnification
 FROM (
-    SELECT 
+    SELECT
         r.reg_date,
         r.uid,
         g.*,
         ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime ASC) as rank_num
     FROM tcy_temp.dws_dq_app_daily_reg r
-    INNER JOIN tcy_temp.dws_ddz_firstday_game g 
+    INNER JOIN tcy_temp.dws_ddz_firstday_game g
         ON r.app_id = g.app_id
-        AND r.uid = g.uid 
-        AND r.reg_date = g.dt 
+        AND r.uid = g.uid
+        AND r.reg_date = g.dt
     WHERE r.app_id = 1880053
       AND r.reg_datetime BETWEEN '2026-04-27 18:00:00' AND '2026-04-27 23:59:59'
-      AND g.play_mode = 1 
+      AND g.play_mode = 1
 ) t
 WHERE t.rank_num = 1
 group by dt
@@ -150,11 +150,11 @@ order by dt desc;
 
 ```sql
 WITH user_game_counts AS (
-    SELECT r.reg_date, r.uid, COUNT(g.uid) AS daily_cnt 
+    SELECT r.reg_date, r.uid, COUNT(g.uid) AS daily_cnt
     FROM tcy_temp.dws_dq_app_daily_reg r
-    LEFT JOIN tcy_temp.dws_ddz_firstday_game g 
-        ON r.uid = g.uid 
-        AND r.app_id = g.app_id 
+    LEFT JOIN tcy_temp.dws_ddz_firstday_game g
+        ON r.uid = g.uid
+        AND r.app_id = g.app_id
         AND r.reg_date = g.dt
     WHERE r.app_id = 1880053
       AND r.reg_datetime BETWEEN '2026-04-19' AND '2026-04-27'
@@ -162,7 +162,7 @@ WITH user_game_counts AS (
     GROUP BY r.reg_date, r.uid
 ),
 daily_metrics AS (
-    SELECT 
+    SELECT
         reg_date,
         COUNT(1) AS total_users,
         COUNT(CASE WHEN daily_cnt = 0 THEN 1 END) AS count_0,
@@ -174,7 +174,7 @@ daily_metrics AS (
     FROM user_game_counts
     GROUP BY reg_date
 )
-SELECT 
+SELECT
     reg_date,
     total_users AS "总注册人数",
     ROUND(count_0 * 100.0 / total_users, 2) AS "0局占比%",

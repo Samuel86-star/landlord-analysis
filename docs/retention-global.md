@@ -51,7 +51,7 @@
 
 ### 1.2 新手流程
 
-```
+```text
 用户通过信息流买量/应用市场等渠道下载同城游 APP
   → 完成账号注册与登录
     → 进入同城游游戏大厅（展示各游戏 icon）
@@ -80,7 +80,7 @@
 
 **对局流程与倍数机制：**
 
-```
+```text
 叫地主（固定3分）→ 抢地主 → 加倍/超级加倍 → 出牌对局 → 结算
 ```
 
@@ -138,31 +138,31 @@
 
 #### 表3：`dws_ddz_daily_game` — 对局战绩统一字段表
 
-| 字段                    | 类型     | 说明                                                                       |
+| 字段 | 类型 | 说明 |
 | --------------------- | ------ | ------------------------------------------------------------------------ |
-| dt                    | BIGINT | 对局日期（YYYYMMDD）                                                           |
-| time_unix             | BIGINT | 对局时间戳（毫秒级）                                                              |
-| resultguid            | STRING | 本局战绩 ID                                                                  |
-| timecost              | INT    | 对局耗时（秒）                                                                  |
-| room_id               | INT    | 房间号                                                                      |
-| play_mode             | INT    | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房                                      |
-| room_base             | INT    | 房间底分（统一字段）                                                               |
-| room_fee              | INT    | 房间服务费（统一字段）                                                              |
-| uid                   | BIGINT | 玩家 ID                                                                    |
-| robot                 | INT    | 1=机器人，其他=真人                                                              |
-| role                  | INT    | 1=地主，2=农民                                                                |
-| result_id             | INT    | 1=获胜，2=失败                                                                |
-| start_money           | BIGINT | 对局前货币数量（统一字段）                                                            |
-| end_money             | BIGINT | 对局后货币数量（统一字段）                                                            |
-| diff_money_pre_tax    | BIGINT | 还原服务费前的对局输赢（统一字段）                                                        |
-| cut                   | BIGINT | 逃跑罚没货币（<0 代表存在逃跑行为）                                                      |
-| magnification         | INT    | 个人理论总倍数                                                                  |
-| magnification_stacked | INT    | 个人加倍：1=不加倍 / 2=加倍 / 4=超级加倍                                               |
-| real_magnification    | DOUBLE | 本局实际输赢倍数（可能为负数，求平均需用 ABS）                                                |
-| grab_landlord_bet     | INT    | 抢地主倍数：3=无人抢 / 6=1人抢 / 12=2人抢                                             |
-| complete_victory_bet  | INT    | 春天/反春标记：2=存在春天或反春                                                        |
-| bomb_bet              | INT    | 炸弹倍数，`bomb_bet/2` = 炸弹个数                                                 |
-| app_code              | string | 应用code |
+| dt | BIGINT | 对局日期（YYYYMMDD） |
+| time_unix | BIGINT | 对局时间戳（毫秒级） |
+| resultguid | STRING | 本局战绩 ID |
+| timecost | INT | 对局耗时（秒） |
+| room_id | INT | 房间号 |
+| play_mode | INT | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房 |
+| room_base | INT | 房间底分（统一字段） |
+| room_fee | INT | 房间服务费（统一字段） |
+| uid | BIGINT | 玩家 ID |
+| robot | INT | 1=机器人，其他=真人 |
+| role | INT | 1=地主，2=农民 |
+| result_id | INT | 1=获胜，2=失败 |
+| start_money | BIGINT | 对局前货币数量（统一字段） |
+| end_money | BIGINT | 对局后货币数量（统一字段） |
+| diff_money_pre_tax | BIGINT | 还原服务费前的对局输赢（统一字段） |
+| cut | BIGINT | 逃跑罚没货币（<0 代表存在逃跑行为） |
+| magnification | INT | 个人理论总倍数 |
+| magnification_stacked | INT | 个人加倍：1=不加倍 / 2=加倍 / 4=超级加倍 |
+| real_magnification | DOUBLE | 本局实际输赢倍数（可能为负数，求平均需用 ABS） |
+| grab_landlord_bet | INT | 抢地主倍数：3=无人抢 / 6=1人抢 / 12=2人抢 |
+| complete_victory_bet | INT | 春天/反春标记：2=存在春天或反春 |
+| bomb_bet | INT | 炸弹倍数，`bomb_bet/2` = 炸弹个数 |
+| app_code | string | 应用code |
 
 ### 2.2 数据使用注意事项
 
@@ -427,7 +427,7 @@
 
 **漏斗步骤定义（基于现有数据）：**
 
-```
+```text
 APP 端注册（dws_dq_app_daily_reg）
   → 完成首局对局
     → 完成第 3 局
@@ -497,7 +497,7 @@ FROM (
     LEFT JOIN tcy_temp.dws_dq_daily_login l
         ON  l.app_id = r.app_id
         AND r.uid = l.uid
-        AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 2 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))  
+        AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 2 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
     WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
       AND r.is_login_log_missing = 0
     GROUP BY r.reg_date
@@ -513,7 +513,7 @@ ORDER BY base.reg_date;
 
 ```sql
 -- 按渠道分类统计新增用户留存
-SELECT    
+SELECT
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
     r.reg_date,
     COUNT(DISTINCT r.uid) AS reg_user_count,
@@ -540,7 +540,7 @@ ORDER BY case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', 
 ```sql
 -- 按 Android/iOS 统计新增用户留存
 SELECT
-    CASE 
+    CASE
         WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
         WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         ELSE '其他'
@@ -557,8 +557,8 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
-GROUP BY 
-    CASE 
+GROUP BY
+    CASE
         WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
         WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         ELSE '其他'
@@ -581,7 +581,7 @@ ORDER BY platform, r.reg_date desc;
 ```sql
 -- 按首日对局数分组分析留存（0局和1局拆分）
 SELECT
-    CASE 
+    CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
         WHEN g.game_count = 1 THEN 'B: 1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
@@ -594,13 +594,13 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid 
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
-GROUP BY 
-    CASE 
+GROUP BY
+    CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'A: 0局'
         WHEN g.game_count = 1 THEN 'B: 1局'
         WHEN g.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
@@ -624,7 +624,7 @@ ORDER BY game_count_group, r.reg_date desc;
 SELECT
     r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end as channel_category_name,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -641,9 +641,9 @@ WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
   AND g.game_count > 0  -- 胜率分组仅分析有对局用户，NULL 不应混入最低胜率组
-GROUP BY r.reg_date,     
+GROUP BY r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
-    CASE 
+    CASE
         WHEN g.win_rate < 30 THEN 'A: <30%'
         WHEN g.win_rate < 50 THEN 'B: 30-50%'
         WHEN g.win_rate < 70 THEN 'C: 50-70%'
@@ -680,7 +680,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
-GROUP BY r.reg_date, 
+GROUP BY r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN '0: 无对局'
@@ -718,7 +718,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
-GROUP BY r.reg_date, 
+GROUP BY r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
         WHEN g.high_multi_games = 0 OR g.high_multi_games IS NULL THEN 'A: 未经历高倍'
@@ -758,7 +758,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
-GROUP BY r.reg_date, 
+GROUP BY r.reg_date,
     case when r.channel_category_name in ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀') then r.channel_category_name else '其他' end,
     CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN '0: 无对局'
@@ -782,7 +782,7 @@ ORDER BY r.reg_date, case when r.channel_category_name in ('OPPO', 'IOS', 'vivo'
 -- 分析首日连胜连败对留存的影响
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
         WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
         WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
@@ -800,7 +800,7 @@ WHERE r.app_id = 1880053
   AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.max_win_streak >= 3 THEN 'A: 连胜3+'
         WHEN g.max_win_streak = 2 THEN 'B: 连胜2'
         WHEN g.max_win_streak = 1 THEN 'C: 连胜1'
@@ -821,7 +821,7 @@ ORDER BY r.reg_date, streak_group;
 -- 按首日逃跑行为分组分析留存
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.escape_count IS NULL OR g.escape_count = 0 THEN 'A: 无逃跑'
         WHEN g.escape_count = 1 THEN 'B: 逃跑1次'
         WHEN g.escape_count = 2 THEN 'C: 逃跑2次'
@@ -839,7 +839,7 @@ WHERE r.app_id = 1880053
   AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.escape_count IS NULL OR g.escape_count = 0 THEN 'A: 无逃跑'
         WHEN g.escape_count = 1 THEN 'B: 逃跑1次'
         WHEN g.escape_count = 2 THEN 'C: 逃跑2次'
@@ -862,7 +862,7 @@ ORDER BY r.reg_date, escape_group;
 WITH target_users AS (
     SELECT uid, reg_date
     FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053 
+    WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-04-22'
 ),
 first_game AS (
@@ -877,11 +877,11 @@ first_game AS (
       AND g.robot != 1
       AND g.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND g.play_mode IN (1, 2, 3, 5)
-    GROUP BY g.uid, g.dt  
+    GROUP BY g.uid, g.dt
 )
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN fg.first_game_result = 1 THEN 'A: 首局胜'
         WHEN fg.first_game_result = 2 THEN 'B: 首局负'
         ELSE 'C: 无对局'
@@ -891,7 +891,7 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN first_game fg ON r.uid = fg.uid AND r.reg_date = fg.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid 
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid
   AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
@@ -912,7 +912,7 @@ ORDER BY r.reg_date, first_game_group;
 -- 首日是否疑似破产对留存的影响
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'C: 无对局'
         WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
         ELSE 'B: 未破产'
@@ -929,7 +929,7 @@ WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.game_count IS NULL OR g.game_count = 0 THEN 'C: 无对局'
         WHEN g.money_valley <= 1000 THEN 'A: 疑似破产（谷值≤1000）'
         ELSE 'B: 未破产'
@@ -949,7 +949,7 @@ ORDER BY r.reg_date, bankrupt_group;
 -- 按首日总对局时长分组分析留存
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.total_play_seconds IS NULL OR g.total_play_seconds = 0 THEN 'A: 无对局'
         WHEN g.total_play_seconds < 300 THEN 'B: <5分钟'
         WHEN g.total_play_seconds < 900 THEN 'C: 5-15分钟'
@@ -967,7 +967,7 @@ WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.total_play_seconds IS NULL OR g.total_play_seconds = 0 THEN 'A: 无对局'
         WHEN g.total_play_seconds < 300 THEN 'B: <5分钟'
         WHEN g.total_play_seconds < 900 THEN 'C: 5-15分钟'
@@ -989,7 +989,7 @@ ORDER BY r.reg_date, duration_group;
 -- 按注册时段分组分析留存
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN HOUR(r.reg_datetime) BETWEEN 0 AND 5 THEN 'A: 凌晨(0-6)'
         WHEN HOUR(r.reg_datetime) BETWEEN 6 AND 11 THEN 'B: 上午(6-12)'
         WHEN HOUR(r.reg_datetime) BETWEEN 12 AND 17 THEN 'C: 下午(12-18)'
@@ -1005,7 +1005,7 @@ WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN HOUR(r.reg_datetime) BETWEEN 0 AND 5 THEN 'A: 凌晨(0-6)'
         WHEN HOUR(r.reg_datetime) BETWEEN 6 AND 11 THEN 'B: 上午(6-12)'
         WHEN HOUR(r.reg_datetime) BETWEEN 12 AND 17 THEN 'C: 下午(12-18)'
@@ -1033,7 +1033,7 @@ ORDER BY r.reg_date, reg_hour_group;
 -- 1局用户：首局胜负 × 角色（地主/农民）对留存的影响
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.role = 1 AND g.result_id = 1 THEN 'A: 地主-胜'
         WHEN g.role = 1 AND g.result_id = 2 THEN 'B: 地主-负'
         WHEN g.role = 2 AND g.result_id = 1 THEN 'C: 农民-胜'
@@ -1051,7 +1051,7 @@ WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.role = 1 AND g.result_id = 1 THEN 'A: 地主-胜'
         WHEN g.role = 1 AND g.result_id = 2 THEN 'B: 地主-负'
         WHEN g.role = 2 AND g.result_id = 1 THEN 'C: 农民-胜'
@@ -1165,7 +1165,7 @@ ORDER BY r.reg_date, money_group;
 -- 1局用户：首局是否逃跑对留存的影响
 SELECT
     r.reg_date,
-    CASE 
+    CASE
         WHEN g.cut < 0 THEN 'A: 逃跑'
         ELSE 'B: 正常完成'
     END AS escape_group,
@@ -1179,7 +1179,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l ON l.app_id = r.app_id AND r.uid = l.uid
 WHERE r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
   AND r.is_login_log_missing = 0
 GROUP BY r.reg_date,
-    CASE 
+    CASE
         WHEN g.cut < 0 THEN 'A: 逃跑'
         ELSE 'B: 正常完成'
     END
@@ -1367,7 +1367,7 @@ ORDER BY r.reg_date, result, multi_level, is_escape;
 
 每一项分析发现按以下结构化模板输出，确保从数据到行动的完整闭环：
 
-```
+```text
 ┌──────────────────────────────────────────────────────────┐
 │ 分析发现卡片                                              │
 ├──────────────────────────────────────────────────────────┤
@@ -1511,6 +1511,7 @@ ORDER BY r.reg_date, result, multi_level, is_escape;
 > **文档版本**：v5.0
 > **创建日期**：2026-03-23
 > **更新说明**：
+>
 > - v2.0：整合同城游平台业务背景、斗地主具体玩法规则、数据表结构及取数 SQL
 > - v2.1：修正 magnification 字段含义；留存口径统一为游戏留存
 > - v3.0：重构 DWS 层架构；修正字段名；倍数相关字段直接读列
@@ -1523,9 +1524,12 @@ ORDER BY r.reg_date, result, multi_level, is_escape;
 >
 > **适用范围**：同城游·斗地主 APP 端新增用户留存专项分析
 > **关联文档**：
+>
 > - [`retention-by-mode.md`](retention-by-mode.md)（分玩法留存分析）
 > - [`retention-by-client-lang.md`](retention-by-client-lang.md)（分客户端语言留存分析）
+>
 > **使用建议**：
+>
 > 1. 确认 `dws_dq_app_daily_reg`、`dws_dq_daily_login`、`dws_ddz_daily_game` 三个 DWS 表已构建
 > 2. 运行 8.2 节留存分析 SQL，获取各维度留存率
 > 3. 运行 8.3 节游戏行为分析 SQL，分析首日行为与留存关系

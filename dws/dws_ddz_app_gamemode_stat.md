@@ -126,8 +126,8 @@ CREATE TABLE tcy_temp.dws_ddz_app_gamemode_stat (
   `total_fee_paid` int(11) NULL COMMENT "",
   `escape_count` int(11) NULL COMMENT "",
   `distinct_rooms` tinyint(4) NULL COMMENT ""
-) ENGINE=OLAP 
-DUPLICATE KEY(`app_id`, `play_mode`, `uid`, `dt`) 
+) ENGINE=OLAP
+DUPLICATE KEY(`app_id`, `play_mode`, `uid`, `dt`)
 COMMENT "游戏玩法用户对局聚合信息表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
@@ -135,7 +135,7 @@ PARTITION BY RANGE(`dt`) (
 DISTRIBUTED BY HASH(`uid`) BUCKETS 8
 PROPERTIES (
     "replication_num" = "1",
-    "colocate_with" = "group_daily_data", 
+    "colocate_with" = "group_daily_data",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
     "dynamic_partition.start" = "-80",
@@ -147,7 +147,7 @@ PROPERTIES (
 ### 增量数据导入
 
 ```sql
-insert into tcy_temp.dws_ddz_app_gamemode_stat 
+insert into tcy_temp.dws_ddz_app_gamemode_stat
 WITH game_enriched AS (
     SELECT
         *,
@@ -160,11 +160,11 @@ WITH game_enriched AS (
       AND play_mode IN (1, 2, 3, 5)
 ),
 streaks_calc AS (
-    SELECT 
+    SELECT
         uid, app_code, play_mode, result_id, COUNT(*) AS streak_len
     FROM (
-        SELECT 
-            uid, app_code, play_mode, result_id, 
+        SELECT
+            uid, app_code, play_mode, result_id,
             game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code, result_id ORDER BY game_seq) AS grp
         FROM game_enriched
         WHERE result_id IN (1, 2)
@@ -172,7 +172,7 @@ streaks_calc AS (
     GROUP BY uid, app_code, play_mode, result_id, grp
 ),
 max_streaks AS (
-    SELECT 
+    SELECT
         uid, app_code, play_mode,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
@@ -204,7 +204,7 @@ SELECT
     SUM(g.bomb_bet / 2),
     COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END),
     COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END),
-    MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END), 
+    MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END),
     MAX(CASE WHEN g.rank_desc = 1 THEN g.end_money END),
     MAX(g.end_money),
     MIN(g.end_money),
@@ -229,7 +229,7 @@ GROUP BY g.app_id, g.play_mode, g.uid, g.dt, g.app_code;
 
 ## 表数据流向
 
-```
+```text
 tcy_temp.dws_ddz_daily_game              （对局明细表）
             ↓  APP端+银子玩法聚合
 tcy_temp.dws_ddz_app_game_stat         （用户每日统计 - 混合玩法）
@@ -243,4 +243,5 @@ tcy_temp.dws_dq_daily_login                （每日登录聚合表）
 > **创建时间**：2026-04-13
 > **更新说明**：
 
+>
 > - v1.0：初始版本，从 `dws_ddz_app_game_stat` 拆分出按玩法维度的聚合表

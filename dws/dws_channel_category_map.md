@@ -19,10 +19,10 @@ CREATE TABLE tcy_temp.dws_channel_category_map (
   `channel_category_id` int(11) NULL COMMENT "分类ID",
   `channel_category_name` varchar(255) NULL COMMENT "分类名称",
   `channel_category_tag_id` tinyint(4) NULL COMMENT "标签ID"
-) ENGINE=OLAP 
+) ENGINE=OLAP
 DUPLICATE KEY(`channel_id`)
 COMMENT "渠道分类映射配置表"
-DISTRIBUTED BY HASH(`channel_id`) BUCKETS 1 
+DISTRIBUTED BY HASH(`channel_id`) BUCKETS 1
 PROPERTIES (
     "replication_num" = "1",
     "compression" = "LZ4"

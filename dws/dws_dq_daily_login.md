@@ -74,7 +74,7 @@ CREATE TABLE tcy_temp.dws_dq_daily_login (
   `login_date` date NOT NULL COMMENT "登录日期",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `first_login_time` datetime NULL,
-  `first_app_code` varchar(32) NULL, 
+  `first_app_code` varchar(32) NULL,
   `first_channel_id` int(11) NULL,
   `first_group_id` int(11) NULL,
   `last_login_time` datetime NULL,
@@ -88,7 +88,7 @@ CREATE TABLE tcy_temp.dws_dq_daily_login (
   `group_id_count` int(11) NOT NULL,
   `app_code_count` int(11) NOT NULL,
   `login_count` int(11) NOT NULL
-) ENGINE=OLAP 
+) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `login_date`, `uid`)
 COMMENT "玩家日登录汇总表"
 PARTITION BY RANGE(`login_date`) (
@@ -110,11 +110,11 @@ PROPERTIES (
 ## 数据SQL
 
 ```sql
-insert into tcy_temp.dws_dq_daily_login 
-SELECT 
+insert into tcy_temp.dws_dq_daily_login
+SELECT
     app_id,
     DATE(dt) AS login_date,
-    uid, 
+    uid,
     MIN(dt) AS first_login_time,
     MIN_BY(app_code, time_unix) AS first_app_code,
     MIN_BY(channel_id, time_unix) AS first_channel_id,
@@ -131,14 +131,14 @@ SELECT
     COUNT(DISTINCT app_code) AS app_code_count,
     COUNT(1) AS login_count
 FROM (
-    SELECT 
+    SELECT
         *,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), channel_id) AS cnt_channel,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), group_id) AS cnt_group,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), app_code) AS cnt_app_code
     FROM tcy_dwd.dwd_tcy_userlogin_si
     WHERE app_id = 1880053
-      AND dt >= '2026-02-10 00:00:00' 
+      AND dt >= '2026-02-10 00:00:00'
       AND dt <= '2026-04-20 23:59:59'
 ) t
 GROUP BY app_id, DATE(dt), uid;
@@ -190,7 +190,7 @@ ORDER BY 1 desc, 3 desc;
 ```sql
 -- 统计不同登录频次的用户分布
 SELECT
-    CASE 
+    CASE
         WHEN login_count = 1 THEN '0:1次'
         WHEN login_count BETWEEN 2 AND 5 THEN '1:2-5次'
         WHEN login_count BETWEEN 6 AND 10 THEN '2:6-10次'
@@ -200,8 +200,8 @@ SELECT
     COUNT(DISTINCT uid) AS user_count
 FROM tcy_temp.dws_dq_daily_login
 WHERE app_id = 1880053
-GROUP BY login_date, 
-    CASE 
+GROUP BY login_date,
+    CASE
         WHEN login_count = 1 THEN '0:1次'
         WHEN login_count BETWEEN 2 AND 5 THEN '1:2-5次'
         WHEN login_count BETWEEN 6 AND 10 THEN '2:6-10次'
@@ -223,7 +223,7 @@ SELECT
     l.login_count
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON r.uid = l.uid 
+    ON r.uid = l.uid
     AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
 WHERE r.reg_date = 20260210;
 ```
@@ -238,7 +238,7 @@ WHERE r.reg_date = 20260210;
 
 ## 表数据流向
 
-```
+```text
 tcy_dwd.dwd_tcy_userlogin_si        （原始登录日志，分钟级）
             ↓  聚合
 tcy_temp.dws_dq_daily_login         （每日登录多维度聚合）
@@ -249,4 +249,5 @@ tcy_temp.dws_dq_app_daily_reg          （APP 端注册用户宽表）
 > **文档版本**：v1.0
 > **创建时间**：2026-04-09
 > **更新说明**：
+>
 > - v1.0：初始版本，包含首次/最后/最频繁登录维度，以及统计维度

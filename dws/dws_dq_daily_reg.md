@@ -33,7 +33,7 @@ CREATE TABLE tcy_temp.dws_dq_daily_reg (
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `reg_date` DATE NOT NULL COMMENT "注册日期",
   `reg_datetime` datetime NULL COMMENT "注册具体时间"
-) ENGINE=OLAP 
+) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `uid`, `reg_date`)
 COMMENT "用户日注册汇总表"
 PARTITION BY RANGE(`reg_date`) (
@@ -45,9 +45,9 @@ PROPERTIES (
     "compression" = "LZ4",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80", 
-    "dynamic_partition.end" = "3",   
-    "dynamic_partition.prefix" = "p", 
+    "dynamic_partition.start" = "-80",
+    "dynamic_partition.end" = "3",
+    "dynamic_partition.prefix" = "p",
     "dynamic_partition.history_partition_num" = "80",
     "colocate_with" = "group_daily_data"
 );
@@ -58,7 +58,7 @@ ALTER TABLE tcy_temp.dws_dq_daily_reg SET ("colocate_with" = "group_daily_data")
 ### 增量数据导入
 
 ```sql
-INSERT INTO tcy_temp.dws_dq_daily_reg 
+INSERT INTO tcy_temp.dws_dq_daily_reg
 SELECT
     app_id,
     uid,
@@ -93,8 +93,8 @@ SELECT
     CASE WHEN l.uid IS NULL THEN 1 ELSE 0 END AS is_login_log_missing,
     COALESCE(l.login_count, 0) AS first_day_login_cnt
 FROM tcy_temp.dws_dq_daily_reg r
-LEFT JOIN tcy_temp.dws_dq_daily_login l 
-    ON r.uid = l.uid 
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON r.uid = l.uid
     AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
 LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON l.first_channel_id = chn.channel_id
@@ -107,7 +107,7 @@ WHERE r.app_id = 1880053
 在方案1的基础上，再通过 `channel_id` 关联渠道映射表获取分类：
 
 ```sql
-SELECT 
+SELECT
     r.uid,
     r.reg_date,
     r.reg_datetime,
@@ -118,10 +118,10 @@ SELECT
     CASE WHEN l.uid IS NULL THEN 1 ELSE 0 END AS is_login_log_missing,
     COALESCE(l.login_count, 0) AS first_day_login_cnt
 FROM tcy_temp.dws_dq_daily_reg r
-LEFT JOIN tcy_temp.dws_dq_daily_login l 
-    ON r.uid = l.uid 
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON r.uid = l.uid
     AND CAST(DATE_FORMAT(l.login_date, '%Y%m%d') AS INT) = r.reg_date
-LEFT JOIN tcy_temp.dws_channel_category_map chn 
+LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN 20260210 AND 20260210;

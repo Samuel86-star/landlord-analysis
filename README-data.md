@@ -2,7 +2,7 @@
 
 ## 目录结构
 
-```
+```text
 landlord-analysis/
 ├── README-data.md      # 本数据说明文件
 ├── raw/                # 原始数据目录
@@ -96,7 +96,7 @@ INNER JOIN hive_catalog_cdh5.dim.dim_channel_category t2
 ### 运维操作文档 (ops/)
 
 | 文档 | 描述 |
-|------|------|
+| ------ | ------ |
 | [daily_data_ops.md](ops/daily_data_ops.md) | 每日数据增量更新操作手册 |
 
 ## 版本历史
