@@ -17,6 +17,45 @@
 
 ---
 
+## SQL 编写规范
+
+### 别名规范
+
+- **必须有意义的别名**：使用 `reg` for `registration`、`st` for `stat` 等
+- **禁止使用无意义别名**：不要使用 `a`、`b`、`c`
+
+### 查询结构
+
+- **优先使用 CTE**：复杂逻辑使用 `WITH` 子句提高可读性
+- **JOIN 逻辑检查**：
+  - 验证 JOIN 是否导致数据膨胀（1:N vs 1:1）
+  - 计算转化/漏斗指标时使用 `LEFT JOIN` 保留"零活跃"用户
+- **安全优先**：
+  - 分区列必须包含 `WHERE` 条件（如 `dt`、`reg_date`）
+  - 使用 `COUNT(DISTINCT uid)` 而非 `COUNT(uid)`（除非明确需要计数重复）
+
+### StarRocks 优化
+
+| 场景 | 优化方案 |
+| ---- | -------- |
+| UV / 留存计算 | 使用 `BITMAP_UNION` 和 `BITMAP_COUNT` |
+| 获取首/末事件 | 使用 `MIN_BY(value, time)` |
+| 大表 JOIN | 使用 `Colocate Join` 或 `Bucket Shuffle Join` |
+| 慢查询分析 | 使用 `EXPLAIN ANALYZE`，检查 "Plan Search Timeout" 或 "Giant Dispatch" |
+
+### 分析工作流
+
+1. **明确分母**：计算百分比前，明确"总数"定义（如：全部注册用户 vs 全部登录用户）
+2. **处理零值**：除法运算必须处理 `NULL` 或 0 的情况，使用 `IFNULL` 或 `CASE WHEN`
+3. **时间序列分析**：确保日期连续，说明数据可能存在的空缺
+
+### 代码审查要点
+
+- 看到 `SELECT *` 时警告并建议指定具体列
+- 遇到"可用但慢"的 SQL，建议"预聚合"或"中间表"方案
+
+---
+
 ## 数据库表命名规范
 
 | 前缀 | 说明 | 示例 |
