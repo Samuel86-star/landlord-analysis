@@ -17,8 +17,9 @@
 9. [用户每日游戏行为聚合增量更新（按玩法拆分）](#9-用户每日游戏行为聚合增量更新按玩法拆分)
 10. [首日对局数据初始化](#10-首日对局数据初始化)
 11. [分玩法首日对局特征宽表初始化](#11-分玩法首日对局特征宽表初始化)
-12. [执行顺序与依赖关系](#12-执行顺序与依赖关系)
-13. [常见问题](#13-常见问题)
+12. [银子变动日志增量更新](#12-银子变动日志增量更新)
+13. [执行顺序与依赖关系](#13-执行顺序与依赖关系)
+14. [常见问题](#14-常见问题)
 
 ---
 
@@ -662,7 +663,59 @@ GROUP BY g.app_id, r.uid, g.play_mode, r.reg_date, r.reg_group_id, r.channel_cat
 
 ---
 
-## 12. 执行顺序与依赖关系
+## 12. 银子变动日志增量更新
+
+### 源表与目标表
+
+| 源表 | 目标表 |
+| ---- | ------ |
+| `tcy_dwd.dwd_silver_si`、`tcy_temp.dws_channel_category_map` | `tcy_temp.dws_dq_silver_logs` |
+
+### 增量更新 SQL
+
+```sql
+-- 斗地主银子变动日志增量导入
+-- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260429）
+INSERT INTO tcy_temp.dws_dq_silver_logs
+SELECT
+    STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
+    s.app_id,
+    s.game_id,
+    s.uid,
+    s.date_time,
+    s.op_id,
+    s.op_name,
+    s.op_type_id,
+    s.op_type_name,
+    s.silver_diff,
+    s.silver_deposit,
+    s.silver_amount,
+    s.silver_balance,
+    s.silver_initial,
+    s.group_id,
+    s.channel_id,
+    COALESCE(chn.channel_category_name, '其他') AS channel_category_name,
+    COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
+    s.source_guid
+FROM tcy_dwd.dwd_silver_si s
+LEFT JOIN tcy_temp.dws_channel_category_map chn
+    ON s.channel_id = chn.channel_id
+WHERE s.app_id = 1880053
+  AND s.game_id = 53
+  AND s.dt = ${DATE};
+```
+
+### 说明
+
+- 仅包含斗地主游戏数据（`app_id = 1880053`，`game_id = 53`）
+- `silver_diff` 含服务费，`silver_amount` 不含服务费，分析实际输赢时使用 `silver_amount`
+- 渠道分类通过 `LEFT JOIN dws_channel_category_map` 获取，未匹配到的标记为 `'其他'`
+- 依赖 `dws_channel_category_map` 维表，需在其之后执行
+- 详细文档：[dws/dws_dq_silver_logs.md](../dws/dws_dq_silver_logs.md)
+
+---
+
+## 13. 执行顺序与依赖关系
 
 ### 表依赖关系
 
@@ -671,6 +724,7 @@ dws_channel_category_map       ← 维表，优先初始化（其他表可能关
 dws_dq_daily_reg               ← 无依赖，可并行执行
 dws_dq_daily_login             ← 无依赖，可并行执行
 dws_ddz_daily_game             ← 无依赖，可并行执行
+dws_dq_silver_logs             ← 依赖 dws_channel_category_map
 dws_dq_app_daily_reg           ← 依赖 dws_dq_daily_reg, dws_dq_daily_login, dws_channel_category_map
 dws_app_game_active            ← 依赖 dws_ddz_daily_game
 dws_app_gamemode_active        ← 依赖 dws_ddz_daily_game
@@ -683,7 +737,7 @@ ddz_gamemode_firstday_features ← 依赖 dws_dq_app_daily_reg, dws_ddz_firstday
 ### 建议执行顺序
 
 1. **初始化阶段**：执行维表初始化（dws_channel_category_map）
-2. **每日凌晨 02:00**：并行执行基础表增量导入（dws_dq_daily_reg、dws_dq_daily_login、dws_ddz_daily_game）
+2. **每日凌晨 02:00**：并行执行基础表增量导入（dws_dq_daily_reg、dws_dq_daily_login、dws_ddz_daily_game、dws_dq_silver_logs）
 3. **每日凌晨 03:00**：执行依赖表增量导入（dws_dq_app_daily_reg、dws_app_game_active、dws_app_gamemode_active、dws_ddz_app_game_stat、dws_ddz_app_gamemode_stat）
 4. **首日数据构建**：执行首日对局数据和宽表初始化（dws_ddz_firstday_game、ddz_gamemode_firstday_features）
 5. **数据校验**：检查导入数据量是否符合预期
@@ -728,7 +782,7 @@ echo "数据增量更新完成！"
 
 ---
 
-## 13. 常见问题
+## 14. 常见问题
 
 ### Q1: 如何补历史数据？
 
@@ -764,6 +818,7 @@ SELECT COUNT(*) FROM tcy_temp.dws_app_gamemode_active WHERE dt = '2026-04-09' AN
 -- 删除某日重复数据后重新导入
 DELETE FROM tcy_temp.dws_dq_daily_reg WHERE reg_date = 20260409;
 DELETE FROM tcy_temp.dws_dq_daily_login WHERE login_date = '2026-04-09';
+DELETE FROM tcy_temp.dws_dq_silver_logs WHERE dt = '2026-04-09';
 DELETE FROM tcy_temp.dws_ddz_daily_game WHERE dt = 20260409;
 DELETE FROM tcy_temp.dws_app_game_active WHERE dt = '2026-04-09';
 DELETE FROM tcy_temp.dws_app_gamemode_active WHERE dt = '2026-04-09';
@@ -789,6 +844,7 @@ SELECT ... -- 见第1节初始化 SQL
 | dws_channel_category_map | 渠道分类维表 | 按需更新 | 无 |
 | dws_dq_daily_reg | 用户注册表 | 每日增量 | 无 |
 | dws_dq_daily_login | 用户每日登录聚合表 | 每日增量 | 无 |
+| dws_dq_silver_logs | 斗地主银子变动日志表 | 每日增量 | dws_channel_category_map |
 | dws_dq_app_daily_reg | APP端注册用户宽表 | 每日增量 | dws_dq_daily_reg, dws_dq_daily_login |
 | dws_ddz_daily_game | 对局明细表（统一字段） | 每日增量 | 无 |
 | dws_app_game_active | APP端每日游戏活跃用户表 | 每日增量 | dws_ddz_daily_game |
