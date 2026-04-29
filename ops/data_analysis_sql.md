@@ -21,30 +21,30 @@
 ### SQL 查询语句
 
 ```sql
-SELECT
+SELECT 
     t.reg_date,
     t.uid,
     t.reg_datetime,
     IF(t.game_datetime IS NULL, '未游戏', '已游戏') AS play_status,
-    t.*
+    t.* 
 FROM (
-    SELECT
+    SELECT 
         r.reg_date,
         r.reg_datetime,
         r.uid,
         g.game_datetime,
         ROW_NUMBER() OVER (PARTITION BY r.uid ORDER BY g.game_datetime ASC) as rank_num,
         g.room_id, g.play_mode, g.role, g.chairno, g.result_id, g.start_money,
-        g.end_money, diff_money_pre_tax, cut, safebox_deposit,
+        g.end_money, diff_money_pre_tax, cut, safebox_deposit, 
         magnification, magnification_stacked, real_magnification,
         grab_landlord_bet, complete_victory_bet, bomb_bet
     FROM tcy_temp.dws_dq_app_daily_reg r
-    LEFT JOIN tcy_temp.dws_ddz_firstday_game g
+    LEFT JOIN tcy_temp.dws_ddz_firstday_game g 
         ON r.app_id = g.app_id
-        AND r.uid = g.uid
-        AND r.reg_date = g.dt
+        AND r.uid = g.uid 
+        AND r.reg_date = g.dt 
     WHERE r.app_id = 1880053
-      AND r.reg_datetime BETWEEN '2026-04-27 18:00:00' AND '2026-04-27 23:59:59'
+      AND r.reg_datetime BETWEEN '2026-04-28 00:00:00' AND '2026-04-28 23:59:59'
 ) t
 WHERE t.rank_num <= 1
 ORDER BY t.reg_datetime DESC;
