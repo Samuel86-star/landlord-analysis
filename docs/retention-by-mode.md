@@ -190,29 +190,31 @@ PROPERTIES (
 );
 
 -- 分玩法首日宽表（核心分析数据集）
-insert into tcy_temp.ddz_gamemode_firstday_features
+INSERT INTO tcy_temp.ddz_gamemode_firstday_features
 WITH new_user_reg AS (
     SELECT uid, app_id, reg_date, reg_group_id, channel_category_name, channel_category_tag_id
     FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053 AND reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+    WHERE app_id = 1880053 
+      AND reg_date BETWEEN '2026-04-30' AND '2026-05-05'
 ),
 first_day_games_raw AS (
     SELECT
         c.app_id, c.uid, c.play_mode, c.result_id, c.timecost, c.magnification,
-        c.magnification_stacked, c.room_base, c.room_fee, c.diff_money_pre_tax, c.cut,
+        c.room_base, c.room_fee, c.diff_money_pre_tax, c.cut,
+        r.reg_date, r.reg_group_id, r.channel_category_name, r.channel_category_tag_id,
         ROW_NUMBER() OVER (PARTITION BY c.uid, c.play_mode ORDER BY c.game_datetime) AS mode_game_seq,
         ROW_NUMBER() OVER (PARTITION BY c.uid, c.play_mode ORDER BY c.game_datetime DESC) AS mode_game_seq_desc,
         ROW_NUMBER() OVER (PARTITION BY c.uid ORDER BY c.game_datetime) AS global_game_seq
     FROM tcy_temp.dws_ddz_firstday_game c
     INNER JOIN new_user_reg r ON c.app_id = r.app_id AND c.uid = r.uid AND c.dt = r.reg_date
     WHERE c.app_id = 1880053
-      AND c.dt BETWEEN '2026-02-10' AND '2026-04-22'
+      AND c.dt BETWEEN '2026-04-30' AND '2026-05-05'
       AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 ),
 mode_streaks AS (
     SELECT uid, play_mode,
-           MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
-           MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
+           MAX(IF(result_id = 1, streak_len, 0)) AS max_win_streak,
+           MAX(IF(result_id = 2, streak_len, 0)) AS max_lose_streak
     FROM (
         SELECT uid, play_mode, result_id, COUNT(*) AS streak_len
         FROM (
@@ -223,80 +225,66 @@ mode_streaks AS (
         ) t GROUP BY uid, play_mode, result_id, grp
     ) t2 GROUP BY uid, play_mode
 ),
-day_flags_global AS (
-    SELECT
-        r.uid,
-        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)   THEN 1 ELSE 0 END) AS is_ret_d1_global,
-        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 6 DAY)  THEN 1 ELSE 0 END) AS is_ret_d7_global,
-        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY) THEN 1 ELSE 0 END) AS is_ret_d30_global
-    FROM new_user_reg r
-    INNER JOIN tcy_temp.dws_app_game_active a ON r.app_id = a.app_id AND r.uid = a.uid
-    WHERE a.dt > r.reg_date
-      AND a.dt <= '2026-05-30'
-    GROUP BY r.uid
-),
-day_flags_agg AS (
+all_retention_agg AS (
     SELECT
         r.uid,
         a.play_mode,
-        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)   THEN 1 ELSE 0 END) AS is_ret_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 6 DAY)  THEN 1 ELSE 0 END) AS is_ret_d7,
-        MAX(CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY) THEN 1 ELSE 0 END) AS is_ret_d30
+        MAX(IF(a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY), 1, 0)) AS is_ret_d1,
+        MAX(IF(a.dt = DATE_ADD(r.reg_date, INTERVAL 6 DAY), 1, 0)) AS is_ret_d7,
+        MAX(IF(a.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY), 1, 0)) AS is_ret_d30
     FROM new_user_reg r
     INNER JOIN tcy_temp.dws_app_gamemode_active a ON r.app_id = a.app_id AND r.uid = a.uid
     WHERE a.app_id = 1880053
-      AND a.dt IN (r.reg_date, DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY), DATE_ADD(r.reg_date, INTERVAL 29 DAY))
+      AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY), DATE_ADD(r.reg_date, INTERVAL 29 DAY))
     GROUP BY r.uid, a.play_mode
 ),
-uid_mode_meta AS (
+base_agg AS (
     SELECT
-        uid,
-        COUNT(DISTINCT play_mode)           AS first_day_mode_count,
-        MIN_BY(play_mode, global_game_seq)  AS first_global_play_mode
-    FROM first_day_games_raw
-    GROUP BY uid
+        g.app_id, g.uid, g.play_mode, g.reg_date, g.reg_group_id,
+        g.channel_category_name, g.channel_category_tag_id,
+        COUNT(*) AS game_count,
+        SUM(g.timecost) AS total_play_seconds,
+        ROUND(AVG(g.timecost), 1) AS avg_timecost,
+        ROUND(AVG(g.magnification), 2) AS avg_magnification,
+        MAX(g.magnification) AS max_magnification,
+        SUM(g.diff_money_pre_tax) AS total_diff_money,
+        SUM(g.room_fee) AS total_room_fee,
+        SUM(IF(g.cut < 0, 1, 0)) AS escape_count,
+        MAX(IF(g.mode_game_seq = 1, g.result_id, NULL)) AS first_mode_game_result,
+        MAX(IF(g.mode_game_seq_desc = 1, g.result_id, NULL)) AS last_mode_game_result,
+        SUM(IF(g.result_id = 1, 1, 0)) AS win_count,
+        MAX(IF(g.global_game_seq = 1, g.play_mode, NULL)) AS mode_if_first_global
+    FROM first_day_games_raw g
+    GROUP BY g.app_id, g.uid, g.play_mode, g.reg_date, g.reg_group_id, g.channel_category_name, g.channel_category_tag_id
 )
 SELECT
-    g.app_id, r.uid, g.play_mode, r.reg_date, r.reg_group_id,
-    r.channel_category_name AS channel_category, r.channel_category_tag_id,
-    -- 对局量与时长
-    COUNT(*)                                                               AS game_count,
-    SUM(g.timecost)                                                        AS total_play_seconds,
-    ROUND(SUM(g.timecost) * 1.0 / NULLIF(COUNT(*), 0), 1)                 AS avg_timecost,
-    -- 倍数
-    ROUND(AVG(g.magnification), 2)                                         AS avg_magnification,
-    MAX(g.magnification)                                                   AS max_magnification,
-    -- 经济
-    SUM(g.diff_money_pre_tax)                                              AS total_diff_money,
-    SUM(g.room_fee)                                                        AS total_room_fee,
-    -- 逃跑
-    SUM(CASE WHEN g.cut < 0 THEN 1 ELSE 0 END)                            AS escape_count,
-    -- 首末局结果
-    MIN(CASE WHEN g.mode_game_seq = 1 THEN g.result_id END)               AS first_mode_game_result,
-    MAX(CASE WHEN g.mode_game_seq_desc = 1 THEN g.result_id END)          AS last_mode_game_result,
-    -- 胜负
-    SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END)                      AS win_count,
-    ROUND(SUM(CASE WHEN g.result_id = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS win_rate,
-    COALESCE(MAX(ms.max_win_streak), 0)                                    AS max_win_streak,
-    COALESCE(MAX(ms.max_lose_streak), 0)                                   AS max_lose_streak,
-    -- 玩法探索（uid 级，每行重复同一值）
-    MAX(um.first_day_mode_count)                                           AS first_day_mode_count,
-    MAX(um.first_global_play_mode)                                         AS first_global_play_mode,
-    -- 同玩法留存
-    COALESCE(MAX(df.is_ret_d1), 0)                                         AS is_retained_day1_same_mode,
-    COALESCE(MAX(df.is_ret_d7), 0)                                         AS is_retained_day7_same_mode,
-    COALESCE(MAX(df.is_ret_d30), 0)                                        AS is_retained_day30_same_mode,
-    -- 整体留存
-    COALESCE(MAX(dfg.is_ret_d1_global), 0)                                 AS is_retained_day1_global,
-    COALESCE(MAX(dfg.is_ret_d7_global), 0)                                 AS is_retained_day7_global,
-    COALESCE(MAX(dfg.is_ret_d30_global), 0)                                AS is_retained_day30_global
-FROM first_day_games_raw g
-INNER JOIN new_user_reg r ON g.uid = r.uid
-LEFT JOIN mode_streaks ms ON g.uid = ms.uid AND g.play_mode = ms.play_mode
-LEFT JOIN day_flags_agg df ON g.uid = df.uid AND g.play_mode = df.play_mode
-LEFT JOIN day_flags_global dfg ON g.uid = dfg.uid
-LEFT JOIN uid_mode_meta um ON g.uid = um.uid
-GROUP BY g.app_id, r.uid,  g.play_mode, r.reg_date, r.reg_group_id, r.channel_category_name, r.channel_category_tag_id;
+    ba.app_id, ba.uid, ba.play_mode, ba.reg_date, ba.reg_group_id,
+    ba.channel_category_name AS channel_category, ba.channel_category_tag_id,
+    ba.game_count,
+    ba.total_play_seconds,
+    ba.avg_timecost,
+    ba.avg_magnification,
+    ba.max_magnification,
+    ba.total_diff_money,
+    ba.total_room_fee,
+    ba.escape_count,
+    ba.first_mode_game_result,
+    ba.last_mode_game_result,
+    ba.win_count,
+    ROUND(ba.win_count * 100.0 / ba.game_count, 2) AS win_rate,
+    COALESCE(ms.max_win_streak, 0) AS max_win_streak,
+    COALESCE(ms.max_lose_streak, 0) AS max_lose_streak,
+    COUNT(ba.play_mode) OVER(PARTITION BY ba.uid) AS first_day_mode_count,
+    MAX(ba.mode_if_first_global) OVER(PARTITION BY ba.uid) AS first_global_play_mode,
+    COALESCE(ra.is_ret_d1, 0) AS is_retained_day1_same_mode,
+    COALESCE(ra.is_ret_d7, 0) AS is_retained_day7_same_mode,
+    COALESCE(ra.is_ret_d30, 0) AS is_retained_day30_same_mode,
+    MAX(COALESCE(ra.is_ret_d1, 0)) OVER(PARTITION BY ba.uid) AS is_retained_day1_global,
+    MAX(COALESCE(ra.is_ret_d7, 0)) OVER(PARTITION BY ba.uid) AS is_retained_day7_global,
+    MAX(COALESCE(ra.is_ret_d30, 0)) OVER(PARTITION BY ba.uid) AS is_retained_day30_global
+FROM base_agg ba
+LEFT JOIN mode_streaks ms ON ba.uid = ms.uid AND ba.play_mode = ms.play_mode
+LEFT JOIN all_retention_agg ra ON ba.uid = ra.uid AND ba.play_mode = ra.play_mode;
 ```
 
 ---

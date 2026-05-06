@@ -21,15 +21,17 @@
 
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
-| dt | date | 日期 | 2026-04-29 |
 | app_id | int | 应用 ID | 1880053 |
-| game_id | int | 游戏 ID | 53 |
+| dt | date | 日期 | 2026-04-29 |
 | uid | int | 玩家唯一标识 | 123456789 |
+| app_code | varchar(32) | 应用code | zgda（可以跟group_id结合一起区分客户端开发语言） |
+| game_id | int | 游戏 ID | 53 |
 | date_time | datetime | 操作时间 | 2026-04-29 10:30:00 |
 | op_id | int | 操作 ID | 1001 |
 | op_name | varchar(64) | 操作名称 | 对局输赢 |
 | op_type_id | int | 操作类型 ID | 1 |
 | op_type_name | varchar(64) | 操作类型名称 | 游戏 |
+| settlement_type | tinyint | 结算类型：0=经营支出, 1=经营收入, 2=充值直得, 3=保险箱, 4=机器人, 5=沙盒, 6=后备箱 | 1 |
 | silver_diff | int | 银两变化（含服务费），正=收入，负=支出 | 500 |
 | silver_deposit | int | 银两变化或服务费 | 500 |
 | silver_amount | int | 银两变化（不含服务费） | 400 |
@@ -40,6 +42,8 @@
 | channel_category_name | varchar(255) | 渠道分类名称 | 官方 |
 | channel_category_tag_id | tinyint | 渠道分类标签：1=官方，2=渠道，3=小游戏 | 1 |
 | source_guid | varchar(128) | 关联配置 ID | abc123 |
+| guid_title | varchar(255) | 发放名称（如 XX 活动、系统补偿等） | 新手礼包活动 |
+| guid_type | tinyint | 发放类型：0=免费，1=付费 | 0 |
 
 ## 分端规则
 
@@ -60,15 +64,17 @@
 
 ```sql
 CREATE TABLE tcy_temp.dws_dq_silver_logs (
-  `dt` date NOT NULL COMMENT "日期",
   `app_id` int(11) NOT NULL COMMENT "应用ID",
-  `game_id` int(11) NOT NULL COMMENT "游戏ID",
+  `dt` date NOT NULL COMMENT "日期",
   `uid` int(11) NOT NULL COMMENT "玩家ID",
+  `app_code` varchar(32) NULL COMMENT "应用code",
+  `game_id` int(11) NOT NULL COMMENT "游戏ID",
   `date_time` datetime NULL COMMENT "操作时间",
   `op_id` int(11) NULL COMMENT "操作ID",
   `op_name` varchar(64) NULL COMMENT "操作名称",
   `op_type_id` int(11) NULL COMMENT "操作类型ID",
   `op_type_name` varchar(64) NULL COMMENT "操作类型名称",
+  `settlement_type` tinyint(4) NULL COMMENT "结算类型：0经营支出,1经营收入,2充值直得,3保险箱,4机器人,5沙盒,6后备箱",
   `silver_diff` int(11) NULL COMMENT "银两变化（含服务费），正=收入，负=支出",
   `silver_deposit` int(11) NULL COMMENT "银两变化或服务费",
   `silver_amount` int(11) NULL COMMENT "银两变化（不含服务费）",
@@ -78,14 +84,16 @@ CREATE TABLE tcy_temp.dws_dq_silver_logs (
   `channel_id` int(11) NULL COMMENT "渠道号",
   `channel_category_name` varchar(255) NULL COMMENT "渠道分类名称",
   `channel_category_tag_id` tinyint(4) NULL COMMENT "渠道标签ID",
-  `source_guid` varchar(128) NULL COMMENT "关联配置ID"
+  `source_guid` varchar(128) NULL COMMENT "关联配置ID",
+  `guid_title` varchar(255) NULL COMMENT "发放名称",
+  `guid_type` tinyint(4) NULL COMMENT "发放类型：0免费，1付费"
 ) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `dt`, `uid`)
 COMMENT "斗地主玩家银子变动日志宽表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
 )
-DISTRIBUTED BY HASH(`uid`) BUCKETS 16
+DISTRIBUTED BY HASH(`uid`) BUCKETS 8
 PROPERTIES (
     "replication_num" = "1",
     "compression" = "LZ4",
@@ -104,15 +112,17 @@ PROPERTIES (
 -- 斗地主银子变动日志全量初始化
 INSERT INTO tcy_temp.dws_dq_silver_logs
 SELECT
-    STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
     s.app_id,
-    s.game_id,
+    STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
     s.uid,
+    s.app_code,
+    s.game_id,
     s.date_time,
     s.op_id,
     s.op_name,
     s.op_type_id,
     s.op_type_name,
+    COALESCE(op.settlement_type, -1) AS settlement_type,
     s.silver_diff,
     s.silver_deposit,
     s.silver_amount,
@@ -122,10 +132,16 @@ SELECT
     s.channel_id,
     COALESCE(chn.channel_category_name, '其他') AS channel_category_name,
     COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
-    s.source_guid
+    s.source_guid,
+    COALESCE(gc.guid_title, '') AS guid_title,
+    COALESCE(gc.guid_type, -1) AS guid_type
 FROM tcy_dwd.dwd_silver_si s
 LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON s.channel_id = chn.channel_id
+LEFT JOIN tcy_temp.dq_currency_op_config op
+    ON s.app_id = op.app_id AND s.op_id = op.op_id
+LEFT JOIN tcy_temp.dq_currency_guid_config gc
+    ON s.app_id = gc.app_id AND s.source_guid = gc.guid
 WHERE s.app_id = 1880053
   AND s.game_id = 53
   AND s.dt BETWEEN 20260101 AND 20260428;
@@ -138,15 +154,17 @@ WHERE s.app_id = 1880053
 -- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260429）
 INSERT INTO tcy_temp.dws_dq_silver_logs
 SELECT
-    STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
     s.app_id,
-    s.game_id,
+    STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
     s.uid,
+    s.app_code,
+    s.game_id,
     s.date_time,
     s.op_id,
     s.op_name,
     s.op_type_id,
     s.op_type_name,
+    COALESCE(op.settlement_type, -1) AS settlement_type,
     s.silver_diff,
     s.silver_deposit,
     s.silver_amount,
@@ -156,10 +174,16 @@ SELECT
     s.channel_id,
     COALESCE(chn.channel_category_name, '其他') AS channel_category_name,
     COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
-    s.source_guid
+    s.source_guid,
+    COALESCE(gc.guid_title, '') AS guid_title,
+    COALESCE(gc.guid_type, -1) AS guid_type
 FROM tcy_dwd.dwd_silver_si s
 LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON s.channel_id = chn.channel_id
+LEFT JOIN tcy_temp.dq_currency_op_config op
+    ON s.app_id = op.app_id AND s.op_id = op.op_id
+LEFT JOIN tcy_temp.dq_currency_guid_config gc
+    ON s.app_id = gc.app_id AND s.source_guid = gc.guid
 WHERE s.app_id = 1880053
   AND s.game_id = 53
   AND s.dt = ${DATE};
