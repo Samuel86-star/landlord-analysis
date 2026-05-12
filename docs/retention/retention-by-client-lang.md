@@ -2,7 +2,7 @@
 
 > 本文档聚焦**分客户端层**留存分析，对比 Cocos-Lua 与 Cocos-Creator 两个客户端版本的留存差异，重点识别稳定性问题信号。全局层分析见 [retention-global.md](retention-global.md)。
 >
-> **分析时间段**：2026-02-10 至 2026-04-22
+> **分析时间段**：2026-02-10 至 2026-05-10
 > **留存口径**：登录留存（分母为当日注册APP端用户，分子为第N日登录用户）
 
 ---
@@ -59,15 +59,11 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY client_lang;
 ```
-
-**典型发现**：
-- Cocos-Lua iOS 留存仅11.7%（客户端稳定性问题）
-- Cocos-Creator iOS 留存27.3%（差异15.6pp）
 
 ### 2.2 版本 × 设备类型留存
 
@@ -90,7 +86,7 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1, 2;
 ```
@@ -125,14 +121,10 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY client_lang, login_cnt_group;
 ```
-
-**高危信号**：
-- **0局/1局 + 多次登录（≥3）** → 强烈崩溃/掉线信号
-- 若某版本「3-5次登录」占比显著偏高 → 稳定性问题
 
 ### 3.2 分版本 × 逃跑率（检测操作体验问题）
 
@@ -157,7 +149,7 @@ LEFT JOIN tcy_temp.dws_ddz_app_game_stat g
     ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date AND g.game_count > 0
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY client_lang, escape_group;
 ```
@@ -183,7 +175,7 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 INNER JOIN tcy_temp.dws_ddz_firstday_game g
     ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
     AND g.robot != 1 AND g.play_mode IN (1, 2, 3)
-WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY client_lang, timecost_group;
 ```
@@ -210,20 +202,10 @@ LEFT JOIN tcy_temp.dws_dq_daily_login login1
     ON login1.app_id = r.app_id AND login1.uid = r.uid AND login1.login_date = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY reg_client_lang, switch_status;
 ```
-
----
-
-## 五、高危信号组合
-
-| 组合特征 | 留存预期 | 优先级 |
-| -------- | -------- | ------ |
-| **0局/1局 + 多次登录（≥3）** | 低（崩溃/掉线） | P0 |
-| **高逃跑率 + 异常时长** | 低（卡顿/操作问题） | P0 |
-| **版本切换（注册后立即切版本）** | 中（对原版本不满意） | P1 |
 
 ---
 

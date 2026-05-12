@@ -2,7 +2,7 @@
 
 > 本文档聚焦**分玩法层**留存分析，对比经典/不洗牌/癞子三种玩法的留存规律差异。全局层分析见 [retention-global.md](retention-global.md)。
 >
-> **分析时间段**：2026-02-10 至 2026-04-22
+> **分析时间段**：2026-02-10 至 2026-05-10
 > **留存口径**：玩法留存（分母为当日注册APP端用户，分子为第N日在同一玩法有对局用户）
 
 ---
@@ -28,14 +28,6 @@ CASE
     ELSE 0
 END AS play_mode
 ```
-
-### 1.2 玩法特点对比
-
-| 玩法 | 倍数特点 | 预期影响 |
-| ---- | -------- | -------- |
-| 经典 | 标准倍数机制，新手默认进入 | 基线水平，最大用户群 |
-| 不洗牌 | 牌序延续，连续好牌/差牌概率更高，倍数更极端 | 波动大，高倍局更频繁 |
-| 癞子 | 万能牌存在，炸弹概率大幅增加，公共倍数普遍偏高 | 倍数天然更高，经济波动剧烈 |
 
 ---
 
@@ -64,7 +56,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1;
 ```
@@ -88,7 +80,7 @@ FROM (
         AND g.robot != 1 AND g.play_mode IN (1, 2, 3)
     LEFT JOIN tcy_temp.dws_dq_daily_login l
         ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-    WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+    WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
     GROUP BY uid, r.reg_date, first_day_mode_count
 ) t
 GROUP BY main_play_mode, first_day_mode_count;
@@ -119,14 +111,10 @@ LEFT JOIN tcy_temp.dws_ddz_firstday_game g
     AND g.robot != 1 AND g.play_mode IN (1, 2, 3)
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY play_mode, multi_group;
 ```
-
-**对比要点**：
-- 经典最优区间：12-24x
-- 癞子是否右移到 24-48x？
 
 ### 3.2 分玩法 × 胜率分组留存
 
@@ -152,13 +140,10 @@ LEFT JOIN (
 ) g ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY play_mode, winrate_group;
 ```
-
-**对比要点**：
-- 癞子因随机性大，胜率对留存的影响是否弱于经典？
 
 ### 3.3 分玩法 × 对局数分组留存
 
@@ -184,9 +169,38 @@ LEFT JOIN (
 ) g ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY play_mode, game_count_group;
+```
+
+### 3.4 分玩法 × 炸弹使用/春天分组留存
+
+```sql
+SELECT
+    CASE g.play_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '癞子' ELSE '其他' END AS play_mode,
+    CASE 
+        WHEN bomb_count = 0 THEN 'A: 无炸弹'
+        WHEN bomb_count <= 2 THEN 'B: 1-2个炸弹'
+        WHEN bomb_count <= 5 THEN 'C: 3-5个炸弹'
+        ELSE 'D: >5个炸弹'
+    END AS bomb_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN (
+    SELECT app_id, uid, dt, play_mode, 
+           SUM(bomb_count) AS bomb_count
+    FROM tcy_temp.dws_ddz_firstday_game
+    WHERE robot != 1 AND play_mode IN (1, 2, 3)
+    GROUP BY app_id, uid, dt, play_mode
+) g ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+GROUP BY 1, 2
+ORDER BY play_mode, bomb_group;
 ```
 
 ---
@@ -208,7 +222,7 @@ FROM (
     LEFT JOIN tcy_temp.dws_ddz_firstday_game g
         ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
         AND g.robot != 1 AND g.play_mode IN (1, 2, 3)
-    WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+    WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
     GROUP BY r.uid, r.reg_date, r.app_id
 ) t
 LEFT JOIN tcy_temp.dws_dq_daily_login l
@@ -230,7 +244,7 @@ FROM (
     LEFT JOIN tcy_temp.dws_ddz_firstday_game g
         ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
         AND g.robot != 1 AND g.play_mode IN (1, 2, 3)
-    WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+    WHERE r.app_id = 1880053 AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
     GROUP BY r.uid, r.reg_date, r.app_id
 ) t
 LEFT JOIN tcy_temp.dws_dq_daily_login l
@@ -239,24 +253,9 @@ GROUP BY mode_count
 ORDER BY mode_count;
 ```
 
-**留存规律**：多玩法探索用户留存更高（兴趣广）
-
 ---
 
-## 五、对比分析要点
-
-| 对比维度 | 核心问题 |
-| -------- | -------- |
-| 倍数分布 | 癞子的基线倍数比经典高多少？"低倍"在癞子玩法中是否需要重新定义？ |
-| 高倍局占比 | 经典中仅经历高倍局的用户占比 vs 癞子中的占比差距多大？ |
-| 最优倍数区间 | 经典的最优是 12-24x，癞子是否右移到 24-48x？ |
-| 胜率影响 | 癞子因随机性大，胜率对留存的影响是否弱于经典？ |
-| 对局数拐点 | 癞子因单局时间可能更短，"玩够多少局"的留存拐点是否不同？ |
-| 经济波动 | 癞子/不洗牌的银子波动是否更剧烈？亏损阈值是否需要玩法差异化？ |
-
----
-
-## 六、专项分析索引
+## 五、专项分析索引
 
 | 专项文档 | 分析视角 | 核心问题 |
 | -------- | -------- | -------- |

@@ -2,7 +2,7 @@
 
 > 本文档聚焦**全局层**留存分析，覆盖用户属性视角和投入度视角的核心指标。分玩法/分客户端的专项分析见对应文档。
 >
-> **分析时间段**：2026-02-10 至 2026-04-22
+> **分析时间段**：2026-02-10 至 2026-05-10
 > **留存口径**：新增用户留存（分母为当日注册APP端用户，分子为第N日登录用户）
 
 ---
@@ -64,15 +64,11 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1, 2
 ORDER BY channel, r.reg_date DESC;
 ```
-
-**典型发现**：
-- 渠道质量差异显著，咪咕渠道留存仅5%（疑似刷量）
-- 官方渠道、华为、OPPO留存较高（20%+）
 
 ### 2.2 按设备类型留存
 
@@ -91,7 +87,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1;
 ```
@@ -113,14 +109,10 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1;
 ```
-
-**典型发现**：
-- Cocos-Lua iOS 留存仅11.7%（客户端稳定性问题）
-- Cocos-Creator iOS 留存27.3%（差异15.6pp）
 
 ---
 
@@ -148,23 +140,14 @@ FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g
     ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON l.app_id = r.app_id AND l.uid = l.uid
+    ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
 ```
-
-**留存规律**：
-| 对局数 | 留存预期 |
-| ---- | ---- |
-| 0局 | 极低（未进入游戏） |
-| 1局 | 低（仅体验首局） |
-| 2-5局 | 中等（初步形成体验） |
-| 6-10局 | **最优区间** |
-| 10局+ | 高但可能疲劳 |
 
 ### 3.2 首日胜率（胜负情绪线）
 
@@ -187,16 +170,12 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
   AND g.game_count > 0
 GROUP BY 1
 ORDER BY 1;
 ```
-
-**留存规律**：
-- 胜率<30% → 流失风险极高
-- 胜率与留存正相关
 
 ### 3.3 连败长度（关键流失预警）
 
@@ -213,20 +192,16 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_ddz_app_game_stat g
-    ON g.app_id = r.app_id AND g.uid = g.uid AND g.dt = r.reg_date
+    ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
 ```
-
-**留存规律**：
-- 连败≥3局 → 流失概率急剧上升
-- **关键干预点**
 
 ### 3.4 银子净变化（经济压力线）
 
@@ -251,15 +226,11 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
 ```
-
-**留存规律**：
-- 净亏损用户留存显著低于盈利用户
-- 巨亏（>-5万）是高危信号
 
 ### 3.5 破产状态
 
@@ -280,7 +251,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
@@ -306,15 +277,11 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
 ```
-
-**留存规律**：
-- 输高倍（>24x）是流失高危信号
-- 赢高倍留存提升
 
 ---
 
@@ -341,15 +308,11 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
 ```
-
-**留存规律**：
-- 倒U型关系，12-24x留存最优（非越高越好）
-- 需分玩法看（癞子天然高倍）
 
 ### 4.2 首局胜负
 
@@ -361,7 +324,7 @@ WITH first_game AS (
         MIN_BY(g.result_id, g.game_datetime) AS first_game_result
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-04-22'
+      AND g.dt BETWEEN '2026-02-10' AND '2026-05-10'
       AND g.robot != 1
       AND g.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND g.play_mode IN (1, 2, 3, 5)
@@ -382,13 +345,46 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
 ```
 
-### 4.3 逃跑行为
+### 4.3 角色扮演（地主/农民）胜率
+
+```sql
+SELECT
+    CASE 
+        WHEN g.landlord_count = 0 THEN 'A: 纯农民'
+        WHEN g.landlord_count * 1.0 / g.game_count < 0.3 THEN 'B: 偏好农民(<30%)'
+        WHEN g.landlord_count * 1.0 / g.game_count < 0.6 THEN 'C: 均衡(30-60%)'
+        ELSE 'D: 偏好地主(≥60%)'
+    END AS role_preference,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN (
+    SELECT app_id, uid, dt, 
+           COUNT(*) AS game_count,
+           SUM(CASE WHEN role = 1 THEN 1 ELSE 0 END) AS landlord_count
+    FROM tcy_temp.dws_ddz_firstday_game
+    WHERE robot != 1 AND play_mode IN (1, 2, 3)
+    GROUP BY app_id, uid, dt
+) g ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON l.app_id = r.app_id AND l.uid = r.uid
+    AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+  AND r.is_login_log_missing = 0
+  AND g.game_count > 0
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 4.4 逃跑行为
 
 ```sql
 SELECT
@@ -408,9 +404,40 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
   AND g.game_count > 0
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 4.5 房间底注体验
+
+```sql
+SELECT
+    CASE 
+        WHEN g.avg_room_base <= 50 THEN 'A: 极低底注(≤50)'
+        WHEN g.avg_room_base <= 200 THEN 'B: 低底注(51-200)'
+        WHEN g.avg_room_base <= 1000 THEN 'C: 中底注(201-1000)'
+        ELSE 'D: 高底注(>1000)'
+    END AS room_base_group,
+    COUNT(DISTINCT r.uid) AS user_count,
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN (
+    SELECT app_id, uid, dt, AVG(room_base) AS avg_room_base
+    FROM tcy_temp.dws_ddz_firstday_game
+    WHERE robot != 1 AND play_mode IN (1, 2, 3)
+    GROUP BY app_id, uid, dt
+) g ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON l.app_id = r.app_id AND l.uid = r.uid
+    AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+WHERE r.app_id = 1880053
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+  AND r.is_login_log_missing = 0
+  AND g.avg_room_base IS NOT NULL
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -440,19 +467,11 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-04-22'
+  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
   AND r.is_login_log_missing = 0
 GROUP BY 1
 ORDER BY 1;
 ```
-
-**高危组合优先级**：
-| 组合特征 | 留存预期 | 优先级 |
-| ---- | ---- | ---- |
-| 连败≥3 + 银子亏损 + 高倍局输 | 极低（<10%） | P0 |
-| 首局负 + 地主角色 + 高倍局 | 低（<15%） | P0 |
-| 0局/1局 + 多次登录（≥3） | 低（崩溃/掉线） | P0 |
-| 破产 + 不再对局 | 极低 | P1 |
 
 ---
 
