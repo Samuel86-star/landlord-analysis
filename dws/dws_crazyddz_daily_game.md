@@ -37,6 +37,9 @@
 | app_id | int | 应用 ID | 1880053 |
 | game_id | int | 游戏 ID | 521 |
 | game_date | date | 对局日期 | 2026-04-27 |
+| app_code | varchar(32) | 应用 code（配合 group_id 区分客户端开发语言） | zgda |
+| group_id | int | 平台分组 ID（区分 PC/APP/小游戏） | 6 |
+| channel_id | int | 渠道号 | 1001 |
 | room_id | int | 房间号 | 1001 |
 | room_base | int | 房间底分 | 100 |
 | room_fee | int | 房间服务费 | 10 |
@@ -46,7 +49,7 @@
 | start_money | bigint | 开局时货币数量 | 5000 |
 | end_datetime | datetime | 结束时间 | 2026-04-27 10:35:00 |
 | end_money | bigint | 结束时货币数量 | 5500 |
-| final_result_id | tinyint | 最终结果：1=获胜，2=失败 | 1 |
+| final_result_id | tinyint | 最终结果：1=获胜，2=失败，3=平局（row_end 的 result_id 为 NULL 时根据 game_deposit_diff 兜底推断） | 1 |
 | is_escape | int | 逃跑标记（<0 代表存在逃跑行为） | 0 |
 | settle_count | int | 结算轮数 | 3 |
 | total_magnification | bigint | 累计倍数 | 36 |
@@ -68,6 +71,9 @@ CREATE TABLE tcy_temp.dws_crazyddz_daily_game (
   `app_id` int(11) NULL COMMENT "应用ID",
   `game_id` int(11) NULL COMMENT "游戏ID",
   `game_date` date NULL COMMENT "对局日期",
+  `app_code` varchar(32) NULL COMMENT "应用code",
+  `group_id` int(11) NULL COMMENT "平台分组ID",
+  `channel_id` int(11) NULL COMMENT "渠道号",
   `room_id` int(11) NULL COMMENT "房间ID",
   `room_base` int(11) NULL COMMENT "房间底分",
   `room_fee` int(11) NULL COMMENT "房间服务费",
@@ -108,11 +114,16 @@ PROPERTIES (
 ### 初始化 SQL
 
 ```sql
+-- 初始化指定时间段内的对局数据
+-- 参数说明：
+--   ${START_DATE}：起始日期（int 格式，如 20260401）
+--   ${END_DATE}：结束日期（int 格式，如 20260427）
+-- 注意：ranked_combat 查询范围延伸到 ${END_DATE} + 1，以获取 END_DATE 当天开局、次日结束的跨天对局完整数据
 INSERT INTO tcy_temp.dws_crazyddz_daily_game
 WITH target_resultguids AS (
     SELECT DISTINCT resultguid 
     FROM tcy_dwd.dwd_game_combat_si
-    WHERE date = 20260427
+    WHERE date BETWEEN 20260401 AND 20260427
       AND app_id = 1880053 
       AND game_id = 521
       AND fee != 0 
@@ -120,11 +131,12 @@ WITH target_resultguids AS (
 ranked_combat AS (
     SELECT 
         dgcs.*,
-        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, uid ORDER BY dgcs.result_id, time_unix) as row_start,
-        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, uid ORDER BY dgcs.result_id desc, time_unix desc) as row_end
+        SUM(CASE WHEN dgcs.fee = 0 AND dgcs.cut = 0 AND dgcs.result_id IS NULL THEN dgcs.depositdiff ELSE 0 END) OVER(PARTITION BY dgcs.resultguid, dgcs.uid) AS game_win_loss,
+        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id, dgcs.time_unix) as row_start,
+        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id desc, dgcs.time_unix desc) as row_end
     FROM tcy_dwd.dwd_game_combat_si dgcs
     INNER JOIN target_resultguids tr ON dgcs.resultguid = tr.resultguid 
-    WHERE dgcs.date BETWEEN 20260427 AND 20260428
+    WHERE dgcs.date BETWEEN 20260401 AND 20260428
       AND dgcs.app_id = 1880053 
       AND dgcs.game_id = 521
 )
@@ -134,6 +146,9 @@ SELECT
     MAX(CASE WHEN row_start = 1 THEN app_id END) AS app_id,
     MAX(CASE WHEN row_start = 1 THEN game_id END) AS game_id,
     MAX(CASE WHEN row_start = 1 THEN DATE(dt) END) AS game_date,
+    MAX(CASE WHEN row_start = 1 THEN app_code END) AS app_code,
+    MAX(CASE WHEN row_start = 1 THEN group_id END) AS group_id,
+    MAX(CASE WHEN row_start = 1 THEN channel_id END) AS channel_id,
     MAX(CASE WHEN row_start = 1 THEN room_id END) AS room_id,
     MAX(CASE WHEN row_start = 1 THEN basedeposit END) AS room_base,
     MAX(CASE WHEN row_start = 1 THEN fee END) AS room_fee,
@@ -142,8 +157,17 @@ SELECT
     MAX(CASE WHEN row_start = 1 THEN FROM_UNIXTIME(time_unix / 1000) END) AS start_datetime,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) AS start_money,
     MAX(CASE WHEN row_end = 1 THEN FROM_UNIXTIME(time_unix / 1000) END) AS end_datetime,
-    MAX(CASE WHEN row_end = 1 THEN end_deposit END) AS end_money,
-    MAX(CASE WHEN row_end = 1 THEN result_id END) AS final_result_id,
+    MAX(CASE WHEN row_start = 1 THEN olddeposit END) + SUM(depositdiff) AS end_money,
+    MAX(
+        CASE WHEN row_end = 1 THEN 
+            CASE 
+                WHEN result_id IS NOT NULL THEN result_id
+                WHEN game_win_loss > 0 THEN 1
+                WHEN game_win_loss < 0 THEN 2
+                ELSE 3
+            END
+        END
+    ) AS final_result_id,
     MAX(CASE WHEN row_end = 1 THEN cut END) AS is_escape,
     COUNT(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN 1 END) AS settle_count,
     SUM(ABS(magnification)) AS total_magnification,
@@ -151,8 +175,8 @@ SELECT
     SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END) AS game_deposit_diff,
     SUM(depositdiff) AS total_deposit_diff,
     SUM(timecost) AS total_time_cost,
-    GROUP_CONCAT(CAST(depositdiff AS STRING) ORDER BY result_id, time_unix ASC SEPARATOR '|') AS deposit_diff_path,
-    GROUP_CONCAT(CAST(magnification AS STRING) ORDER BY result_id, time_unix ASC SEPARATOR '|') AS deposit_magnification_path
+    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(depositdiff AS STRING) END ORDER BY time_unix ASC SEPARATOR '|') AS deposit_diff_path,
+    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(magnification AS STRING) END ORDER BY time_unix ASC SEPARATOR '|') AS deposit_magnification_path
 FROM ranked_combat
 GROUP BY resultguid, uid;
 ```
@@ -174,8 +198,9 @@ WITH target_resultguids AS (
 ranked_combat AS (
     SELECT 
         dgcs.*,
-        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, uid ORDER BY dgcs.result_id, time_unix) as row_start,
-        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, uid ORDER BY dgcs.result_id desc, time_unix desc) as row_end
+        SUM(CASE WHEN dgcs.fee = 0 AND dgcs.cut = 0 AND dgcs.result_id IS NULL THEN dgcs.depositdiff ELSE 0 END) OVER(PARTITION BY dgcs.resultguid, dgcs.uid) AS game_win_loss,
+        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id, dgcs.time_unix) as row_start,
+        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id desc, dgcs.time_unix desc) as row_end
     FROM tcy_dwd.dwd_game_combat_si dgcs
     INNER JOIN target_resultguids tr ON dgcs.resultguid = tr.resultguid 
     WHERE dgcs.date BETWEEN ${DATE} AND ${DATE} + 1
@@ -188,6 +213,9 @@ SELECT
     MAX(CASE WHEN row_start = 1 THEN app_id END) AS app_id,
     MAX(CASE WHEN row_start = 1 THEN game_id END) AS game_id,
     MAX(CASE WHEN row_start = 1 THEN DATE(dt) END) AS game_date,
+    MAX(CASE WHEN row_start = 1 THEN app_code END) AS app_code,
+    MAX(CASE WHEN row_start = 1 THEN group_id END) AS group_id,
+    MAX(CASE WHEN row_start = 1 THEN channel_id END) AS channel_id,
     MAX(CASE WHEN row_start = 1 THEN room_id END) AS room_id,
     MAX(CASE WHEN row_start = 1 THEN basedeposit END) AS room_base,
     MAX(CASE WHEN row_start = 1 THEN fee END) AS room_fee,
@@ -196,8 +224,17 @@ SELECT
     MAX(CASE WHEN row_start = 1 THEN FROM_UNIXTIME(time_unix / 1000) END) AS start_datetime,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) AS start_money,
     MAX(CASE WHEN row_end = 1 THEN FROM_UNIXTIME(time_unix / 1000) END) AS end_datetime,
-    MAX(CASE WHEN row_end = 1 THEN end_deposit END) AS end_money,
-    MAX(CASE WHEN row_end = 1 THEN result_id END) AS final_result_id,
+    MAX(CASE WHEN row_start = 1 THEN olddeposit END) + SUM(depositdiff) AS end_money,
+    MAX(
+        CASE WHEN row_end = 1 THEN 
+            CASE 
+                WHEN result_id IS NOT NULL THEN result_id
+                WHEN game_win_loss > 0 THEN 1
+                WHEN game_win_loss < 0 THEN 2
+                ELSE 3
+            END
+        END
+    ) AS final_result_id,
     MAX(CASE WHEN row_end = 1 THEN cut END) AS is_escape,
     COUNT(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN 1 END) AS settle_count,
     SUM(ABS(magnification)) AS total_magnification,
@@ -205,8 +242,8 @@ SELECT
     SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END) AS game_deposit_diff,
     SUM(depositdiff) AS total_deposit_diff,
     SUM(timecost) AS total_time_cost,
-    GROUP_CONCAT(CAST(depositdiff AS STRING) ORDER BY result_id, time_unix ASC SEPARATOR '|') AS deposit_diff_path,
-    GROUP_CONCAT(CAST(magnification AS STRING) ORDER BY result_id, time_unix ASC SEPARATOR '|') AS deposit_magnification_path
+    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(depositdiff AS STRING) END ORDER BY time_unix ASC SEPARATOR '|') AS deposit_diff_path,
+    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(magnification AS STRING) END ORDER BY time_unix ASC SEPARATOR '|') AS deposit_magnification_path
 FROM ranked_combat
 GROUP BY resultguid, uid;
 ```
@@ -278,6 +315,136 @@ ORDER BY settle_count;
    - `game_deposit_diff`：游戏内货币变化累计（不含服务费）
    - `total_deposit_diff`：总货币变化（含服务费）
 5. **机器人标记**：分析时建议添加 `robot != 1` 条件过滤真人数据
+6. **跨 app_id 共服**：疯狂斗地主与其他 app（如 `app_id = 1880521`）共服，同一个 `resultguid` 下的 3 位玩家可能分别归属不同 `app_id`。本表仅收集 `app_id = 1880053` 的玩家行数，即按 `resultguid` 聚合的 uid 数量可能小于 3。因此**不可通过 `COUNT(DISTINCT uid) = 3` 来校验桌级完整性**。如需完整桌级数据，应直接查询源表 `dwd_game_combat_si`。
+7. **`final_result_id` 兜底逻辑**：部分对局（如中途退出、异常结束）在 `row_end = 1` 的 `result_id` 为 NULL，此时通过 `game_deposit_diff`（不含服务费的游戏内货币变化累计）兜底判定：
+   - `game_deposit_diff > 0` → `final_result_id = 1`（获胜）
+   - `game_deposit_diff < 0` → `final_result_id = 2`（失败）
+   - `game_deposit_diff = 0` → `final_result_id = 3`（平局）
+
+## 数据校验 SQL
+
+> 本节提供一组必要的数据校验 SQL，用于在初始化或增量更新后验证数据正确性。建议每次导入后依次执行。
+
+### 1. 主键唯一性校验
+
+> **校验目标**：`(resultguid, uid)` 应为全表唯一。若存在重复，说明增量导入或多轮聚合逻辑异常。
+
+```sql
+SELECT resultguid, uid, COUNT(*) AS cnt
+FROM tcy_temp.dws_crazyddz_daily_game
+WHERE game_date = '2026-04-27'
+GROUP BY resultguid, uid
+HAVING COUNT(*) > 1
+LIMIT 10;
+```
+
+> **期望结果**：返回 0 行。
+
+### 2. 源数据 vs 目标数据对局数对比
+
+> **校验目标**：源表中当日有服务费（`fee != 0`）的对局数量应与目标表当日对局数量一致，防止跨天对局遗漏或重复计算。
+
+```sql
+WITH src AS (
+    SELECT COUNT(DISTINCT resultguid) AS src_cnt
+    FROM tcy_dwd.dwd_game_combat_si
+    WHERE date = 20260427
+      AND app_id = 1880053
+      AND game_id = 521
+      AND fee != 0
+),
+tgt AS (
+    SELECT COUNT(DISTINCT resultguid) AS tgt_cnt
+    FROM tcy_temp.dws_crazyddz_daily_game
+    WHERE game_date = '2026-04-27'
+)
+SELECT src.src_cnt, tgt.tgt_cnt, (src.src_cnt - tgt.tgt_cnt) AS diff
+FROM src, tgt;
+```
+
+> **期望结果**：`diff = 0`（完全一致）。
+
+### 3. 必填字段非空校验
+
+> **校验目标**：`start_datetime`、`end_datetime`、`final_result_id`、`start_money`、`end_money` 等关键聚合字段应非空。若出现 NULL，说明 `row_start` 或 `row_end` 未能识别开局/结束记录。
+
+```sql
+SELECT
+    SUM(CASE WHEN start_datetime IS NULL THEN 1 ELSE 0 END) AS null_start_dt,
+    SUM(CASE WHEN end_datetime IS NULL THEN 1 ELSE 0 END) AS null_end_dt,
+    SUM(CASE WHEN final_result_id IS NULL THEN 1 ELSE 0 END) AS null_final_result,
+    SUM(CASE WHEN start_money IS NULL THEN 1 ELSE 0 END) AS null_start_money,
+    SUM(CASE WHEN end_money IS NULL THEN 1 ELSE 0 END) AS null_end_money,
+    COUNT(*) AS total_cnt
+FROM tcy_temp.dws_crazyddz_daily_game
+WHERE game_date = '2026-04-27';
+```
+
+> **期望结果**：所有 `null_*` 字段应为 0。
+
+### 4. 货币闭环校验
+
+> **校验目标**：`end_money - start_money` 应约等于 `total_deposit_diff`（允许因 fee 字段归集差异产生小幅误差）。若误差过大，说明聚合逻辑异常。
+
+```sql
+SELECT
+    resultguid,
+    uid,
+    start_money,
+    end_money,
+    total_deposit_diff,
+    (end_money - start_money) AS money_delta,
+    (end_money - start_money - total_deposit_diff) AS residual
+FROM tcy_temp.dws_crazyddz_daily_game
+WHERE game_date = '2026-04-27'
+  AND ABS(end_money - start_money - total_deposit_diff) > 1
+LIMIT 10;
+```
+
+> **期望结果**：返回 0 行（所有对局货币闭环）。
+
+### 5. 多轮结算路径一致性校验
+
+> **校验目标**：`deposit_diff_path` 和 `deposit_magnification_path` 中用 `|` 分隔的段数应等于 `settle_count`。若不一致，说明 `GROUP_CONCAT` 聚合范围与 `settle_count` 统计范围不一致。
+
+```sql
+SELECT
+    resultguid,
+    uid,
+    settle_count,
+    (LENGTH(deposit_diff_path) - LENGTH(REPLACE(deposit_diff_path, '|', '')) + 1) AS diff_path_seg,
+    (LENGTH(deposit_magnification_path) - LENGTH(REPLACE(deposit_magnification_path, '|', '')) + 1) AS mag_path_seg
+FROM tcy_temp.dws_crazyddz_daily_game
+WHERE game_date = '2026-04-27'
+  AND settle_count > 0
+  AND (
+      (LENGTH(deposit_diff_path) - LENGTH(REPLACE(deposit_diff_path, '|', '')) + 1) <> settle_count
+      OR
+      (LENGTH(deposit_magnification_path) - LENGTH(REPLACE(deposit_magnification_path, '|', '')) + 1) <> settle_count
+  )
+LIMIT 10;
+```
+
+> **期望结果**：返回 0 行。
+
+### 6. 跨天对局识别
+
+> **校验目标**：识别跨天对局并统计其占比，确保跨天对局被正确收集（`game_date` 为开局日期，但 `end_datetime` 晚于次日 00:00）。
+
+```sql
+SELECT
+    game_date,
+    COUNT(*) AS total_games,
+    SUM(CASE WHEN DATE(end_datetime) > game_date THEN 1 ELSE 0 END) AS cross_day_games,
+    ROUND(SUM(CASE WHEN DATE(end_datetime) > game_date THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS cross_day_pct
+FROM tcy_temp.dws_crazyddz_daily_game
+WHERE game_date = '2026-04-27'
+GROUP BY game_date;
+```
+
+> **期望结果**：`cross_day_pct` 通常 <5%。若显著偏高，需检查源表 `dwd_game_combat_si` 是否存在异常长对局。
+
+---
 
 ## 表数据流向
 
