@@ -18,8 +18,9 @@
 10. [首日对局数据初始化](#10-首日对局数据初始化)
 11. [分玩法首日对局特征宽表初始化](#11-分玩法首日对局特征宽表初始化)
 12. [银子变动日志增量更新](#12-银子变动日志增量更新)
-13. [执行顺序与依赖关系](#13-执行顺序与依赖关系)
-14. [常见问题](#14-常见问题)
+13. [疯狂斗地主对局数据增量更新](#13-疯狂斗地主对局数据增量更新)
+14. [执行顺序与依赖关系](#14-执行顺序与依赖关系)
+15. [常见问题](#15-常见问题)
 
 ---
 
@@ -713,7 +714,94 @@ WHERE s.app_id = 1880053
 
 ---
 
-## 13. 执行顺序与依赖关系
+## 13. 疯狂斗地主对局数据增量更新
+
+### 源表与目标表
+
+| 源表 | 目标表 |
+| ---- | ------ |
+| `tcy_dwd.dwd_game_combat_si` | `tcy_temp.dws_crazyddz_daily_game` |
+
+### 增量更新 SQL
+
+```sql
+-- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260511）
+-- 注意：查询范围包含 ${DATE} 和 ${DATE+1}，以获取跨天对局的完整数据
+INSERT INTO tcy_temp.dws_crazyddz_daily_game
+WITH target_resultguids AS (
+    SELECT DISTINCT resultguid
+    FROM tcy_dwd.dwd_game_combat_si
+    WHERE date = 20260511
+      AND app_id = 1880053
+      AND game_id = 521
+      AND fee != 0
+),
+ranked_combat AS (
+    SELECT
+        dgcs.*,
+        SUM(CASE WHEN dgcs.fee = 0 AND dgcs.cut = 0 AND dgcs.result_id IS NULL THEN dgcs.depositdiff ELSE 0 END) OVER(PARTITION BY dgcs.resultguid, dgcs.uid) AS game_win_loss,
+        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id, dgcs.time_unix) as row_start,
+        ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id desc, dgcs.time_unix desc) as row_end
+    FROM tcy_dwd.dwd_game_combat_si dgcs
+    INNER JOIN target_resultguids tr ON dgcs.resultguid = tr.resultguid
+    WHERE dgcs.date BETWEEN 20260511 AND 20260512
+      AND dgcs.app_id = 1880053
+      AND dgcs.game_id = 521
+)
+SELECT
+    resultguid,
+    uid,
+    MAX(CASE WHEN row_start = 1 THEN app_id END) AS app_id,
+    MAX(CASE WHEN row_start = 1 THEN game_id END) AS game_id,
+    MAX(CASE WHEN row_start = 1 THEN DATE(dt) END) AS game_date,
+    MAX(CASE WHEN row_start = 1 THEN app_code END) AS app_code,
+    MAX(CASE WHEN row_start = 1 THEN group_id END) AS group_id,
+    MAX(CASE WHEN row_start = 1 THEN channel_id END) AS channel_id,
+    MAX(CASE WHEN row_start = 1 THEN room_id END) AS room_id,
+    MAX(CASE WHEN row_start = 1 THEN basedeposit END) AS room_base,
+    MAX(CASE WHEN row_start = 1 THEN fee END) AS room_fee,
+    MAX(CASE WHEN row_start = 1 THEN chairno END) AS chairno,
+    MAX(CASE WHEN row_start = 1 THEN robot END) AS robot,
+    MAX(CASE WHEN row_start = 1 THEN FROM_UNIXTIME(time_unix / 1000) END) AS start_datetime,
+    MAX(CASE WHEN row_start = 1 THEN olddeposit END) AS start_money,
+    MAX(CASE WHEN row_end = 1 THEN FROM_UNIXTIME(time_unix / 1000) END) AS end_datetime,
+    MAX(CASE WHEN row_start = 1 THEN olddeposit END) + SUM(depositdiff) AS end_money,
+    MAX(
+        CASE WHEN row_end = 1 THEN
+            CASE
+                WHEN result_id IS NOT NULL THEN result_id
+                WHEN game_win_loss > 0 THEN 1
+                WHEN game_win_loss < 0 THEN 2
+                ELSE 3
+            END
+        END
+    ) AS final_result_id,
+    MAX(CASE WHEN row_end = 1 THEN cut END) AS is_escape,
+    COUNT(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN 1 END) AS settle_count,
+    SUM(ABS(magnification)) AS total_magnification,
+    SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN abs(depositdiff) END) AS game_deposit_gdp,
+    SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END) AS game_deposit_diff,
+    SUM(depositdiff) AS total_deposit_diff,
+    SUM(timecost) AS total_time_cost,
+    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(depositdiff AS STRING) END ORDER BY time_unix ASC SEPARATOR '|') AS deposit_diff_path,
+    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(magnification AS STRING) END ORDER BY time_unix ASC SEPARATOR '|') AS deposit_magnification_path
+FROM ranked_combat
+GROUP BY resultguid, uid;
+```
+
+### 说明
+
+- 仅包含疯狂斗地主游戏数据（`app_id = 1880053`，`game_id = 521`）
+- **跨天对局处理**：`target_resultguids` 定位当日有服务费（`fee != 0`）的对局 GUID，`ranked_combat` 查询范围延伸到 `${DATE} + 1`，以捕获跨天对局的完整数据
+- **`final_result_id` 兜底**：当 `row_end = 1` 的 `result_id` 为 NULL 时，根据 `game_win_loss`（游戏内货币变化累计）符号兜底推断胜/负/平
+- **路径字段**：`deposit_diff_path` 和 `deposit_magnification_path` 仅保留结算行（`fee = 0 AND result_id IS NULL`），与 `settle_count` 保持一致
+- **跨 app_id 共服**：疯狂斗地主与其他 app（如 `app_id = 1880521`）共服，本表仅收集 `app_id = 1880053` 的玩家行数
+- 建议每日凌晨执行，导入前一日数据
+- 详细文档：[dws/dws_crazyddz_daily_game.md](../dws/dws_crazyddz_daily_game.md)
+
+---
+
+## 14. 执行顺序与依赖关系
 
 ### 表依赖关系
 
@@ -722,6 +810,7 @@ dws_channel_category_map       ← 维表，优先初始化（其他表可能关
 dws_dq_daily_reg               ← 无依赖，可并行执行
 dws_dq_daily_login             ← 无依赖，可并行执行
 dws_ddz_daily_game             ← 无依赖，可并行执行
+dws_crazyddz_daily_game        ← 无依赖，可并行执行
 dws_dq_silver_logs             ← 依赖 dws_channel_category_map
 dws_dq_app_daily_reg           ← 依赖 dws_dq_daily_reg, dws_dq_daily_login, dws_channel_category_map
 dws_app_game_active            ← 依赖 dws_ddz_daily_game
@@ -735,7 +824,7 @@ ddz_gamemode_firstday_features ← 依赖 dws_dq_app_daily_reg, dws_ddz_firstday
 ### 建议执行顺序
 
 1. **初始化阶段**：执行维表初始化（dws_channel_category_map）
-2. **每日凌晨 02:00**：并行执行基础表增量导入（dws_dq_daily_reg、dws_dq_daily_login、dws_ddz_daily_game、dws_dq_silver_logs）
+2. **每日凌晨 02:00**：并行执行基础表增量导入（dws_dq_daily_reg、dws_dq_daily_login、dws_ddz_daily_game、dws_crazyddz_daily_game、dws_dq_silver_logs）
 3. **每日凌晨 03:00**：执行依赖表增量导入（dws_dq_app_daily_reg、dws_app_game_active、dws_app_gamemode_active、dws_ddz_app_game_stat、dws_ddz_app_gamemode_stat）
 4. **首日数据构建**：执行首日对局数据和宽表初始化（dws_ddz_firstday_game、ddz_gamemode_firstday_features）
 5. **数据校验**：检查导入数据量是否符合预期
@@ -780,7 +869,7 @@ echo "数据增量更新完成！"
 
 ---
 
-## 14. 常见问题
+## 15. 常见问题
 
 ### Q1: 如何补历史数据？
 
@@ -845,6 +934,7 @@ SELECT ... -- 见第1节初始化 SQL
 | dws_dq_silver_logs | 斗地主银子变动日志表 | 每日增量 | dws_channel_category_map |
 | dws_dq_app_daily_reg | APP端注册用户宽表 | 每日增量 | dws_dq_daily_reg, dws_dq_daily_login |
 | dws_ddz_daily_game | 对局明细表（统一字段） | 每日增量 | 无 |
+| dws_crazyddz_daily_game | 疯狂斗地主对局战绩表 | 每日增量 | 无 |
 | dws_app_game_active | APP端每日游戏活跃用户表 | 每日增量 | dws_ddz_daily_game |
 | dws_app_gamemode_active | APP端每日游戏活跃用户×玩法表 | 每日增量 | dws_ddz_daily_game |
 | dws_ddz_app_game_stat | APP端每日游戏行为统计（混合玩法） | 每日增量 | dws_ddz_daily_game |
