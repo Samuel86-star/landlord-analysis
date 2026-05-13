@@ -275,6 +275,128 @@ GROUP BY platform
 ORDER BY user_count DESC;
 ```
 
+## 数据校验 SQL
+
+> 本节提供一组数据校验 SQL，用于在初始化或增量更新后验证数据正确性。建议每次导入后依次执行。
+
+### 1. 源数据 vs 目标数据行数对比
+
+> **校验目标**：源表 `dwd_silver_si` 中满足 `app_id = 1880053 AND game_id = 53` 的行数应与目标表当日行数一致，防止数据遗漏或重复。
+
+```sql
+WITH src AS (
+    SELECT COUNT(*) AS src_cnt
+    FROM tcy_dwd.dwd_silver_si
+    WHERE app_id = 1880053
+      AND game_id = 53
+      AND dt = 20260429
+),
+tgt AS (
+    SELECT COUNT(*) AS tgt_cnt
+    FROM tcy_temp.dws_dq_silver_logs
+    WHERE dt = '2026-04-29'
+)
+SELECT src.src_cnt, tgt.tgt_cnt, (src.src_cnt - tgt.tgt_cnt) AS diff
+FROM src, tgt;
+```
+
+> **期望结果**：`diff = 0`（完全一致）。
+
+### 2. 必填字段非空校验
+
+> **校验目标**：`app_id`、`dt`、`uid`、`game_id`、`date_time` 等关键字段应非空。若出现 NULL，说明源表数据异常或 INSERT 逻辑有问题。
+
+```sql
+SELECT
+    SUM(CASE WHEN app_id IS NULL THEN 1 ELSE 0 END) AS null_app_id,
+    SUM(CASE WHEN dt IS NULL THEN 1 ELSE 0 END) AS null_dt,
+    SUM(CASE WHEN uid IS NULL THEN 1 ELSE 0 END) AS null_uid,
+    SUM(CASE WHEN game_id IS NULL THEN 1 ELSE 0 END) AS null_game_id,
+    SUM(CASE WHEN date_time IS NULL THEN 1 ELSE 0 END) AS null_date_time,
+    COUNT(*) AS total_cnt
+FROM tcy_temp.dws_dq_silver_logs
+WHERE dt = '2026-04-29';
+```
+
+> **期望结果**：所有 `null_*` 字段应为 0。
+
+### 3. 银子余额连续性校验
+
+> **校验目标**：单笔流水 `silver_initial + silver_diff` 应等于 `silver_balance`（账户余额变动应闭环）。若不相等，说明源表数据质量有问题。
+
+```sql
+SELECT
+    uid,
+    date_time,
+    op_name,
+    silver_initial,
+    silver_diff,
+    silver_balance,
+    (silver_initial + silver_diff - silver_balance) AS residual
+FROM tcy_temp.dws_dq_silver_logs
+WHERE dt = '2026-04-29'
+  AND ABS(silver_initial + silver_diff - silver_balance) > 0
+LIMIT 10;
+```
+
+> **期望结果**：返回 0 行。若有大量不闭环记录，需排查源表 `dwd_silver_si` 数据质量。
+
+### 4. 服务费拆分一致性校验
+
+> **校验目标**：`silver_diff`（含服务费）应等于 `silver_amount`（不含服务费）与 `silver_deposit`（服务费部分）的代数和。
+
+```sql
+SELECT
+    uid,
+    date_time,
+    op_name,
+    silver_diff,
+    silver_amount,
+    silver_deposit,
+    (silver_diff - silver_amount - silver_deposit) AS residual
+FROM tcy_temp.dws_dq_silver_logs
+WHERE dt = '2026-04-29'
+  AND ABS(silver_diff - silver_amount - silver_deposit) > 0
+LIMIT 10;
+```
+
+> **期望结果**：返回 0 行。若存在偏差，说明源表字段定义与假设不符，需重新确认字段含义。
+
+### 5. 维表匹配覆盖率校验
+
+> **校验目标**：渠道分类、结算类型、奖池配置均通过 `LEFT JOIN` 维表获取，若未匹配比例过高，说明维表需要更新。
+
+```sql
+SELECT
+    COUNT(*) AS total_cnt,
+    ROUND(SUM(CASE WHEN channel_category_name = '其他' THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS unmatched_channel_pct,
+    ROUND(SUM(CASE WHEN settlement_type = -1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS unmatched_settlement_pct,
+    ROUND(SUM(CASE WHEN guid_type = -1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS unmatched_guid_pct
+FROM tcy_temp.dws_dq_silver_logs
+WHERE dt = '2026-04-29';
+```
+
+> **期望结果**：`unmatched_channel_pct` 与 `unmatched_settlement_pct` 通常 <5%。`unmatched_guid_pct` 可较高（大部分流水无 `source_guid`），但需跟踪其趋势稳定性。
+
+### 6. 游戏/应用过滤正确性校验
+
+> **校验目标**：目标表应只包含 `app_id = 1880053` 且 `game_id = 53` 的记录。若出现其他值，说明过滤条件失效。
+
+```sql
+SELECT
+    app_id,
+    game_id,
+    COUNT(*) AS cnt
+FROM tcy_temp.dws_dq_silver_logs
+WHERE dt = '2026-04-29'
+GROUP BY app_id, game_id
+HAVING app_id != 1880053 OR game_id != 53;
+```
+
+> **期望结果**：返回 0 行。
+
+---
+
 ## 表数据流向
 
 ```text

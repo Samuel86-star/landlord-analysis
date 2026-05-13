@@ -76,7 +76,7 @@ SELECT
     FROM_UNIXTIME(first_login_ts / 1000) AS reg_datetime
 FROM hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st
 WHERE app_id = 1880053
-  AND dt BETWEEN 20260511 AND 20260511;
+  AND dt BETWEEN 20260512 AND 20260512;
 ```
 
 ### 说明
@@ -128,8 +128,8 @@ FROM (
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), app_code) AS cnt_app_code
     FROM tcy_dwd.dwd_tcy_userlogin_si
     WHERE app_id = 1880053
-      AND dt >= '2026-05-11 00:00:00'
-      AND dt <= '2026-05-11 23:59:59'
+      AND dt >= '2026-05-12 00:00:00'
+      AND dt <= '2026-05-12 23:59:59'
 ) t
 GROUP BY app_id, DATE(dt), uid;
 ```
@@ -178,7 +178,7 @@ INNER JOIN tcy_temp.dws_dq_daily_login l
 LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-05-11' AND '2026-05-11'
+  AND r.reg_date BETWEEN '2026-05-12' AND '2026-05-12'
   AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88);
 ```
 
@@ -238,7 +238,7 @@ SELECT
     get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet, channel_id, group_id, app_code, game_id
 FROM tcy_dwd.dwd_game_combat_si
 WHERE game_id = 53
-  AND dt BETWEEN 20260511 AND 20260511;
+  AND dt BETWEEN 20260512 AND 20260512;
 ```
 
 ### 说明
@@ -266,7 +266,7 @@ INSERT INTO tcy_temp.dws_app_game_active
 SELECT app_id, uid, date(dt)
 FROM tcy_temp.dws_ddz_daily_game
 WHERE app_id = 1880053
-  AND dt BETWEEN '2026-05-11' AND '2026-05-11'
+  AND dt BETWEEN '2026-05-12' AND '2026-05-12'
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 GROUP BY 1, 2, 3;
@@ -296,7 +296,7 @@ INSERT INTO tcy_temp.dws_app_gamemode_active
 SELECT app_id, uid, play_mode, date(dt)
 FROM tcy_temp.dws_ddz_daily_game
 WHERE app_id = 1880053
-  AND dt BETWEEN '2026-05-11' AND '2026-05-11'
+  AND dt BETWEEN '2026-05-12' AND '2026-05-12'
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 GROUP BY 1,2,3,4;
@@ -330,7 +330,7 @@ WITH game_enriched AS (
         ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY game_datetime ASC) AS game_seq,
         ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt BETWEEN '2026-05-11' AND '2026-05-11'
+    WHERE dt BETWEEN '2026-05-12' AND '2026-05-12'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND play_mode IN (1, 2, 3, 5)
@@ -424,7 +424,7 @@ WITH game_enriched AS (
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime ASC) AS game_seq,
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt BETWEEN '2026-05-11' AND '2026-05-11'
+    WHERE dt BETWEEN '2026-05-12' AND '2026-05-12'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND play_mode IN (1, 2, 3, 5)
@@ -524,7 +524,7 @@ SELECT
 FROM tcy_temp.dws_ddz_daily_game g
 INNER JOIN tcy_temp.dws_dq_daily_reg r
     ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
-WHERE g.dt BETWEEN '2026-05-11' AND '2026-05-11';
+WHERE g.dt BETWEEN '2026-05-12' AND '2026-05-12';
 ```
 
 ### 说明
@@ -552,7 +552,7 @@ WITH new_user_reg AS (
     SELECT uid, app_id, reg_date, reg_group_id, channel_category_name, channel_category_tag_id
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053 
-      AND reg_date BETWEEN '2026-05-11' AND '2026-05-11'
+      AND reg_date BETWEEN '2026-05-12' AND '2026-05-12'
 ),
 first_day_games_raw AS (
     SELECT
@@ -565,7 +565,7 @@ first_day_games_raw AS (
     FROM tcy_temp.dws_ddz_firstday_game c
     INNER JOIN new_user_reg r ON c.app_id = r.app_id AND c.uid = r.uid AND c.dt = r.reg_date
     WHERE c.app_id = 1880053
-      AND c.dt BETWEEN '2026-05-11' AND '2026-05-11'
+      AND c.dt BETWEEN '2026-05-12' AND '2026-05-12'
       AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 ),
 mode_streaks AS (
@@ -725,13 +725,13 @@ WHERE s.app_id = 1880053
 ### 增量更新 SQL
 
 ```sql
--- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260511）
+-- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260512）
 -- 注意：查询范围包含 ${DATE} 和 ${DATE+1}，以获取跨天对局的完整数据
 INSERT INTO tcy_temp.dws_crazyddz_daily_game
 WITH target_resultguids AS (
     SELECT DISTINCT resultguid
     FROM tcy_dwd.dwd_game_combat_si
-    WHERE date = 20260511
+    WHERE date = 20260512
       AND app_id = 1880053
       AND game_id = 521
       AND fee != 0
@@ -744,7 +744,7 @@ ranked_combat AS (
         ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id desc, dgcs.time_unix desc) as row_end
     FROM tcy_dwd.dwd_game_combat_si dgcs
     INNER JOIN target_resultguids tr ON dgcs.resultguid = tr.resultguid
-    WHERE dgcs.date BETWEEN 20260511 AND 20260512
+    WHERE dgcs.date BETWEEN 20260512 AND 20260513
       AND dgcs.app_id = 1880053
       AND dgcs.game_id = 521
 )
