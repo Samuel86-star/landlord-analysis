@@ -19,7 +19,8 @@
 5. [高风险组合](#五高风险组合)
 6. [首局失败后继续行为](#六首局失败后继续行为)
 7. [调整前后分段对比](#七调整前后分段对比)
-8. [结果解读建议](#八结果解读建议)
+8. [经济容错模型](#八经济容错模型)
+9. [结果解读建议](#九结果解读建议)
 
 ---
 
@@ -1228,14 +1229,138 @@ ORDER BY adjust_period, game_cnt_group;
 
 ---
 
-## 八、结果解读建议
+## 八、经济容错模型
+
+### 8.1 查询目的
+
+基于首局房间、角色、底分、服务费、首局前资产和房间门槛，解释首局失败后低于门槛是否由经济规则必然导致。
+
+### 8.2 经济容错模型 SQL
+
+```sql
+WITH app_reg_users AS (
+    SELECT
+        r.app_id,
+        r.uid,
+        r.reg_date
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.is_login_log_missing = 0
+      AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
+),
+first_day_games AS (
+    SELECT
+        g.app_id,
+        g.uid,
+        g.dt,
+        g.game_datetime,
+        g.resultguid,
+        g.room_id,
+        g.play_mode,
+        g.room_base,
+        g.room_fee,
+        g.room_currency_lower,
+        g.role,
+        g.result_id,
+        g.start_money,
+        g.end_money,
+        g.diff_money_pre_tax,
+        g.magnification,
+        ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime ASC, g.resultguid ASC) AS game_rank
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.robot != 1
+),
+user_game_summary AS (
+    SELECT
+        r.app_id,
+        r.uid,
+        r.reg_date,
+        COUNT(DISTINCT g.resultguid) AS first_day_game_cnt
+    FROM app_reg_users r
+    LEFT JOIN first_day_games g
+        ON g.app_id = r.app_id
+        AND g.uid = r.uid
+        AND g.dt = r.reg_date
+    GROUP BY r.app_id, r.uid, r.reg_date
+),
+user_game_bucket AS (
+    SELECT
+        *,
+        CASE
+            WHEN first_day_game_cnt = 0 THEN '0局'
+            WHEN first_day_game_cnt = 1 THEN '1局'
+            ELSE '2局及以上'
+        END AS game_cnt_group
+    FROM user_game_summary
+),
+first_loss_features AS (
+    SELECT
+        u.game_cnt_group,
+        f.uid,
+        CASE
+            WHEN f.play_mode = 1 THEN '经典'
+            WHEN f.play_mode = 2 THEN '不洗牌'
+            WHEN f.play_mode = 3 THEN '癞子'
+            WHEN f.play_mode = 4 THEN '积分'
+            WHEN f.play_mode = 5 THEN '比赛'
+            WHEN f.play_mode = 6 THEN '好友房'
+            ELSE '其他'
+        END AS play_mode_name,
+        f.room_id,
+        f.role,
+        f.start_money,
+        f.end_money,
+        f.room_base,
+        f.room_fee,
+        f.room_currency_lower,
+        f.magnification,
+        f.start_money - f.room_fee - f.room_currency_lower AS loss_tolerance,
+        CASE WHEN f.start_money > 0 THEN f.room_fee * 1.0 / f.start_money ELSE NULL END AS fee_pressure,
+        CASE WHEN f.end_money < f.room_currency_lower THEN 1 ELSE 0 END AS is_below_room_threshold
+    FROM user_game_bucket u
+    INNER JOIN first_day_games f
+        ON f.app_id = u.app_id
+        AND f.uid = u.uid
+        AND f.dt = u.reg_date
+        AND f.game_rank = 1
+        AND f.result_id = 2
+    WHERE u.game_cnt_group IN ('1局', '2局及以上')
+)
+SELECT
+    game_cnt_group,
+    play_mode_name,
+    room_id,
+    CASE role WHEN 1 THEN '地主' WHEN 2 THEN '农民' ELSE '其他' END AS role_name,
+    COUNT(DISTINCT uid) AS user_count,
+    ROUND(AVG(start_money), 0) AS avg_start_money,
+    ROUND(AVG(room_fee), 0) AS avg_room_fee,
+    ROUND(AVG(fee_pressure) * 100.0, 2) AS avg_fee_pressure,
+    ROUND(AVG(room_base), 0) AS avg_room_base,
+    ROUND(AVG(room_currency_lower), 0) AS avg_room_currency_lower,
+    ROUND(AVG(loss_tolerance), 0) AS avg_loss_tolerance,
+    ROUND(AVG(CASE WHEN room_base > 0 THEN FLOOR(loss_tolerance / room_base) + 1 END), 1) AS farmer_break_even_magnification,
+    ROUND(AVG(CASE WHEN room_base > 0 THEN FLOOR(loss_tolerance / (room_base * 2)) + 1 END), 1) AS landlord_break_even_magnification,
+    ROUND(AVG(is_below_room_threshold) * 100.0, 2) AS below_room_threshold_rate,
+    ROUND(AVG(magnification), 1) AS avg_magnification
+FROM first_loss_features
+GROUP BY game_cnt_group, play_mode_name, room_id, role
+ORDER BY game_cnt_group, user_count DESC;
+```
+
+---
+
+## 九、结果解读建议
 
 首次看数时按以下顺序解读：
 
 - 先看每日 `one_game_rate_among_played`，确认 `1局用户` 是稳定问题还是局部日期异常。
 - 调整前后必须分开解读，优先比较 `2026-02-10` 至 `2026-04-20` 与 `2026-04-21` 至 `2026-05-20` 的差异。
 - 画像差异优先看 `lift >= 1.2` 且样本量足够的维度值，避免被小样本误导。
-- 首局体验差异优先看 `1局用户` 相比 `2局及以上用户` 是否在首局胜率、首局净收益、门槛不足、高倍局、逃跑率上明显更差。
+- 首局体验差异优先看 `1局用户` 相比 `2局及以上用户` 是否在首局胜率、首局耗时、首局净收益、门槛不足、高倍局、逃跑率上明显更差。
 - 首局失败后继续行为优先看失败后余额门槛、是否换房间、到第 2 局时间间隔和第 2 局反馈。
+- 经济容错模型优先看首局失败用户的 `loss_tolerance`、角色、倍数和 `below_room_threshold_rate`，判断低于门槛是体验问题还是规则必然结果。
 - 高风险组合优先看同时满足高占比和高差异的组合，再判断对应产品或运营动作。
 - 如果风险集中在渠道和客户端语言，优先判断为流量质量或客户端体验问题；如果风险集中在首局失败、净亏损和门槛不足，优先判断为首局体验或经济系统问题。

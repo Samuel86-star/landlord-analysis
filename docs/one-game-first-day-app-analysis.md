@@ -125,7 +125,7 @@ END AS game_cnt_group
 | 类型 | 指标 | 解释 |
 | ---- | ---- | ---- |
 | 首局选择 | `play_mode`、`room_id` | 判断是否集中在某些玩法或房间 |
-| 对局耗时 | `timecost` | 过短可能表示异常、逃跑或体验中断 |
+| 对局耗时 | `timecost` | 过短可能表示异常、逃跑；过长可能表示卡顿、托管超时、断线重连或匹配挂起 |
 | 胜负结果 | `result_id` | 首局失败是否显著更容易只玩 1 局 |
 | 经济变化 | `diff_money_pre_tax - room_fee` | 近似首局净收益 |
 | 首局后余额 | `end_money` | 判断是否还有继续游戏能力 |
@@ -143,6 +143,12 @@ CASE WHEN end_money < room_currency_lower THEN 1 ELSE 0 END AS is_below_room_thr
 CASE WHEN start_money > 0 THEN room_fee * 1.0 / start_money END AS fee_pressure,
 CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 ```
+
+耗时异常需要按房间拆开看，不能只看整体均值。判断逻辑：
+
+- 如果某房间 `1局用户` 首局耗时远高于 `2局及以上用户`，但同房间多局用户耗时正常，优先怀疑特定用户链路上的卡顿、断线重连、托管超时或匹配挂起。
+- 如果同房间两组用户耗时都高，才优先怀疑房间日志口径或玩法天然耗时更长。
+- 对 `timecost > 200秒` 且首日无后续对局的用户，应输出明细用于客户端和服务端日志排查。
 
 ### 3.4 Step 4：高风险组合
 
@@ -175,6 +181,25 @@ CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 | 第 2 局反馈 | 第 2 局胜率和净收益 | 判断继续用户是否被后续体验拉回 |
 
 这一步的目标不是重复证明首局失败有风险，而是找到首局失败后还能留住用户的条件，例如“失败后仍高于门槛”“快速进入第 2 局”“第 2 局换到更低风险房间”等。
+
+### 3.6 Step 6：注册赠送与失败破产容错模型
+
+在本次口径中，首局 `start_money` 对应原始表 `olddeposit`，可视为注册赠送银子或新手指引资产。需要用服务费压力反推首局前资产，并结合房间底分、服务费和最低携银门槛，判断首局失败是否会在规则上直接导致破产锁定。
+
+建议分析项：
+
+| 分析项 | 计算方式 | 解释 |
+| ---- | ---- | ---- |
+| 首局前资产反推 | `room_fee / fee_pressure` | 用固定服务费和服务费压力反推注册赠送资产水平 |
+| 失败安全边界 | `start_money - room_fee - room_currency_lower` | 首局最多可亏多少仍能继续进入当前房间 |
+| 农民破产倍数 | `FLOOR(安全边界 / room_base) + 1` | 农民失败达到多少倍会低于门槛 |
+| 地主破产倍数 | `FLOOR(安全边界 / (room_base * 2)) + 1` | 地主失败达到多少倍会低于门槛 |
+| 破产锁定解释 | `result_id = 2`、`role`、`magnification`、`end_money < room_currency_lower` | 判断首局失败后低于门槛是否由经济规则必然导致 |
+
+这一步用于区分两类问题：
+
+- **经济规则必然导致**：注册赠送资产、服务费、底分和准入门槛共同决定，首局失败后自然跌破门槛。
+- **产品链路没有兜底**：跌破门槛后没有顺畅引导到低门槛房间、练习场或第 2 局保护，导致用户停止。
 
 ---
 
@@ -241,6 +266,11 @@ CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 - 高倍局占比
 - 逃跑占比
 
+补充检查：
+
+- 按 `room_id` 对比 `avg_first_timecost`，识别特定房间耗时异常。
+- 对 `timecost > 200秒` 且首日无后续对局的用户，输出明细用于日志排查。
+
 ### 4.5 高风险组合 SQL
 
 输出 1局用户中高风险组合的人数、占比，并与 2局及以上用户对比。
@@ -275,6 +305,27 @@ CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 - `second_game_change_play_mode_rate`
 - `second_game_win_rate`
 - `avg_second_net_money_change`
+
+### 4.7 经济容错模型 SQL
+
+基于首局房间、角色、底分、服务费、首局前资产和房间门槛，输出失败后破产锁定的规则解释。
+
+输出字段：
+
+- `game_cnt_group`
+- `play_mode_name`
+- `room_id`
+- `role`
+- `user_count`
+- `avg_start_money`
+- `avg_room_fee`
+- `avg_fee_pressure`
+- `avg_room_base`
+- `avg_room_currency_lower`
+- `avg_loss_tolerance`
+- `farmer_break_even_magnification`
+- `landlord_break_even_magnification`
+- `below_room_threshold_rate`
 
 ---
 
