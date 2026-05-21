@@ -1,0 +1,270 @@
+# APP 端注册当天只玩 1 局用户分析方案
+
+> 本文档设计 APP 端新用户注册当天只玩 1 局的共性特征分析方案。分析重点是首日有对局用户中的 `1局用户` 与 `2局及以上用户` 的差异，`0局用户` 仅作为整体分布背景，不进入首局体验对比。
+
+---
+
+## 一、分析目标
+
+### 1.1 核心问题
+
+本次分析回答三个问题：
+
+- APP 端注册用户中，注册当天只玩 1 局的人占比是否稳定，是否存在异常日期。
+- 只玩 1 局用户相比 2 局及以上用户，在渠道、端类型、客户端语言、注册时段等画像上有什么明显偏向。
+- 只玩 1 局用户的唯一一局是否存在可解释的体验特征，例如首局失败、输银过大、服务费压力、房间门槛不足、逃跑、高倍局等。
+
+### 1.2 目标人群
+
+| 人群 | 定义 | 用途 |
+| ---- | ---- | ---- |
+| 0局用户 | 注册当天真人对局数 = 0 | 背景分布，判断是否存在进入游戏前流失压力 |
+| 1局用户 | 注册当天真人对局数 = 1 | 本次核心分析对象 |
+| 2局及以上用户 | 注册当天真人对局数 >= 2 | 主对照组，代表首局后继续玩的用户 |
+
+本次主分析只比较 `1局用户` 与 `2局及以上用户`。`0局用户` 没有游戏行为，不参与首局体验分析。
+
+---
+
+## 二、数据口径
+
+### 2.1 数据表
+
+| 表名 | 用途 | 关键字段 |
+| ---- | ---- | ---- |
+| `tcy_temp.dws_dq_app_daily_reg` | APP 端注册用户画像 | `uid`、`reg_date`、`reg_datetime`、`reg_group_id`、`reg_app_code`、`reg_channel_id`、`channel_category_name`、`first_day_login_cnt` |
+| `tcy_temp.dws_ddz_firstday_game` | 注册当天对局明细 | `uid`、`dt`、`game_datetime`、`resultguid`、`play_mode`、`room_id`、`timecost`、`result_id`、`start_money`、`end_money`、`diff_money_pre_tax`、`room_fee`、`room_currency_lower`、`magnification`、`real_magnification`、`cut` |
+
+### 2.2 基础过滤条件
+
+```sql
+r.app_id = 1880053
+AND r.is_login_log_missing = 0
+AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
+AND r.reg_date BETWEEN '${start_date}' AND '${end_date}'
+```
+
+对局表过滤：
+
+```sql
+g.app_id = 1880053
+AND g.robot != 1
+AND g.dt BETWEEN '${start_date}' AND '${end_date}'
+```
+
+### 2.3 分组口径
+
+按用户注册当天真人对局数分组：
+
+```sql
+CASE
+    WHEN first_day_game_cnt = 0 THEN '0局'
+    WHEN first_day_game_cnt = 1 THEN '1局'
+    ELSE '2局及以上'
+END AS game_cnt_group
+```
+
+对局数使用 `COUNT(DISTINCT resultguid)`，避免同一局多人行或重复日志造成计数膨胀。
+
+---
+
+## 三、分析路径
+
+### 3.1 Step 1：每日首日局数分布
+
+先建立背景基线，观察每天 APP 注册用户的首日局数结构：
+
+- 注册人数
+- 0局人数与占比
+- 1局人数与占比
+- 2局及以上人数与占比
+- 1局用户在首日有对局用户中的占比
+
+重点判断：
+
+- 1局占比是否稳定。
+- 是否有个别日期异常升高。
+- 异常日期是否与渠道、端类型或数据更新有关。
+
+### 3.2 Step 2：用户画像差异
+
+仅比较 `1局用户` 与 `2局及以上用户`，看哪些画像维度在 1局用户中明显偏高。
+
+建议维度：
+
+| 维度 | 字段 | 分组方式 |
+| ---- | ---- | ---- |
+| 平台 | `reg_group_id` | Android / iOS |
+| 客户端语言 | `reg_app_code` | `zgda` / `zgdx` / 其他 |
+| 渠道分类 | `channel_category_name` | 按渠道分类 |
+| 具体渠道 | `reg_channel_id` | Top 渠道 |
+| 注册小时 | `reg_datetime` | 0-23 点 |
+| 注册时段 | `reg_datetime` | 凌晨 / 上午 / 下午 / 晚间 |
+| 首日登录次数 | `first_day_login_cnt` | 1次 / 2-5次 / 5次以上 |
+
+对每个维度输出：
+
+- 1局用户人数
+- 2局及以上用户人数
+- 1局用户占比
+- 2局及以上用户占比
+- `lift = 1局占比 / 2局及以上占比`
+
+建议只重点解读满足以下条件的特征：
+
+- 1局用户人数足够大，避免小样本误判。
+- `lift >= 1.2` 或 `lift <= 0.8`。
+- 连续多天或多个相邻日期稳定出现。
+
+### 3.3 Step 3：首局体验差异
+
+对 `1局用户` 取唯一一局，对 `2局及以上用户` 取首局，比较首局体验差异。
+
+核心指标：
+
+| 类型 | 指标 | 解释 |
+| ---- | ---- | ---- |
+| 首局选择 | `play_mode`、`room_id` | 判断是否集中在某些玩法或房间 |
+| 对局耗时 | `timecost` | 过短可能表示异常、逃跑或体验中断 |
+| 胜负结果 | `result_id` | 首局失败是否显著更容易只玩 1 局 |
+| 经济变化 | `diff_money_pre_tax - room_fee` | 近似首局净收益 |
+| 首局后余额 | `end_money` | 判断是否还有继续游戏能力 |
+| 房间门槛 | `end_money < room_currency_lower` | 首局后是否低于本房间继续准入门槛 |
+| 服务费压力 | `room_fee / start_money` | 服务费占初始资产比例 |
+| 倍数压力 | `magnification`、`real_magnification` | 是否经历高倍局 |
+| 逃跑行为 | `cut < 0` | 是否存在逃跑或异常退出 |
+
+建议派生指标：
+
+```sql
+CASE WHEN result_id = 1 THEN 1 ELSE 0 END AS is_win,
+diff_money_pre_tax - room_fee AS net_money_change,
+CASE WHEN end_money < room_currency_lower THEN 1 ELSE 0 END AS is_below_room_threshold,
+CASE WHEN start_money > 0 THEN room_fee * 1.0 / start_money END AS fee_pressure,
+CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
+```
+
+### 3.4 Step 4：高风险组合
+
+在单维度差异之后，再识别组合特征。优先看以下组合：
+
+| 组合 | 可能解释 |
+| ---- | ---- |
+| 首局失败 + 首局净亏损 + 首局后低于房间门槛 | 首局挫败叠加资产不足 |
+| 首局失败 + 地主角色 + 高倍局 | 地主高方差体验导致快速退出 |
+| 高服务费压力 + 初始资产低 | 新手资产与房间成本不匹配 |
+| 只登录 1 次 + 只玩 1 局 | 低意愿或首局后立即离开 |
+| 某渠道 + 某客户端语言 + 1局占比高 | 流量质量或客户端体验问题 |
+
+组合分析不要一次交叉过多维度，优先使用 2 到 3 个变量，避免样本被切得过碎。
+
+---
+
+## 四、SQL 产出清单
+
+### 4.1 用户级基础宽表
+
+生成每个 APP 注册用户的首日对局摘要，作为后续所有分析的公共 CTE。
+
+输出字段：
+
+- `uid`
+- `reg_date`
+- 注册画像字段
+- `first_day_game_cnt`
+- `game_cnt_group`
+- `first_game_datetime`
+- `minutes_to_first_game`
+
+### 4.2 每日分布 SQL
+
+按 `reg_date` 统计 0局、1局、2局及以上分布。
+
+输出字段：
+
+- `reg_date`
+- `reg_user_cnt`
+- `zero_game_user_cnt`
+- `one_game_user_cnt`
+- `multi_game_user_cnt`
+- `zero_game_rate`
+- `one_game_rate`
+- `multi_game_rate`
+- `one_game_rate_among_played`
+
+### 4.3 画像维度差异 SQL
+
+分别按平台、客户端语言、渠道分类、具体渠道、注册时段、首日登录次数输出差异。
+
+输出字段：
+
+- `dimension_name`
+- `dimension_value`
+- `one_game_user_cnt`
+- `multi_game_user_cnt`
+- `one_game_share`
+- `multi_game_share`
+- `lift`
+
+### 4.4 首局体验差异 SQL
+
+比较 1局用户的唯一一局与 2局及以上用户的首局。
+
+输出字段：
+
+- `game_cnt_group`
+- 首局玩法分布
+- 首局房间分布
+- 首局胜率
+- 首局平均耗时
+- 首局平均净收益
+- 首局后低于房间门槛占比
+- 服务费压力分布
+- 高倍局占比
+- 逃跑占比
+
+### 4.5 高风险组合 SQL
+
+输出 1局用户中高风险组合的人数、占比，并与 2局及以上用户对比。
+
+建议组合：
+
+- `首局失败 × 首局后低于房间门槛`
+- `首局失败 × 高倍局`
+- `首局失败 × 地主角色`
+- `高服务费压力 × 首局净亏损`
+- `渠道分类 × 客户端语言`
+
+---
+
+## 五、结论输出模板
+
+最终报告建议按以下结构输出：
+
+```text
+1. 结论摘要
+2. APP 新用户首日局数分布
+3. 1局用户画像共性
+4. 1局用户首局体验共性
+5. 高风险组合人群
+6. 可能原因判断
+7. 产品 / 运营建议
+8. 附录：SQL 与口径说明
+```
+
+结论需要区分三类判断：
+
+- **用户来源问题**：集中在渠道、端类型、客户端语言。
+- **首局体验问题**：集中在失败、亏损、高倍、逃跑、耗时异常。
+- **经济门槛问题**：首局后资产不足、服务费压力过高、房间准入不匹配。
+
+---
+
+## 六、注意事项
+
+- 不把 0局用户纳入首局体验分析，因为 0局用户没有完成对局。
+- 对局数用 `COUNT(DISTINCT resultguid)`，避免重复日志影响分组。
+- 主对照组使用 `2局及以上用户`，不要混入 0局用户，否则会稀释首局体验差异。
+- 渠道维度需要同时看人数和占比，避免只因渠道规模大而误判。
+- `lift` 只说明相关性，不直接说明因果。产品结论需要结合日期趋势、渠道变化和客户端版本发布节奏验证。
+- 涉及日期字段时，`dws_dq_app_daily_reg.reg_date` 与 `dws_ddz_firstday_game.dt` 均为 `date` 类型，查询中保持日期格式一致。
