@@ -158,6 +158,24 @@ CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 
 组合分析不要一次交叉过多维度，优先使用 2 到 3 个变量，避免样本被切得过碎。
 
+### 3.5 Step 5：首局失败后继续行为
+
+在整体首局体验对比之后，需要单独下钻首局失败用户，比较 `首局失败后停止` 与 `首局失败后继续第2局`。整体 `1局用户 vs 2局及以上用户` 会混入首局胜利用户，适合判断大方向，但不能回答“同样首局失败，为什么有人继续第 2 局”。
+
+建议补跑维度：
+
+| 维度 | 指标 | 解释 |
+| ---- | ---- | ---- |
+| 失败后资产门槛 | 首局失败后是否仍高于当前房间门槛 | 判断是否还具备继续同房间游戏能力 |
+| 资产安全垫 | 首局失败后的剩余资产 / 房间门槛 | 判断继续用户是否有更厚资产缓冲 |
+| 地主角色 | 首局失败是否为地主 | 地主失败可能带来更强挫败感和更大损失 |
+| 高倍体验 | 首局失败是否高倍、炸弹、春天 | 判断失败强度是否影响继续意愿 |
+| 继续速度 | 首局失败后到第 2 局的时间间隔 | 判断是否存在顺畅续局或中途卡点 |
+| 第 2 局迁移 | 第 2 局是否换玩法、换房间或降档 | 判断系统是否把失败用户引导到更合适场次 |
+| 第 2 局反馈 | 第 2 局胜率和净收益 | 判断继续用户是否被后续体验拉回 |
+
+这一步的目标不是重复证明首局失败有风险，而是找到首局失败后还能留住用户的条件，例如“失败后仍高于门槛”“快速进入第 2 局”“第 2 局换到更低风险房间”等。
+
 ---
 
 ## 四、SQL 产出清单
@@ -234,6 +252,29 @@ CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 - `首局失败 × 地主角色`
 - `高服务费压力 × 首局净亏损`
 - `渠道分类 × 客户端语言`
+
+### 4.6 首局失败后继续行为 SQL
+
+只分析首局失败用户，输出 `首局失败后停止` 与 `首局失败后继续第2局` 两组差异。
+
+输出字段：
+
+- `first_loss_continue_group`
+- `user_count`
+- `avg_first_timecost`
+- `avg_first_net_money_change`
+- `first_below_room_threshold_rate`
+- `avg_first_end_money_to_threshold`
+- `avg_first_fee_pressure`
+- `first_high_magnification_rate`
+- `first_landlord_rate`
+- `first_has_bomb_rate`
+- `first_has_spring_rate`
+- `avg_seconds_to_second_game`
+- `second_game_change_room_rate`
+- `second_game_change_play_mode_rate`
+- `second_game_win_rate`
+- `avg_second_net_money_change`
 
 ---
 
