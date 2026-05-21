@@ -68,6 +68,7 @@ CREATE TABLE tcy_temp.dws_dq_silver_logs (
   `dt` date NOT NULL COMMENT "日期",
   `uid` int(11) NOT NULL COMMENT "玩家ID",
   `app_code` varchar(32) NULL COMMENT "应用code",
+  `app_vers` varchar(32) NULL COMMENT "应用版本号",
   `game_id` int(11) NOT NULL COMMENT "游戏ID",
   `date_time` datetime NULL COMMENT "操作时间",
   `op_id` int(11) NULL COMMENT "操作ID",
@@ -115,7 +116,8 @@ SELECT
     s.app_id,
     STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
     s.uid,
-    s.app_code,
+    COALESCE(s.game_code, s.app_code) as app_code,
+    COALESCE(s.game_vers, s.app_vers) as app_vers,
     s.game_id,
     s.date_time,
     s.op_id,
@@ -134,7 +136,7 @@ SELECT
     COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
     s.source_guid,
     COALESCE(gc.guid_title, '') AS guid_title,
-    COALESCE(gc.guid_type, -1) AS guid_type
+    COALESCE(gc.guid_type, CASE WHEN s.op_id = 300104 THEN 0 ELSE -1 END) AS guid_type
 FROM tcy_dwd.dwd_silver_si s
 LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON s.channel_id = chn.channel_id
@@ -157,7 +159,8 @@ SELECT
     s.app_id,
     STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
     s.uid,
-    s.app_code,
+    COALESCE(s.game_code, s.app_code) as app_code,
+    COALESCE(s.game_vers, s.app_vers) as app_vers,
     s.game_id,
     s.date_time,
     s.op_id,
@@ -176,7 +179,7 @@ SELECT
     COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
     s.source_guid,
     COALESCE(gc.guid_title, '') AS guid_title,
-    COALESCE(gc.guid_type, -1) AS guid_type
+    COALESCE(gc.guid_type, CASE WHEN s.op_id = 300104 THEN 0 ELSE -1 END) AS guid_type
 FROM tcy_dwd.dwd_silver_si s
 LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON s.channel_id = chn.channel_id
