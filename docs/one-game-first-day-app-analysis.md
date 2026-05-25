@@ -125,7 +125,7 @@ END AS game_cnt_group
 | 类型 | 指标 | 解释 |
 | ---- | ---- | ---- |
 | 首局选择 | `play_mode`、`room_id` | 判断是否集中在某些玩法或房间 |
-| 对局耗时 | `timecost` | 过短可能表示异常、逃跑；过长可能表示卡顿、托管超时、断线重连或匹配挂起 |
+| 对局耗时 | `timecost` 的均值、中位数、P90、P95、最大值、长局占比 | 过短可能表示异常、逃跑；过长可能表示卡顿、托管超时、断线重连或匹配挂起；必须识别是否由极端长尾拉高均值 |
 | 胜负结果 | `result_id` | 首局失败是否显著更容易只玩 1 局 |
 | 经济变化 | `diff_money_pre_tax - room_fee` | 近似首局净收益 |
 | 首局后余额 | `end_money` | 判断是否还有继续游戏能力 |
@@ -141,11 +141,15 @@ CASE WHEN result_id = 1 THEN 1 ELSE 0 END AS is_win,
 diff_money_pre_tax - room_fee AS net_money_change,
 CASE WHEN end_money < room_currency_lower THEN 1 ELSE 0 END AS is_below_room_threshold,
 CASE WHEN start_money > 0 THEN room_fee * 1.0 / start_money END AS fee_pressure,
-CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
+CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape,
+CASE WHEN timecost > 200 THEN 1 ELSE 0 END AS is_long_timecost
 ```
 
-耗时异常需要按房间拆开看，不能只看整体均值。判断逻辑：
+耗时异常需要按房间拆开看，不能只看整体均值，也不能只看平均值。判断逻辑：
 
+- 对局耗时优先同时看 `avg_first_timecost`、`p50_first_timecost`、`p90_first_timecost`、`p95_first_timecost`、`max_first_timecost` 和 `long_timecost_rate`。
+- 如果平均值显著偏高，但中位数接近正常，仅 P95、最大值或 `timecost > 200秒` 占比异常，说明更可能是少量几千秒或几万秒极端局拉高均值，需要优先排查异常长尾明细。
+- 如果中位数、P90、P95 同时偏高，才说明该组用户的典型首局体验本身就偏慢。
 - 如果某房间 `1局用户` 首局耗时远高于 `2局及以上用户`，但同房间多局用户耗时正常，优先怀疑特定用户链路上的卡顿、断线重连、托管超时或匹配挂起。
 - 如果同房间两组用户耗时都高，才优先怀疑房间日志口径或玩法天然耗时更长。
 - 对 `timecost > 200秒` 且首日无后续对局的用户，应输出明细用于客户端和服务端日志排查。
@@ -261,7 +265,7 @@ CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 - 首局玩法分布
 - 首局房间分布
 - 首局胜率
-- 首局平均耗时
+- 首局平均耗时、中位数耗时、P90/P95 耗时、最大耗时、长局占比
 - 首局平均净收益
 - 首局后低于房间门槛占比
 - 服务费压力分布
@@ -270,7 +274,8 @@ CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
 
 补充检查：
 
-- 按 `room_id` 对比 `avg_first_timecost`，识别特定房间耗时异常。
+- 按 `room_id` 对比 `avg_first_timecost`、`p50_first_timecost`、`p95_first_timecost` 和 `long_timecost_rate`，识别特定房间耗时异常。
+- 对平均值明显高于中位数的房间，优先输出超长尾明细，避免把少量异常局误判成整体体验偏慢。
 - 对 `timecost > 200秒` 且首日无后续对局的用户，输出明细用于日志排查。
 
 ### 4.5 高风险组合 SQL
