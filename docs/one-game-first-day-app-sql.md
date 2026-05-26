@@ -2,8 +2,8 @@
 
 > 本文档承接 [APP 端注册当天只玩 1 局用户分析方案](one-game-first-day-app-analysis.md)，提供可执行 SQL。主分析口径为 `1局用户` vs `2局及以上用户`，`0局用户` 仅用于每日背景分布。
 >
-> **分析时间段**：2026-02-10 至 2026-05-20
-> **调整分段**：调整前 `2026-02-10` 至 `2026-04-20`；调整后 `2026-04-21` 至 `2026-05-20`
+> **分析时间段**：2026-03-07 至 2026-05-25
+> **调整分段**：调整前 `2026-03-07` 至 `2026-04-20`；调整后 `2026-04-21` 至 `2026-05-25`
 > **应用口径**：`app_id = 1880053`
 > **用户口径**：APP 端注册用户，排除首日登录日志缺失用户
 > **对局口径**：注册当天真人对局，`robot != 1`
@@ -42,8 +42,8 @@ WITH app_reg_users AS (
         r.channel_category_tag_id,
         r.first_day_login_cnt,
         CASE
-            WHEN r.reg_date BETWEEN '2026-02-10' AND '2026-04-20' THEN '调整前'
-            WHEN r.reg_date BETWEEN '2026-04-21' AND '2026-05-20' THEN '调整后'
+            WHEN r.reg_date BETWEEN '2026-03-07' AND '2026-04-20' THEN '调整前'
+            WHEN r.reg_date BETWEEN '2026-04-21' AND '2026-05-25' THEN '调整后'
             ELSE '其他'
         END AS adjust_period,
         CASE
@@ -70,7 +70,7 @@ WITH app_reg_users AS (
         END AS first_day_login_bucket
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -102,7 +102,7 @@ first_day_games AS (
         g.bomb_bet
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -206,7 +206,7 @@ WITH app_reg_users AS (
         END AS first_day_login_bucket
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -238,7 +238,7 @@ first_day_games AS (
         g.bomb_bet
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -357,7 +357,7 @@ WITH app_reg_users AS (
         END AS first_day_login_bucket
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -389,7 +389,7 @@ first_day_games AS (
         g.bomb_bet
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -547,7 +547,7 @@ WITH app_reg_users AS (
         END AS first_day_login_bucket
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -579,7 +579,7 @@ first_day_games AS (
         g.bomb_bet
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -751,7 +751,7 @@ WITH app_reg_users AS (
         END AS first_day_login_bucket
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -783,7 +783,7 @@ first_day_games AS (
         g.bomb_bet
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -919,7 +919,7 @@ WITH app_reg_users AS (
         END AS client_lang
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -949,7 +949,7 @@ first_day_games AS (
         ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime ASC, g.resultguid ASC) AS game_rank
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -1048,8 +1048,8 @@ ORDER BY first_loss_continue_group;
 
 | 分段 | 日期范围 |
 | ---- | ---- |
-| 调整前 | 2026-02-10 至 2026-04-20 |
-| 调整后 | 2026-04-21 至 2026-05-20 |
+| 调整前 | 2026-03-07 至 2026-04-20 |
+| 调整后 | 2026-04-21 至 2026-05-25 |
 
 ### 7.2 分段每日分布 SQL
 
@@ -1060,13 +1060,13 @@ WITH app_reg_users AS (
         r.uid,
         r.reg_date,
         CASE
-            WHEN r.reg_date BETWEEN '2026-02-10' AND '2026-04-20' THEN '调整前'
-            WHEN r.reg_date BETWEEN '2026-04-21' AND '2026-05-20' THEN '调整后'
+            WHEN r.reg_date BETWEEN '2026-03-07' AND '2026-04-20' THEN '调整前'
+            WHEN r.reg_date BETWEEN '2026-04-21' AND '2026-05-25' THEN '调整后'
             ELSE '其他'
         END AS adjust_period
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -1078,7 +1078,7 @@ first_day_games AS (
         g.resultguid
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -1135,13 +1135,13 @@ WITH app_reg_users AS (
         r.uid,
         r.reg_date,
         CASE
-            WHEN r.reg_date BETWEEN '2026-02-10' AND '2026-04-20' THEN '调整前'
-            WHEN r.reg_date BETWEEN '2026-04-21' AND '2026-05-20' THEN '调整后'
+            WHEN r.reg_date BETWEEN '2026-03-07' AND '2026-04-20' THEN '调整前'
+            WHEN r.reg_date BETWEEN '2026-04-21' AND '2026-05-25' THEN '调整后'
             ELSE '其他'
         END AS adjust_period
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -1167,7 +1167,7 @@ first_day_games AS (
         ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime ASC, g.resultguid ASC) AS game_rank
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -1257,7 +1257,7 @@ WITH app_reg_users AS (
         r.reg_date
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-20'
+      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
       AND r.is_login_log_missing = 0
       AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
 ),
@@ -1282,7 +1282,7 @@ first_day_games AS (
         ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime ASC, g.resultguid ASC) AS game_rank
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-05-20'
+      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
       AND g.robot != 1
 ),
 user_game_summary AS (
@@ -1369,7 +1369,7 @@ ORDER BY game_cnt_group, user_count DESC;
 首次看数时按以下顺序解读：
 
 - 先看每日 `one_game_rate_among_played`，确认 `1局用户` 是稳定问题还是局部日期异常。
-- 调整前后必须分开解读，优先比较 `2026-02-10` 至 `2026-04-20` 与 `2026-04-21` 至 `2026-05-20` 的差异。
+- 调整前后必须分开解读，优先比较 `2026-03-07` 至 `2026-04-20` 与 `2026-04-21` 至 `2026-05-25` 的差异。
 - 画像差异优先看 `lift >= 1.2` 且样本量足够的维度值，避免被小样本误导。
 - 首局体验差异优先看 `1局用户` 相比 `2局及以上用户` 是否在首局胜率、首局耗时、首局净收益、门槛不足、高倍局、逃跑率上明显更差。
 - 首局失败后继续行为优先看失败后余额门槛、是否换房间、到第 2 局时间间隔和第 2 局反馈。
