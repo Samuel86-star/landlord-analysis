@@ -1042,143 +1042,91 @@ ORDER BY
 ### 6.2 首局失败后继续行为 SQL
 
 ```sql
-WITH app_reg_users AS (
-    SELECT
-        r.app_id,
-        r.uid,
-        r.reg_date,
-        r.reg_datetime,
-        r.reg_channel_id,
-        r.reg_group_id,
-        r.reg_app_code,
-        r.channel_category_name,
-        r.channel_category_tag_id,
-        r.first_day_login_cnt,
-        CASE
-            WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
-            WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
-            ELSE '其他'
-        END AS platform,
-        CASE
-            WHEN r.reg_app_code = 'zgda' THEN 'Cocos-Lua'
-            WHEN r.reg_app_code = 'zgdx' THEN 'Cocos-Creator'
-            ELSE '其他'
-        END AS client_lang
-    FROM tcy_temp.dws_dq_app_daily_reg r
-    WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
-      AND r.is_login_log_missing = 0
-      AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
-),
-first_day_games AS (
-    SELECT
-        g.app_id,
-        g.uid,
-        g.dt,
-        g.game_datetime,
-        g.resultguid,
-        g.timecost,
-        g.room_id,
-        g.play_mode,
-        g.room_fee,
-        g.room_currency_lower,
-        g.role,
-        g.result_id,
-        g.start_money,
-        g.end_money,
-        g.diff_money_pre_tax,
-        g.cut,
-        g.magnification,
-        g.real_magnification,
-        g.grab_landlord_bet,
-        g.complete_victory_bet,
-        g.bomb_bet,
-        ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime ASC, g.resultguid ASC) AS game_rank
-    FROM tcy_temp.dws_ddz_firstday_game g
-    WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
-      AND g.robot != 1
-),
-user_game_summary AS (
-    SELECT
-        r.app_id,
-        r.uid,
-        r.reg_date,
-        COUNT(DISTINCT g.resultguid) AS first_day_game_cnt
-    FROM app_reg_users r
-    LEFT JOIN first_day_games g
-        ON g.app_id = r.app_id
-        AND g.uid = r.uid
-        AND g.dt = r.reg_date
-    GROUP BY r.app_id, r.uid, r.reg_date
-),
-first_loss_users AS (
-    SELECT
-        r.platform,
-        r.client_lang,
-        r.channel_category_name,
-        s.uid,
-        s.reg_date,
-        s.first_day_game_cnt,
-        CASE
-            WHEN s.first_day_game_cnt = 1 THEN '首局失败后停止'
-            ELSE '首局失败后继续第2局'
-        END AS first_loss_continue_group,
-        f.game_datetime AS first_game_datetime,
-        f.room_id AS first_room_id,
-        f.play_mode AS first_play_mode,
-        f.role AS first_role,
-        f.timecost AS first_timecost,
-        f.start_money AS first_start_money,
-        f.end_money AS first_end_money,
-        f.diff_money_pre_tax - f.room_fee AS first_net_money_change,
-        CASE WHEN f.end_money < f.room_currency_lower THEN 1 ELSE 0 END AS first_below_room_threshold,
-        CASE WHEN f.room_currency_lower > 0 THEN f.end_money * 1.0 / f.room_currency_lower ELSE NULL END AS first_end_money_to_threshold,
-        CASE WHEN f.start_money > 0 THEN f.room_fee * 1.0 / f.start_money ELSE NULL END AS first_fee_pressure,
-        CASE WHEN f.magnification > 24 THEN 1 ELSE 0 END AS first_high_magnification,
-        CASE WHEN f.role = 1 THEN 1 ELSE 0 END AS first_is_landlord,
-        CASE WHEN f.bomb_bet >= 4 THEN 1 ELSE 0 END AS first_has_bomb,
-        CASE WHEN f.complete_victory_bet = 2 THEN 1 ELSE 0 END AS first_has_spring,
-        n.game_datetime AS second_game_datetime,
-        n.room_id AS second_room_id,
-        n.play_mode AS second_play_mode,
-        n.result_id AS second_result_id,
-        n.diff_money_pre_tax - n.room_fee AS second_net_money_change
-    FROM user_game_summary s
-    INNER JOIN app_reg_users r
-        ON r.app_id = s.app_id
-        AND r.uid = s.uid
-        AND r.reg_date = s.reg_date
-    INNER JOIN first_day_games f
-        ON f.app_id = s.app_id
-        AND f.uid = s.uid
-        AND f.dt = s.reg_date
-        AND f.game_rank = 1
-        AND f.result_id = 2
-    LEFT JOIN first_day_games n
-        ON n.app_id = s.app_id
-        AND n.uid = s.uid
-        AND n.dt = s.reg_date
-        AND n.game_rank = 2
-)
 SELECT
-    first_loss_continue_group,
-    COUNT(DISTINCT uid) AS user_count,
-    ROUND(AVG(first_timecost), 1) AS avg_first_timecost,
-    ROUND(AVG(first_net_money_change), 0) AS avg_first_net_money_change,
-    ROUND(AVG(first_below_room_threshold) * 100.0, 2) AS first_below_room_threshold_rate,
-    ROUND(AVG(first_end_money_to_threshold), 2) AS avg_first_end_money_to_threshold,
-    ROUND(AVG(first_fee_pressure) * 100.0, 2) AS avg_first_fee_pressure,
-    ROUND(AVG(first_high_magnification) * 100.0, 2) AS first_high_magnification_rate,
-    ROUND(AVG(first_is_landlord) * 100.0, 2) AS first_landlord_rate,
-    ROUND(AVG(first_has_bomb) * 100.0, 2) AS first_has_bomb_rate,
-    ROUND(AVG(first_has_spring) * 100.0, 2) AS first_has_spring_rate,
-    ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN TIMESTAMPDIFF(SECOND, first_game_datetime, second_game_datetime) END), 1) AS avg_seconds_to_second_game,
-    ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN CASE WHEN second_room_id != first_room_id THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_change_room_rate,
-    ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN CASE WHEN second_play_mode != first_play_mode THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_change_play_mode_rate,
-    ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN CASE WHEN second_result_id = 1 THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_win_rate,
-    ROUND(AVG(second_net_money_change), 0) AS avg_second_net_money_change
-FROM first_loss_users
+    CASE
+        -- 用当天总去重游戏局数来判断
+        WHEN p.first_day_game_cnt = 1 THEN '首局失败后停止'
+        ELSE '首局失败后继续第2局'
+    END AS first_loss_continue_group,
+    COUNT(DISTINCT p.uid) AS user_count,
+    ROUND(AVG(p.first_timecost), 1) AS avg_first_timecost,
+    ROUND(AVG(p.first_net_money_change), 0) AS avg_first_net_money_change,
+    ROUND(AVG(p.first_below_room_threshold) * 100.0, 2) AS first_below_room_threshold_rate,
+    ROUND(AVG(p.first_end_money_to_threshold), 2) AS avg_first_end_money_to_threshold,
+    ROUND(AVG(p.first_fee_pressure) * 100.0, 2) AS avg_first_fee_pressure,
+    ROUND(AVG(p.first_high_magnification) * 100.0, 2) AS first_high_magnification_rate,
+    ROUND(AVG(p.first_landlord_rate) * 100.0, 2) AS first_landlord_rate,
+    ROUND(AVG(p.first_has_bomb) * 100.0, 2) AS first_has_bomb_rate,
+    ROUND(AVG(p.first_has_spring) * 100.0, 2) AS first_has_spring_rate,
+    ROUND(AVG(CASE WHEN p.second_game_datetime IS NOT NULL THEN TIMESTAMPDIFF(SECOND, p.first_game_datetime, p.second_game_datetime) END), 1) AS avg_seconds_to_second_game,
+    ROUND(AVG(CASE WHEN p.second_game_datetime IS NOT NULL THEN CASE WHEN p.second_room_id != p.first_room_id THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_change_room_rate,
+    ROUND(AVG(CASE WHEN p.second_game_datetime IS NOT NULL THEN CASE WHEN p.second_play_mode != p.first_play_mode THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_change_play_mode_rate,
+    ROUND(AVG(CASE WHEN p.second_game_datetime IS NOT NULL THEN CASE WHEN p.second_result_id = 1 THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_win_rate,
+    ROUND(AVG(p.second_net_money_change), 0) AS avg_second_net_money_change
+FROM (
+    -- 【核心内衬表】直接在子查询内完成 GROUP BY
+    SELECT
+        uid,
+        dt,
+        COUNT(DISTINCT resultguid) AS first_day_game_cnt,
+        MAX(CASE WHEN game_rank = 1 THEN result_id END) AS first_result_id,
+        MAX(CASE WHEN game_rank = 1 THEN game_datetime END) AS first_game_datetime,
+        MAX(CASE WHEN game_rank = 1 THEN room_id END) AS first_room_id,
+        MAX(CASE WHEN game_rank = 1 THEN play_mode END) AS first_play_mode,
+        MAX(CASE WHEN game_rank = 1 THEN timecost END) AS first_timecost,
+        MAX(CASE WHEN game_rank = 1 THEN net_money_change END) AS first_net_money_change,
+        MAX(CASE WHEN game_rank = 1 THEN below_room_threshold END) AS first_below_room_threshold,
+        MAX(CASE WHEN game_rank = 1 THEN end_money_to_threshold END) AS first_end_money_to_threshold,
+        MAX(CASE WHEN game_rank = 1 THEN fee_pressure END) AS first_fee_pressure,
+        MAX(CASE WHEN game_rank = 1 THEN high_magnification END) AS first_high_magnification,
+        MAX(CASE WHEN game_rank = 1 THEN is_landlord END) AS first_landlord_rate,
+        MAX(CASE WHEN game_rank = 1 THEN has_bomb END) AS first_has_bomb,
+        MAX(CASE WHEN game_rank = 1 THEN has_spring END) AS first_has_spring,
+        MAX(CASE WHEN game_rank = 2 THEN game_datetime END) AS second_game_datetime,
+        MAX(CASE WHEN game_rank = 2 THEN room_id END) AS second_room_id,
+        MAX(CASE WHEN game_rank = 2 THEN play_mode END) AS second_play_mode,
+        MAX(CASE WHEN game_rank = 2 THEN result_id END) AS second_result_id,
+        MAX(CASE WHEN game_rank = 2 THEN net_money_change END) AS second_net_money_change
+    FROM (
+        -- 基础排序流
+        SELECT
+            g.uid,
+            g.dt,
+            g.game_datetime,
+            g.room_id,
+            g.play_mode,
+            g.result_id,
+            g.resultguid,
+            g.timecost,
+            (g.diff_money_pre_tax - g.room_fee) AS net_money_change,
+            CASE WHEN g.end_money < g.room_currency_lower THEN 1 ELSE 0 END AS below_room_threshold,
+            CASE WHEN g.room_currency_lower > 0 THEN g.end_money * 1.0 / g.room_currency_lower ELSE NULL END AS end_money_to_threshold,
+            CASE WHEN g.start_money > 0 THEN g.room_fee * 1.0 / g.start_money ELSE NULL END AS fee_pressure,
+            CASE WHEN g.magnification > 24 THEN 1 ELSE 0 END AS high_magnification,
+            CASE WHEN g.role = 1 THEN 1 ELSE 0 END AS is_landlord,
+            CASE WHEN g.bomb_bet >= 4 THEN 1 ELSE 0 END AS has_bomb,
+            CASE WHEN g.complete_victory_bet = 2 THEN 1 ELSE 0 END AS has_spring,
+            ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime ASC, g.resultguid ASC) AS game_rank
+        FROM tcy_temp.dws_ddz_firstday_game g
+        WHERE g.app_id = 1880053
+          AND g.dt BETWEEN '2026-03-07' AND '2026-05-25'
+          AND g.robot != 1
+    ) rnk
+    GROUP BY uid, dt
+) p
+-- 【致命过滤器】首局必须是失败
+WHERE p.first_result_id = 2
+  AND EXISTS (
+      -- 用 EXISTS 代替 INNER JOIN，避免因为表间关联机制不一致触发的编译 Bug
+      SELECT 1 
+      FROM tcy_temp.dws_dq_app_daily_reg r
+      WHERE r.app_id = 1880053
+        AND r.reg_date BETWEEN '2026-03-07' AND '2026-05-25'
+        AND r.is_login_log_missing = 0
+        AND r.reg_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
+        AND r.uid = p.uid
+        AND r.reg_date = p.dt
+  )
 GROUP BY first_loss_continue_group
 ORDER BY first_loss_continue_group;
 ```
