@@ -147,12 +147,23 @@ CASE WHEN timecost > 200 THEN 1 ELSE 0 END AS is_long_timecost
 
 耗时异常需要按房间拆开看，不能只看整体均值，也不能只看平均值。判断逻辑：
 
-- 对局耗时优先同时看 `avg_first_timecost`、`p50_first_timecost`、`p90_first_timecost`、`p95_first_timecost`、`max_first_timecost` 和 `long_timecost_rate`。
+- 对局耗时优先同时看 `avg_first_timecost`、`p50_first_timecost`、`p90_first_timecost`、`p95_first_timecost`、`p99_first_timecost`、`max_first_timecost`、`long_200_timecost_rate`、`long_300_timecost_rate` 和 `long_600_timecost_rate`。
 - 如果平均值显著偏高，但中位数接近正常，仅 P95、最大值或 `timecost > 200秒` 占比异常，说明更可能是少量几千秒或几万秒极端局拉高均值，需要优先排查异常长尾明细。
 - 如果中位数、P90、P95 同时偏高，才说明该组用户的典型首局体验本身就偏慢。
 - 如果某房间 `1局用户` 首局耗时远高于 `2局及以上用户`，但同房间多局用户耗时正常，优先怀疑特定用户链路上的卡顿、断线重连、托管超时或匹配挂起。
 - 如果同房间两组用户耗时都高，才优先怀疑房间日志口径或玩法天然耗时更长。
 - 对 `timecost > 200秒` 且首日无后续对局的用户，应输出明细用于客户端和服务端日志排查。
+
+建议额外补充耗时异常占比，而不是只看均值。重点看以下分层：
+
+| 指标 | 解释 |
+| ---- | ---- |
+| `timecost > 200秒` 占比 | 判断异常耗时是不是偶发。 |
+| `timecost > 300秒` 占比 | 判断是否已从偶发转为低频甚至中频。 |
+| `timecost > 600秒` 占比 | 判断是否存在极端挂起或长时间托管。 |
+| 95分位 / 99分位耗时 | 避免均值被少量超长局拉高，辅助判断尾部风险。 |
+
+如果 `1局用户` 的异常耗时占比明显高于 `2局及以上用户`，且在 4484、22039 等房间持续出现，就更像中高频问题；如果只集中在少量日期、少量渠道或极少数用户，则更像偶发问题。
 
 ### 3.4 Step 4：高风险组合
 
@@ -271,10 +282,13 @@ CASE WHEN timecost > 200 THEN 1 ELSE 0 END AS is_long_timecost
 - 服务费压力分布
 - 高倍局占比
 - 逃跑占比
+- 耗时异常占比（如 `timecost > 200秒`、`timecost > 300秒`、`timecost > 600秒`）
+- 耗时分位数（P95、P99）
 
 补充检查：
 
-- 按 `room_id` 对比 `avg_first_timecost`、`p50_first_timecost`、`p95_first_timecost` 和 `long_timecost_rate`，识别特定房间耗时异常。
+- 按 `room_id` 对比 `avg_first_timecost`、`p50_first_timecost`、`p95_first_timecost`、`p99_first_timecost`、`long_200_timecost_rate`、`long_300_timecost_rate` 和 `long_600_timecost_rate`，识别特定房间耗时异常。
+- 按 `room_id` 和 `game_cnt_group` 对比异常耗时占比，判断是偶发问题还是中高频问题。
 - 对平均值明显高于中位数的房间，优先输出超长尾明细，避免把少量异常局误判成整体体验偏慢。
 - 对 `timecost > 200秒` 且首日无后续对局的用户，输出明细用于日志排查。
 
@@ -330,6 +344,7 @@ CASE WHEN timecost > 200 THEN 1 ELSE 0 END AS is_long_timecost
 - `avg_room_base`
 - `avg_room_currency_lower`
 - `avg_loss_tolerance`
+- `already_below_safe_boundary_rate`
 - `farmer_break_even_magnification`
 - `landlord_break_even_magnification`
 - `below_room_threshold_rate`

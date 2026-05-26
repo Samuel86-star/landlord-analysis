@@ -677,7 +677,7 @@ first_game_features AS (
         diff_money_pre_tax - room_fee AS net_money_change,
         CASE WHEN end_money < room_currency_lower THEN 1 ELSE 0 END AS is_below_room_threshold,
         CASE WHEN start_money > 0 THEN room_fee * 1.0 / start_money ELSE NULL END AS fee_pressure,
-        CASE WHEN magnification >= 24 THEN 1 ELSE 0 END AS is_high_magnification,
+        CASE WHEN magnification > 24 THEN 1 ELSE 0 END AS is_high_magnification,
         CASE WHEN cut < 0 THEN 1 ELSE 0 END AS is_escape
     FROM ranked_first_games
     WHERE rn = 1
@@ -692,8 +692,11 @@ SELECT
     ROUND(percentile_approx(timecost, 0.5), 1) AS p50_first_timecost,
     ROUND(percentile_approx(timecost, 0.9), 1) AS p90_first_timecost,
     ROUND(percentile_approx(timecost, 0.95), 1) AS p95_first_timecost,
+    ROUND(percentile_approx(timecost, 0.99), 1) AS p99_first_timecost,
     MAX(timecost) AS max_first_timecost,
-    ROUND(AVG(CASE WHEN timecost > 200 THEN 1 ELSE 0 END) * 100.0, 2) AS long_timecost_rate,
+    ROUND(AVG(CASE WHEN timecost > 200 THEN 1 ELSE 0 END) * 100.0, 2) AS long_200_timecost_rate,
+    ROUND(AVG(CASE WHEN timecost > 300 THEN 1 ELSE 0 END) * 100.0, 2) AS long_300_timecost_rate,
+    ROUND(AVG(CASE WHEN timecost > 600 THEN 1 ELSE 0 END) * 100.0, 2) AS long_600_timecost_rate,
     ROUND(AVG(net_money_change), 0) AS avg_net_money_change,
     ROUND(AVG(is_below_room_threshold) * 100.0, 2) AS below_room_threshold_rate,
     ROUND(AVG(fee_pressure) * 100.0, 2) AS avg_fee_pressure,
@@ -702,6 +705,104 @@ SELECT
 FROM first_game_features
 GROUP BY game_cnt_group, play_mode_name, room_id
 ORDER BY game_cnt_group, user_count DESC;
+```
+
+### 4.3 房间异常耗时组间对比 SQL
+
+在 4.2 SQL 的 `first_game_features` CTE 基础上，追加以下 CTE 并替换最后的 `SELECT`，用于直接比较同一房间下 `1局用户` 与 `2局及以上用户` 的异常耗时差异。
+
+```sql
+, room_group_timecost AS (
+    SELECT
+        play_mode_name,
+        room_id,
+        game_cnt_group,
+        COUNT(DISTINCT uid) AS user_count,
+        ROUND(AVG(timecost), 1) AS avg_first_timecost,
+        ROUND(percentile_approx(timecost, 0.5), 1) AS p50_first_timecost,
+        ROUND(percentile_approx(timecost, 0.95), 1) AS p95_first_timecost,
+        ROUND(percentile_approx(timecost, 0.99), 1) AS p99_first_timecost,
+        MAX(timecost) AS max_first_timecost,
+        ROUND(AVG(CASE WHEN timecost > 200 THEN 1 ELSE 0 END) * 100.0, 2) AS long_200_timecost_rate,
+        ROUND(AVG(CASE WHEN timecost > 300 THEN 1 ELSE 0 END) * 100.0, 2) AS long_300_timecost_rate,
+        ROUND(AVG(CASE WHEN timecost > 600 THEN 1 ELSE 0 END) * 100.0, 2) AS long_600_timecost_rate
+    FROM first_game_features
+    GROUP BY
+        play_mode_name,
+        room_id,
+        game_cnt_group
+),
+room_timecost_compare AS (
+    SELECT
+        play_mode_name,
+        room_id,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN user_count END) AS one_game_user_count,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN user_count END) AS multi_game_user_count,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN avg_first_timecost END) AS one_game_avg_timecost,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN avg_first_timecost END) AS multi_game_avg_timecost,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN p50_first_timecost END) AS one_game_p50_timecost,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN p50_first_timecost END) AS multi_game_p50_timecost,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN p95_first_timecost END) AS one_game_p95_timecost,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN p95_first_timecost END) AS multi_game_p95_timecost,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN p99_first_timecost END) AS one_game_p99_timecost,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN p99_first_timecost END) AS multi_game_p99_timecost,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN max_first_timecost END) AS one_game_max_timecost,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN max_first_timecost END) AS multi_game_max_timecost,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN long_200_timecost_rate END) AS one_game_long_200_rate,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN long_200_timecost_rate END) AS multi_game_long_200_rate,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN long_300_timecost_rate END) AS one_game_long_300_rate,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN long_300_timecost_rate END) AS multi_game_long_300_rate,
+        MAX(CASE WHEN game_cnt_group = '1局' THEN long_600_timecost_rate END) AS one_game_long_600_rate,
+        MAX(CASE WHEN game_cnt_group = '2局及以上' THEN long_600_timecost_rate END) AS multi_game_long_600_rate
+    FROM room_group_timecost
+    GROUP BY
+        play_mode_name,
+        room_id
+)
+SELECT
+    play_mode_name,
+    room_id,
+    one_game_user_count,
+    multi_game_user_count,
+    one_game_avg_timecost,
+    multi_game_avg_timecost,
+    one_game_p50_timecost,
+    multi_game_p50_timecost,
+    one_game_p95_timecost,
+    multi_game_p95_timecost,
+    one_game_p99_timecost,
+    multi_game_p99_timecost,
+    one_game_max_timecost,
+    multi_game_max_timecost,
+    one_game_long_200_rate,
+    multi_game_long_200_rate,
+    ROUND(one_game_long_200_rate - multi_game_long_200_rate, 2) AS long_200_rate_diff,
+    one_game_long_300_rate,
+    multi_game_long_300_rate,
+    ROUND(one_game_long_300_rate - multi_game_long_300_rate, 2) AS long_300_rate_diff,
+    one_game_long_600_rate,
+    multi_game_long_600_rate,
+    ROUND(one_game_long_600_rate - multi_game_long_600_rate, 2) AS long_600_rate_diff,
+    CASE
+        WHEN one_game_long_200_rate >= multi_game_long_200_rate + 5
+            AND one_game_p95_timecost > multi_game_p95_timecost
+            THEN '1局用户异常耗时更高'
+        WHEN one_game_long_200_rate >= 10
+            AND multi_game_long_200_rate >= 10
+            THEN '两组均高，优先排查房间或日志口径'
+        WHEN one_game_avg_timecost > multi_game_avg_timecost
+            AND one_game_p50_timecost <= multi_game_p50_timecost
+            AND one_game_p99_timecost > multi_game_p99_timecost
+            THEN '疑似少量极端长尾拉高均值'
+        ELSE '未见明显异常'
+    END AS timecost_risk_type
+FROM room_timecost_compare
+WHERE one_game_user_count >= 50
+  AND multi_game_user_count >= 50
+ORDER BY
+    long_200_rate_diff DESC,
+    one_game_long_200_rate DESC,
+    one_game_user_count DESC;
 ```
 
 ---
@@ -840,6 +941,8 @@ ranked_first_games AS (
     SELECT
         u.game_cnt_group,
         u.uid,
+        u.channel_category_name,
+        u.client_lang,
         u.first_day_login_cnt,
         fg.role,
         fg.result_id,
@@ -861,13 +964,15 @@ first_game_features AS (
     SELECT
         game_cnt_group,
         uid,
+        channel_category_name,
+        client_lang,
         first_day_login_cnt,
         role,
         CASE WHEN result_id = 2 THEN 1 ELSE 0 END AS is_loss,
         diff_money_pre_tax - room_fee AS net_money_change,
         CASE WHEN end_money < room_currency_lower THEN 1 ELSE 0 END AS is_below_room_threshold,
         CASE WHEN start_money > 0 THEN room_fee * 1.0 / start_money ELSE NULL END AS fee_pressure,
-        CASE WHEN magnification >= 24 THEN 1 ELSE 0 END AS is_high_magnification
+        CASE WHEN magnification > 24 THEN 1 ELSE 0 END AS is_high_magnification
     FROM ranked_first_games
     WHERE rn = 1
 )
@@ -882,6 +987,48 @@ SELECT
 FROM first_game_features
 GROUP BY game_cnt_group
 ORDER BY game_cnt_group;
+```
+
+### 5.3 渠道分类与客户端语言组合 SQL
+
+在 5.2 SQL 的 `first_game_features` CTE 基础上，替换最后的 `SELECT`，用于识别 `渠道分类 × 客户端语言` 是否在 `1局用户` 中明显偏高。
+
+```sql
+, channel_client_counts AS (
+    SELECT
+        channel_category_name,
+        client_lang,
+        COUNT(DISTINCT CASE WHEN game_cnt_group = '1局' THEN uid END) AS one_game_user_cnt,
+        COUNT(DISTINCT CASE WHEN game_cnt_group = '2局及以上' THEN uid END) AS multi_game_user_cnt
+    FROM first_game_features
+    GROUP BY
+        channel_category_name,
+        client_lang
+),
+group_totals AS (
+    SELECT
+        COUNT(DISTINCT CASE WHEN game_cnt_group = '1局' THEN uid END) AS one_game_total,
+        COUNT(DISTINCT CASE WHEN game_cnt_group = '2局及以上' THEN uid END) AS multi_game_total
+    FROM first_game_features
+)
+SELECT
+    c.channel_category_name,
+    c.client_lang,
+    c.one_game_user_cnt,
+    c.multi_game_user_cnt,
+    ROUND(c.one_game_user_cnt * 100.0 / NULLIF(t.one_game_total, 0), 2) AS one_game_share,
+    ROUND(c.multi_game_user_cnt * 100.0 / NULLIF(t.multi_game_total, 0), 2) AS multi_game_share,
+    ROUND(
+        (c.one_game_user_cnt * 1.0 / NULLIF(t.one_game_total, 0))
+        / NULLIF(c.multi_game_user_cnt * 1.0 / NULLIF(t.multi_game_total, 0), 0),
+        2
+    ) AS lift
+FROM channel_client_counts c
+CROSS JOIN group_totals t
+WHERE c.one_game_user_cnt >= 50
+ORDER BY
+    lift DESC,
+    c.one_game_user_cnt DESC;
 ```
 
 ---
@@ -988,7 +1135,7 @@ first_loss_users AS (
         CASE WHEN f.end_money < f.room_currency_lower THEN 1 ELSE 0 END AS first_below_room_threshold,
         CASE WHEN f.room_currency_lower > 0 THEN f.end_money * 1.0 / f.room_currency_lower ELSE NULL END AS first_end_money_to_threshold,
         CASE WHEN f.start_money > 0 THEN f.room_fee * 1.0 / f.start_money ELSE NULL END AS first_fee_pressure,
-        CASE WHEN f.magnification >= 24 THEN 1 ELSE 0 END AS first_high_magnification,
+        CASE WHEN f.magnification > 24 THEN 1 ELSE 0 END AS first_high_magnification,
         CASE WHEN f.role = 1 THEN 1 ELSE 0 END AS first_is_landlord,
         CASE WHEN f.bomb_bet >= 4 THEN 1 ELSE 0 END AS first_has_bomb,
         CASE WHEN f.complete_victory_bet = 2 THEN 1 ELSE 0 END AS first_has_spring,
@@ -1027,9 +1174,9 @@ SELECT
     ROUND(AVG(first_has_bomb) * 100.0, 2) AS first_has_bomb_rate,
     ROUND(AVG(first_has_spring) * 100.0, 2) AS first_has_spring_rate,
     ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN TIMESTAMPDIFF(SECOND, first_game_datetime, second_game_datetime) END), 1) AS avg_seconds_to_second_game,
-    ROUND(AVG(CASE WHEN second_room_id IS NOT NULL AND second_room_id != first_room_id THEN 1 ELSE 0 END) * 100.0, 2) AS second_game_change_room_rate,
-    ROUND(AVG(CASE WHEN second_play_mode IS NOT NULL AND second_play_mode != first_play_mode THEN 1 ELSE 0 END) * 100.0, 2) AS second_game_change_play_mode_rate,
-    ROUND(AVG(CASE WHEN second_result_id = 1 THEN 1 ELSE 0 END) * 100.0, 2) AS second_game_win_rate,
+    ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN CASE WHEN second_room_id != first_room_id THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_change_room_rate,
+    ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN CASE WHEN second_play_mode != first_play_mode THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_change_play_mode_rate,
+    ROUND(AVG(CASE WHEN second_game_datetime IS NOT NULL THEN CASE WHEN second_result_id = 1 THEN 1 ELSE 0 END END) * 100.0, 2) AS second_game_win_rate,
     ROUND(AVG(second_net_money_change), 0) AS avg_second_net_money_change
 FROM first_loss_users
 GROUP BY first_loss_continue_group
@@ -1206,7 +1353,7 @@ first_game_features AS (
         f.diff_money_pre_tax - f.room_fee AS net_money_change,
         CASE WHEN f.end_money < f.room_currency_lower THEN 1 ELSE 0 END AS is_below_room_threshold,
         CASE WHEN f.start_money > 0 THEN f.room_fee * 1.0 / f.start_money ELSE NULL END AS fee_pressure,
-        CASE WHEN f.magnification >= 24 THEN 1 ELSE 0 END AS is_high_magnification,
+        CASE WHEN f.magnification > 24 THEN 1 ELSE 0 END AS is_high_magnification,
         CASE WHEN f.cut < 0 THEN 1 ELSE 0 END AS is_escape
     FROM user_game_bucket u
     INNER JOIN first_day_games f
@@ -1225,8 +1372,11 @@ SELECT
     ROUND(percentile_approx(timecost, 0.5), 1) AS p50_first_timecost,
     ROUND(percentile_approx(timecost, 0.9), 1) AS p90_first_timecost,
     ROUND(percentile_approx(timecost, 0.95), 1) AS p95_first_timecost,
+    ROUND(percentile_approx(timecost, 0.99), 1) AS p99_first_timecost,
     MAX(timecost) AS max_first_timecost,
-    ROUND(AVG(CASE WHEN timecost > 200 THEN 1 ELSE 0 END) * 100.0, 2) AS long_timecost_rate,
+    ROUND(AVG(CASE WHEN timecost > 200 THEN 1 ELSE 0 END) * 100.0, 2) AS long_200_timecost_rate,
+    ROUND(AVG(CASE WHEN timecost > 300 THEN 1 ELSE 0 END) * 100.0, 2) AS long_300_timecost_rate,
+    ROUND(AVG(CASE WHEN timecost > 600 THEN 1 ELSE 0 END) * 100.0, 2) AS long_600_timecost_rate,
     ROUND(AVG(net_money_change), 0) AS avg_net_money_change,
     ROUND(AVG(is_below_room_threshold) * 100.0, 2) AS below_room_threshold_rate,
     ROUND(AVG(fee_pressure) * 100.0, 2) AS avg_fee_pressure,
@@ -1353,8 +1503,9 @@ SELECT
     ROUND(AVG(room_base), 0) AS avg_room_base,
     ROUND(AVG(room_currency_lower), 0) AS avg_room_currency_lower,
     ROUND(AVG(loss_tolerance), 0) AS avg_loss_tolerance,
-    ROUND(AVG(CASE WHEN room_base > 0 THEN FLOOR(loss_tolerance / room_base) + 1 END), 1) AS farmer_break_even_magnification,
-    ROUND(AVG(CASE WHEN room_base > 0 THEN FLOOR(loss_tolerance / (room_base * 2)) + 1 END), 1) AS landlord_break_even_magnification,
+    ROUND(AVG(CASE WHEN loss_tolerance < 0 THEN 1 ELSE 0 END) * 100.0, 2) AS already_below_safe_boundary_rate,
+    ROUND(AVG(CASE WHEN room_base > 0 THEN CASE WHEN loss_tolerance < 0 THEN 0 ELSE FLOOR(loss_tolerance / room_base) + 1 END END), 1) AS farmer_break_even_magnification,
+    ROUND(AVG(CASE WHEN room_base > 0 THEN CASE WHEN loss_tolerance < 0 THEN 0 ELSE FLOOR(loss_tolerance / (room_base * 2)) + 1 END END), 1) AS landlord_break_even_magnification,
     ROUND(AVG(is_below_room_threshold) * 100.0, 2) AS below_room_threshold_rate,
     ROUND(AVG(magnification), 1) AS avg_magnification
 FROM first_loss_features
@@ -1372,6 +1523,7 @@ ORDER BY game_cnt_group, user_count DESC;
 - 调整前后必须分开解读，优先比较 `2026-03-07` 至 `2026-04-20` 与 `2026-04-21` 至 `2026-05-25` 的差异。
 - 画像差异优先看 `lift >= 1.2` 且样本量足够的维度值，避免被小样本误导。
 - 首局体验差异优先看 `1局用户` 相比 `2局及以上用户` 是否在首局胜率、首局耗时、首局净收益、门槛不足、高倍局、逃跑率上明显更差。
+- 房间异常耗时优先看同一 `room_id` 下 `long_200_rate_diff`、`long_300_rate_diff` 和 `long_600_rate_diff`。如果 `1局用户` 明显更高且 P95/P99 同步偏高，优先排查该房间首局链路；如果两组都高，优先排查房间玩法或日志口径；如果 P50 正常但 P99/最大值异常，优先拉长尾明细。
 - 首局失败后继续行为优先看失败后余额门槛、是否换房间、到第 2 局时间间隔和第 2 局反馈。
 - 经济容错模型优先看首局失败用户的 `loss_tolerance`、角色、倍数和 `below_room_threshold_rate`，判断低于门槛是体验问题还是规则必然结果。
 - 高风险组合优先看同时满足高占比和高差异的组合，再判断对应产品或运营动作。
