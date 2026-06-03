@@ -7,9 +7,10 @@
 | 库名 | `tcy_temp` |
 | 表名 | `dws_app_gamemode_active` |
 | 全名 | `tcy_temp.dws_app_gamemode_active` |
-| 类型 | DWS 层聚合表（一次性创建） |
+| 类型 | DWS 层聚合表（一次性创建，**T-2 可用**） |
 | 描述 | APP 端每日按玩法活跃用户去重清单，**专用于"同玩法留存"flag 计算** |
 | 粒度 | uid × dt × app_id × game_mode（一个用户一天一个应用一种玩法一行） |
+| 数据延迟 | **T-2**：依赖 `dws_crazyddz_daily_game`（跨天对局需 T+1 日日志才可聚合），T 日活跃数据在 T+2 日才可产出 |
 
 ## 与 `dws_app_game_active` 的区别
 
@@ -24,7 +25,7 @@
 | -------- | ------ | ------ | -------- |
 | app_id | int | 应用 ID | 1880053 |
 | uid | int | 玩家唯一标识 | 123456789 |
-| play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，0=其他 | 1 |
+| play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，7=五十K（疯狂斗地主），0=其他 | 1 |
 | dt | date | 对局日期 | 2026-02-15 |
 
 ## 构建 SQL
@@ -45,10 +46,10 @@ PARTITION BY RANGE(`dt`) (
 DISTRIBUTED BY HASH(`uid`) BUCKETS 8
 PROPERTIES (
     "replication_num" = "1",
-    "colocate_with" = "group_daily_data", -- 依然入组，保证 JOIN 性能
+    "colocate_with" = "group_daily_data",  
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80",
+    "dynamic_partition.start" = "-120",
     "dynamic_partition.end" = "3",
     "dynamic_partition.prefix" = "p"
 );
@@ -56,31 +57,50 @@ PROPERTIES (
 
 ## 初始化数据SQL
 
+> **说明**：玩法活跃 = 经典斗地主玩法（play_mode IN 1,2,3,4,5,6）∪ 疯狂斗地主玩法（play_mode = 7）
+
 ```sql
 INSERT INTO tcy_temp.dws_app_gamemode_active
-SELECT app_id, uid, play_mode, date(dt)
-FROM tcy_temp.dws_ddz_daily_game
-WHERE app_id = 1880053
-  AND dt BETWEEN '2026-02-10' AND '2026-04-21'
-  AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-GROUP BY 1,2,3,4;
+SELECT app_id, uid, play_mode, dt
+FROM (
+    -- 经典斗地主
+    SELECT app_id, uid, play_mode, DATE(dt) AS dt
+    FROM tcy_temp.dws_ddz_daily_game
+    WHERE game_id = 53
+      AND dt BETWEEN '2026-03-10' AND '2026-06-01'
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    UNION ALL
+    -- 疯狂斗地主（play_mode = 7）
+    SELECT app_id, uid, play_mode, dt
+    FROM tcy_temp.dws_crazyddz_daily_game
+    WHERE game_id = 521 
+      AND dt BETWEEN '2026-03-10' AND '2026-06-01'
+      AND app_id = 1880053
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+) t
+GROUP BY app_id, uid, play_mode, dt;
 ```
 
 ## 表依赖关系
 
 ```text
-tcy_temp.dws_dq_app_daily_reg                 （APP 端注册用户宽表）
-            ↓  LEFT JOIN uid + app_id，dt > reg_date，game_mode = target_mode
+tcy_temp.dws_ddz_daily_game                   （经典斗地主对局明细表）
+tcy_temp.dws_crazyddz_daily_game              （疯狂斗地主对局明细表，play_mode=7）
+            ↓  UNION 去重聚合到 uid × dt × app_id × play_mode
 tcy_temp.dws_app_gamemode_active              （每日游戏活跃用户×玩法表，同玩法留存 flag 专用）  ← 本表
+            ↑  LEFT JOIN uid + app_id，dt > reg_date，game_mode = target_mode
+tcy_temp.dws_dq_app_daily_reg                 （APP 端注册用户宽表）
             ↓  用于计算"同玩法留存 flag"
-tcy_temp.ddz_gamemode_firstday_features     （分玩法分析宽表）
+tcy_temp.ddz_gamemode_firstday_features       （分玩法分析宽表）
 ```
 
-> **文档版本**：v2.0
+> **文档版本**：v2.1
 > **更新说明**：
 
 >
 > - v1.0：初始版本（原名 `dws_ddz_daily_play_by_mode`）
 > - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid, game_mode`）
-> - **v2.0**：重命名为 `dws_app_gamemode_active`；新增 `app_id` 字段；更新与配对表的对比说明
+> - v2.0：重命名为 `dws_app_gamemode_active`；新增 `app_id` 字段；更新与配对表的对比说明
+> - **v2.1**：新增疯狂斗地主（play_mode=7）数据源；活跃口径扩展为 `dws_ddz_daily_game` ∪ `dws_crazyddz_daily_game`

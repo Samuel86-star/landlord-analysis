@@ -17,6 +17,22 @@
 
 **解决方案**：将登录日志聚合到天级粒度，预计算用户每日的多维度登录特征，提升后续分析查询性能。
 
+## 上游表字段结构说明
+
+上游表 `tcy_dwd.dwd_tcy_userlogin_si` 为登录日志明细表（分钟级粒度），是本表的唯一数据来源。
+
+| 字段名 | 类型 | 说明 |
+| ------ | ---- | ---- |
+| app_id | bigint | 应用 ID |
+| uid | bigint | 玩家唯一标识 ID |
+| dt | datetime | 登录时间（分区字段） |
+| time_unix | bigint | 登录时间戳（毫秒级），用于 MIN_BY/MAX_BY 排序 |
+| channel_id | int | 渠道号 |
+| group_id | int | 分端 ID |
+| app_code | varchar(32) | 应用 code |
+
+> **注意**：查询上游表时必须指定 `dt` 分区条件和 `app_id` 过滤条件。
+
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |

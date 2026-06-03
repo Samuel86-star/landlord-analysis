@@ -6,7 +6,7 @@
 
 ## Markdown 书写规范
 
-创建或编辑 Markdown 文件时，必须遵循 [style/markdown-style-guide.md](style/markdown-style-guide.md) 规范。
+创建或编辑 Markdown 文件时，必须遵循 [markdown-style-guide.md](markdown-style-guide.md) 规范。
 
 ### 核心要点
 
@@ -69,13 +69,18 @@
 ## 文档目录结构
 
 ```text
-raw/          # ODS 源数据表说明文档
-dws/          # DWS 层中间表说明文档
-docs/         # 分析文档（包含分析思路和 SQL 查询）
-data/         # 分析数据（docs 中查询产出的数据结果）
-report/       # 分析报告（结合 data 和 docs 产出的结论性报告）
-ops/          # 运维操作手册
-style/        # 编码/书写规范
+analysis/            # 数据分析工作区
+  plan/              # 分析方案（分析思路和 SQL 查询）
+  data/              # 依赖数据（plan 中查询产出的数据结果）
+  result/            # 分析结论（结合 data 和 plan 产出的结论性报告）
+starrocks/           # StarRocks 数仓能力
+  account/           # 账号域（注册、登录等）
+  game/              # 游戏域（对局、战绩等）
+  currency/          # 货币域（银子、积分等）
+  config/            # 配置表（道具、渠道、货币配置等）
+ops/                 # 运维操作手册
+requirements/        # 研发需求文档
+tech/                # 技术参考文档
 ```
 
 ---

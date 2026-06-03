@@ -7,17 +7,20 @@
 | 库名 | `tcy_temp` |
 | 表名 | `dws_app_game_active` |
 | 全名 | `tcy_temp.dws_app_game_active` |
-| 类型 | DWS 层聚合表（一次性创建） |
+| 类型 | DWS 层聚合表（一次性创建，**T-2 可用**） |
 | 描述 | APP 端每日有对局的用户去重清单，**专用于留存 flag 计算** |
 | 粒度 | uid × dt × app_id（一个用户一天一个应用一行） |
+| 数据延迟 | **T-2**：依赖 `dws_crazyddz_daily_game`（跨天对局需 T+1 日日志才可聚合），T 日活跃数据在 T+2 日才可产出 |
 
 ## 设计背景
 
 留存计算的本质是：判断用户在注册后特定天数（Day1/Day3/Day7/Day14/Day30）是否再次有对局。
 
-如果直接对原始 `dws_ddz_daily_game`（日志级别，数亿行）每次都做 JOIN 计算，在 StarRocks 中性能极差。
+如果直接对原始 `dws_ddz_daily_game` 和 `dws_crazyddz_daily_game`（日志级别，数亿行）每次都做 JOIN 计算，在 StarRocks 中性能极差。
 
 **解决方案**：将每日有对局的用户提前聚合到 `uid × dt × app_id` 粒度（数百万行），后续留存计算只需在该轻量表上做 JOIN，大幅提升查询性能。
+
+> **活跃口径**：只要在经典斗地主（`dws_ddz_daily_game`）或疯狂斗地主（`dws_crazyddz_daily_game`）任一存在对局，即算当日游戏活跃。
 
 ## 与 `dws_app_game_stat` 的区别
 
@@ -61,25 +64,41 @@ PROPERTIES (
     "compression" = "LZ4",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80",
+    "dynamic_partition.start" = "-120",
     "dynamic_partition.end" = "3",
     "dynamic_partition.prefix" = "p",
-    "dynamic_partition.history_partition_num" = "80",
+    "dynamic_partition.history_partition_num" = "120",
     "colocate_with" = "group_daily_data"
 );
 ```
 
 ## 初始化数据
 
+> **说明**：活跃用户 = 经典斗地主活跃用户 ∪ 疯狂斗地主活跃用户（去重）
+
 ```sql
+-- 初始化数据（经典斗地主 + 疯狂斗地主去重合并）
 INSERT INTO tcy_temp.dws_app_game_active
-SELECT app_id, uid, date(dt)
-FROM tcy_temp.dws_ddz_daily_game
-WHERE app_id = 1880053
-  AND dt BETWEEN '2026-02-10' AND '2026-04-21'
-  AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-GROUP BY 1, 2, 3;
+SELECT app_id, uid, dt
+FROM (
+    -- 经典斗地主
+    SELECT app_id, uid, DATE(dt) AS dt
+    FROM tcy_temp.dws_ddz_daily_game
+    WHERE game_id = 53
+      AND dt BETWEEN '2026-03-01' AND '2026-06-01'
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    UNION ALL
+    -- 疯狂斗地主（game_id = 521）
+    SELECT app_id, uid, dt
+    FROM tcy_temp.dws_crazyddz_daily_game
+    WHERE game_id = 521
+      AND dt BETWEEN '2026-03-01' AND '2026-06-01'
+      AND app_id = 1880053
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+) t
+GROUP BY app_id, uid, dt;
 ```
 
 ## 留存计算方式
@@ -113,15 +132,19 @@ GROUP BY r.uid, r.reg_date;
 ## 表依赖关系
 
 ```text
-tcy_temp.dws_dq_app_daily_reg         （APP 端注册用户宽表）
-            ↓  LEFT JOIN uid + app_id，dt > reg_date
+tcy_temp.dws_ddz_daily_game           （经典斗地主对局明细表）
+tcy_temp.dws_crazyddz_daily_game      （疯狂斗地主对局明细表）
+            ↓  UNION 去重聚合到 uid × dt × app_id
 tcy_temp.dws_app_game_active          （每日游戏活跃用户表，留存 flag 专用）  ← 本表
+            ↑  LEFT JOIN uid + app_id，dt > reg_date
+tcy_temp.dws_dq_app_daily_reg         （APP 端注册用户宽表）
 ```
 
-> **文档版本**：v2.0
+> **文档版本**：v2.1
 > **更新说明**：
 
 >
 > - v1.0：初始版本（原名 `dws_ddz_daily_play`）
 > - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid`）
-> - **v2.0**：重命名为 `dws_app_game_active`；新增 `app_id` 字段；补充与 `dws_app_game_stat` 的对比说明
+> - v2.0：重命名为 `dws_app_game_active`；新增 `app_id` 字段；补充与 `dws_app_game_stat` 的对比说明
+> - **v2.1**：活跃口径扩展为 `dws_ddz_daily_game` ∪ `dws_crazyddz_daily_game`（任一存在对局即算活跃）

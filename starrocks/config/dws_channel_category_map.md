@@ -149,15 +149,15 @@ WHERE channel_id = 1001;
 
 ```sql
 SELECT
-    t1.dt,
-    t2.channel_category_name,
-    COUNT(DISTINCT t1.uid) AS user_count
-FROM tcy_dwd.dwd_tcy_userlogin_si t1
-LEFT JOIN tcy_temp.dws_channel_category_map t2
-    ON t1.channel_id = t2.channel_id
-WHERE t1.app_id = 1880053
-  AND t1.dt BETWEEN 20260101 AND 20260408
-GROUP BY t1.dt, t2.channel_category_name;
+    g.dt,
+    m.channel_category_name,
+    COUNT(DISTINCT g.uid) AS user_count
+FROM tcy_temp.dws_dq_daily_login g
+LEFT JOIN tcy_temp.dws_channel_category_map m
+    ON g.channel_id = m.channel_id
+WHERE g.app_id = 1880053
+  AND g.dt BETWEEN '2026-01-01' AND '2026-04-08'
+GROUP BY g.dt, m.channel_category_name;
 ```
 
 ## 注意事项

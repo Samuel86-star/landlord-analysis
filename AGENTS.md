@@ -6,7 +6,7 @@
 
 ## Markdown 书写规范
 
-创建或编辑 Markdown 文件时，必须遵循 [style/markdown-style-guide.md](style/markdown-style-guide.md) 规范。
+创建或编辑 Markdown 文件时，必须遵循 [markdown-style-guide.md](markdown-style-guide.md) 规范。
 
 ### 核心要点
 

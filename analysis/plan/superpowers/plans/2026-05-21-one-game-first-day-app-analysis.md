@@ -251,7 +251,7 @@ Add a final section explaining that the first readout should prioritize:
 **Files:**
 
 - Review: `docs/one-game-first-day-app-sql.md`
-- Reference: `style/markdown-style-guide.md`
+- Reference: `markdown-style-guide.md`
 
 - [ ] **Step 1: Check Markdown style**
 

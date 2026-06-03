@@ -10,9 +10,9 @@
 2. [注册数据增量更新](#2-注册数据增量更新)
 3. [登录数据增量更新](#3-登录数据增量更新)
 4. [APP 端注册用户宽表增量更新](#4-app-端注册用户宽表增量更新)
-5. [对局数据增量更新](#5-对局数据增量更新)
-6. [APP 端每日游戏活跃用户表初始化](#6-app-端每日游戏活跃用户表初始化)
-7. [APP 端每日游戏活跃用户×玩法表初始化](#7-app-端每日游戏活跃用户玩法表初始化)
+5. [对局战绩统一字段表增量更新](#5-对局战绩统一字段表增量更新)
+6. [APP 端每日游戏活跃用户表增量更新](#6-app-端每日游戏活跃用户表增量更新)
+7. [APP 端每日游戏活跃用户×玩法表增量更新](#7-app-端每日游戏活跃用户玩法表增量更新)
 8. [用户每日游戏行为聚合增量更新（混合玩法）](#8-用户每日游戏行为聚合增量更新混合玩法)
 9. [用户每日游戏行为聚合增量更新（按玩法拆分）](#9-用户每日游戏行为聚合增量更新按玩法拆分)
 10. [首日对局数据初始化](#10-首日对局数据初始化)
@@ -20,8 +20,9 @@
 12. [银子变动日志增量更新](#12-银子变动日志增量更新)
 13. [疯狂斗地主对局数据增量更新](#13-疯狂斗地主对局数据增量更新)
 14. [游戏道具流水日志增量更新](#14-游戏道具流水日志增量更新)
-15. [执行顺序与依赖关系](#15-执行顺序与依赖关系)
-16. [常见问题](#16-常见问题)
+15. [对局数据增量更新](#15-对局数据增量更新)
+16. [执行顺序与依赖关系](#16-执行顺序与依赖关系)
+17. [常见问题](#17-常见问题)
 
 ---
 
@@ -77,7 +78,7 @@ SELECT
     FROM_UNIXTIME(first_login_ts / 1000) AS reg_datetime
 FROM hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st
 WHERE app_id = 1880053
-  AND dt BETWEEN 20260526 AND 20260526;
+  AND dt BETWEEN 20260527 AND 20260527;
 ```
 
 ### 说明
@@ -129,8 +130,8 @@ FROM (
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), app_code) AS cnt_app_code
     FROM tcy_dwd.dwd_tcy_userlogin_si
     WHERE app_id = 1880053
-      AND dt >= '2026-05-26 00:00:00'
-      AND dt <= '2026-05-26 23:59:59'
+      AND dt >= '2026-05-27 00:00:00'
+      AND dt <= '2026-05-27 23:59:59'
 ) t
 GROUP BY app_id, DATE(dt), uid;
 ```
@@ -179,7 +180,7 @@ INNER JOIN tcy_temp.dws_dq_daily_login l
 LEFT JOIN tcy_temp.dws_channel_category_map chn
     ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-05-26' AND '2026-05-26'
+  AND r.reg_date BETWEEN '2026-05-27' AND '2026-05-27'
   AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88);
 ```
 
@@ -193,122 +194,172 @@ WHERE r.app_id = 1880053
 
 ---
 
-## 5. 对局数据增量更新
+## 5. 对局战绩统一字段表增量更新
 
 ### 源表与目标表
 
 | 源表 | 目标表 |
-| ------ | -------- |
-| `tcy_dwd.dwd_game_combat_si` | `tcy_temp.dws_ddz_daily_game` |
+| ---- | ------ |
+| `hive_catalog_cdh5.dwd.fact_game_combatgains` | `tcy_temp.ddz_daily_game_raw` |
 
 ### 增量更新 SQL
 
 ```sql
--- 对局数据增量导入
--- 参数：将日期范围替换为实际日期
-INSERT INTO tcy_temp.dws_ddz_daily_game
+-- 对局战绩统一字段表增量导入
+-- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260527）
+INSERT INTO tcy_temp.ddz_daily_game_raw
 SELECT
-    IFNULL(app_id, 1880053), dt, uid, FROM_UNIXTIME(time_unix / 1000) as game_datetime, resultguid, timecost, room_id,
+    IFNULL(app_id, 1880053),
+    dt,
+    uid,
+    FROM_UNIXTIME(time_unix / 1000) AS game_datetime,
+    resultguid,
+    timecost,
+    room,
     CASE
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
-        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
-        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
-        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
-        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
-        WHEN room_id IN (158,159) THEN 6 -- 好友房
+        WHEN room IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
+        WHEN room IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
+        WHEN room IN (13176,13177,13178) THEN 3 -- 癞子
+        WHEN room = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
+        WHEN room IN (11534,14238,15458) THEN 4 -- 积分
+        WHEN room IN (158,159) THEN 6 -- 好友房
         ELSE 0
     END AS play_mode,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
-    room_currency_lower, room_currency_upper, robot, role, chairno, result_id,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
+    CASE WHEN room IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
+    CASE WHEN room IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
+    room_currency_lower,
+    room_currency_upper,
+    robot,
+    role,
+    chairno,
+    result_id,
+    CASE WHEN room IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
+    CASE WHEN room IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
     CASE
-        WHEN room_id IN (11534,14238,15458,158,159)
+        WHEN room IN (11534,14238,15458,158,159)
         THEN scorediff + score_fee
         ELSE depositdiff + fee
     END AS diff_money_pre_tax,
-    cut, safebox_deposit, magnification, magnification_stacked,
+    cut,
+    safebox_deposit,
+    magnification,
+    magnification_stacked,
     CASE
-        WHEN room_id IN (11534,14238,15458,158,159)
+        WHEN room IN (11534,14238,15458,158,159)
         THEN ROUND((scorediff + score_fee) / NULLIF(basescore, 0), 2)
         ELSE ROUND((depositdiff + fee) / NULLIF(basedeposit, 0), 2)
     END AS real_magnification,
     get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet') AS grab_landlord_bet,
     get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet') AS complete_victory_bet,
-    get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet, channel_id, group_id, app_code, game_id
-FROM tcy_dwd.dwd_game_combat_si
-WHERE game_id = 53
-  AND dt BETWEEN 20260526 AND 20260526;
+    get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet,
+    channel_id,
+    group_id,
+    app_code,
+    game_id,
+    afk_turn_cnt,
+    magnification_subdivision,
+    extend_content
+FROM hive_catalog_cdh5.dwd.fact_game_combatgains
+WHERE app_id = 1880053
+  AND dt = ${DATE};
 ```
 
 ### 说明
 
-- 包含机器人和真人数据，通过 `robot` 字段区分
-- 玩法分类 `play_mode`：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房
-- 货币字段已统一命名，简化后续分析
+- 将不同玩法的货币字段统一为 `start_money`、`end_money`、`diff_money_pre_tax`
+- 添加 `play_mode` 玩法分类字段（1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，0=其他）
+- 从 JSON 字段 `magnification_subdivision` 中提取抢地主倍数、春天标记、炸弹倍数
+- 计算 `real_magnification`（实际输赢倍数 = diff_money_pre_tax / room_base）
 - 建议每日凌晨执行，导入前一日数据
-- 详细文档：[dws/dws_ddz_daily_game.md](../dws/dws_ddz_daily_game.md)
+- 详细文档：[raw/ddz_daily_game_raw.md](../raw/ddz_daily_game_raw.md)
 
 ---
 
-## 6. APP 端每日游戏活跃用户表初始化
+## 6. APP 端每日游戏活跃用户表增量更新
 
 ### 源表与目标表
 
 | 源表 | 目标表 |
 | ------ | -------- |
-| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_app_game_active` |
+| `tcy_temp.dws_ddz_daily_game`、`tcy_temp.dws_crazyddz_daily_game` | `tcy_temp.dws_app_game_active` |
 
-### 初始化 SQL
+### 增量更新 SQL
 
 ```sql
 INSERT INTO tcy_temp.dws_app_game_active
-SELECT app_id, uid, date(dt)
-FROM tcy_temp.dws_ddz_daily_game
-WHERE app_id = 1880053
-  AND dt BETWEEN '2026-05-26' AND '2026-05-26'
-  AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-GROUP BY 1, 2, 3;
+SELECT app_id, uid, dt
+FROM (
+    -- 经典斗地主
+    SELECT app_id, uid, DATE(dt) AS dt
+    FROM tcy_temp.dws_ddz_daily_game
+    WHERE app_id = 1880053
+      AND dt BETWEEN '2026-05-27' AND '2026-05-27'
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    UNION ALL
+    -- 疯狂斗地主
+    SELECT app_id, uid, dt
+    FROM tcy_temp.dws_crazyddz_daily_game
+    WHERE app_id = 1880053
+      AND dt BETWEEN '2026-05-27' AND '2026-05-27'
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+) t
+GROUP BY app_id, uid, dt;
 ```
 
 ### 说明
 
 - 该表专用于留存 flag 计算，粒度为 uid × dt × app_id
+- **活跃口径**：经典斗地主 ∪ 疯狂斗地主（任一存在对局即算活跃）
+- **数据延迟 T-2**：依赖 `dws_crazyddz_daily_game`（跨天对局聚合），无法 T-1 产出
 - 仅包含 APP 端真人用户（排除机器人和非 APP 端）
-- 依赖 `dws_ddz_daily_game` 表，需在其之后执行
-- 详细文档：[dws/dws_app_game_active.md](../dws/dws_app_game_active.md)
+- 依赖 `dws_ddz_daily_game` 和 `dws_crazyddz_daily_game` 表，需在其之后执行
+- 详细文档：[game/dws_app_game_active.md](../starrocks/game/dws_app_game_active.md)
 
 ---
 
-## 7. APP 端每日游戏活跃用户×玩法表初始化
+## 7. APP 端每日游戏活跃用户×玩法表增量更新
 
 ### 源表与目标表
 
 | 源表 | 目标表 |
 | ------ | -------- |
-| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_app_gamemode_active` |
+| `tcy_temp.dws_ddz_daily_game`、`tcy_temp.dws_crazyddz_daily_game` | `tcy_temp.dws_app_gamemode_active` |
 
-### 初始化 SQL
+### 增量更新 SQL
 
 ```sql
 INSERT INTO tcy_temp.dws_app_gamemode_active
-SELECT app_id, uid, play_mode, date(dt)
-FROM tcy_temp.dws_ddz_daily_game
-WHERE app_id = 1880053
-  AND dt BETWEEN '2026-05-26' AND '2026-05-26'
-  AND robot != 1
-  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-GROUP BY 1,2,3,4;
+SELECT app_id, uid, play_mode, dt
+FROM (
+    -- 经典斗地主
+    SELECT app_id, uid, play_mode, DATE(dt) AS dt
+    FROM tcy_temp.dws_ddz_daily_game
+    WHERE app_id = 1880053
+      AND dt BETWEEN '2026-05-27' AND '2026-05-27'
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    UNION ALL
+    -- 疯狂斗地主（play_mode = 7）
+    SELECT app_id, uid, play_mode, dt
+    FROM tcy_temp.dws_crazyddz_daily_game
+    WHERE app_id = 1880053
+      AND dt BETWEEN '2026-05-27' AND '2026-05-27'
+      AND robot != 1
+      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+) t
+GROUP BY app_id, uid, play_mode, dt;
 ```
 
 ### 说明
 
 - 该表专用于"同玩法留存"flag 计算，粒度为 uid × dt × app_id × play_mode
+- **新增 play_mode=7（五十K / 疯狂斗地主）**：经典斗地主玩法 ∪ 疯狂斗地主玩法
+- **数据延迟 T-2**：依赖 `dws_crazyddz_daily_game`（跨天对局聚合），无法 T-1 产出
 - 仅包含 APP 端真人用户
-- 依赖 `dws_ddz_daily_game` 表，需在其之后执行
-- 详细文档：[dws/dws_app_gamemode_active.md](../dws/dws_app_gamemode_active.md)
+- 依赖 `dws_ddz_daily_game` 和 `dws_crazyddz_daily_game` 表，需在其之后执行
+- 详细文档：[game/dws_app_gamemode_active.md](../starrocks/game/dws_app_gamemode_active.md)
 
 ---
 
@@ -331,7 +382,7 @@ WITH game_enriched AS (
         ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY game_datetime ASC) AS game_seq,
         ROW_NUMBER() OVER (PARTITION BY uid, app_code ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt BETWEEN '2026-05-26' AND '2026-05-26'
+    WHERE dt BETWEEN '2026-05-27' AND '2026-05-27'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND play_mode IN (1, 2, 3, 5)
@@ -425,7 +476,7 @@ WITH game_enriched AS (
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime ASC) AS game_seq,
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt BETWEEN '2026-05-26' AND '2026-05-26'
+    WHERE dt BETWEEN '2026-05-27' AND '2026-05-27'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND play_mode IN (1, 2, 3, 5)
@@ -525,7 +576,7 @@ SELECT
 FROM tcy_temp.dws_ddz_daily_game g
 INNER JOIN tcy_temp.dws_dq_daily_reg r
     ON r.app_id = g.app_id AND r.uid = g.uid AND r.reg_date = g.dt
-WHERE g.dt BETWEEN '2026-05-26' AND '2026-05-26';
+WHERE g.dt BETWEEN '2026-05-27' AND '2026-05-27';
 ```
 
 ### 说明
@@ -553,7 +604,7 @@ WITH new_user_reg AS (
     SELECT uid, app_id, reg_date, reg_group_id, channel_category_name, channel_category_tag_id
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053 
-      AND reg_date BETWEEN '2026-05-26' AND '2026-05-26'
+      AND reg_date BETWEEN '2026-05-27' AND '2026-05-27'
 ),
 first_day_games_raw AS (
     SELECT
@@ -566,7 +617,7 @@ first_day_games_raw AS (
     FROM tcy_temp.dws_ddz_firstday_game c
     INNER JOIN new_user_reg r ON c.app_id = r.app_id AND c.uid = r.uid AND c.dt = r.reg_date
     WHERE c.app_id = 1880053
-      AND c.dt BETWEEN '2026-05-26' AND '2026-05-26'
+      AND c.dt BETWEEN '2026-05-27' AND '2026-05-27'
       AND c.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 ),
 mode_streaks AS (
@@ -665,7 +716,7 @@ LEFT JOIN all_retention_agg ra ON ba.uid = ra.uid AND ba.play_mode = ra.play_mod
 
 ```sql
 -- 斗地主银子变动日志增量导入
--- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260506）
+-- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260527）
 INSERT INTO tcy_temp.dws_dq_silver_logs
 SELECT
     s.app_id,
@@ -727,13 +778,13 @@ WHERE s.app_id = 1880053
 ### 增量更新 SQL
 
 ```sql
--- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260525）
+-- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260527）
 -- 注意：查询范围包含 ${DATE} 和 ${DATE+1}，以获取跨天对局的完整数据
 INSERT INTO tcy_temp.dws_crazyddz_daily_game
 WITH target_resultguids AS (
     SELECT DISTINCT resultguid
     FROM tcy_dwd.dwd_game_combat_si
-    WHERE date BETWEEN 20260526 AND 20260526
+    WHERE date BETWEEN 20260527 AND 20260527
       AND app_id = 1880053
       AND game_id = 521
       AND fee != 0
@@ -746,7 +797,7 @@ ranked_combat AS (
         ROW_NUMBER() OVER(PARTITION BY dgcs.resultguid, dgcs.uid ORDER BY dgcs.result_id desc, dgcs.time_unix desc) as row_end
     FROM tcy_dwd.dwd_game_combat_si dgcs
     INNER JOIN target_resultguids tr ON dgcs.resultguid = tr.resultguid
-    WHERE dgcs.date BETWEEN 20260526 AND 20260527
+    WHERE dgcs.date BETWEEN 20260527 AND 20260528
       AND dgcs.app_id = 1880053
       AND dgcs.game_id = 521
 )
@@ -794,6 +845,7 @@ GROUP BY resultguid, uid;
 ### 说明
 
 - 仅包含疯狂斗地主游戏数据（`app_id = 1880053`，`game_id = 521`）
+- **数据延迟 T-2**：因存在跨天对局（T 日开局、T+1 日结束），需等待 T+1 日日志才能聚合出 T 日完整对局，因此 T 日数据在 T+2 日才可产出，无法 T-1 导入
 - **跨天对局处理**：`target_resultguids` 定位当日有服务费（`fee != 0`）的对局 GUID，`ranked_combat` 查询范围延伸到 `${DATE} + 1`，以捕获跨天对局的完整数据
 - **`final_result_id` 兜底**：当 `row_end = 1` 的 `result_id` 为 NULL 时，根据 `game_win_loss`（游戏内货币变化累计）符号兜底推断胜/负/平
 - **路径字段**：`deposit_diff_path` 和 `deposit_magnification_path` 仅保留结算行（`fee = 0 AND result_id IS NULL`），与 `settle_count` 保持一致
@@ -815,7 +867,7 @@ GROUP BY resultguid, uid;
 
 ```sql
 -- 游戏道具流水日志增量导入
--- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260525）
+-- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260527）
 INSERT INTO tcy_temp.dws_game_prop_log
 SELECT
     DATE(dt) AS log_date,
@@ -855,7 +907,66 @@ WHERE dt = ${DATE}
 
 ---
 
-## 15. 执行顺序与依赖关系
+## 15. 对局数据增量更新
+
+### 源表与目标表
+
+| 源表 | 目标表 |
+| ---- | ------ |
+| `tcy_dwd.dwd_game_combat_si` | `tcy_temp.dws_ddz_daily_game` |
+
+### 增量更新 SQL
+
+```sql
+-- 对局数据增量导入
+-- 参数：将日期范围替换为实际日期
+INSERT INTO tcy_temp.dws_ddz_daily_game
+SELECT
+    IFNULL(app_id, 1880053), dt, uid, FROM_UNIXTIME(time_unix / 1000) as game_datetime, resultguid, timecost, room_id,
+    CASE
+        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
+        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
+        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
+        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
+        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
+        WHEN room_id IN (158,159) THEN 6 -- 好友房
+        ELSE 0
+    END AS play_mode,
+    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
+    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
+    room_currency_lower, room_currency_upper, robot, role, chairno, result_id,
+    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
+    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
+    CASE
+        WHEN room_id IN (11534,14238,15458,158,159)
+        THEN scorediff + score_fee
+        ELSE depositdiff + fee
+    END AS diff_money_pre_tax,
+    cut, safebox_deposit, magnification, magnification_stacked,
+    CASE
+        WHEN room_id IN (11534,14238,15458,158,159)
+        THEN ROUND((scorediff + score_fee) / NULLIF(basescore, 0), 2)
+        ELSE ROUND((depositdiff + fee) / NULLIF(basedeposit, 0), 2)
+    END AS real_magnification,
+    get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet') AS grab_landlord_bet,
+    get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet') AS complete_victory_bet,
+    get_json_int(magnification_subdivision, '$.public_bet.bomb_bet') AS bomb_bet, channel_id, group_id, app_code, game_id
+FROM tcy_dwd.dwd_game_combat_si
+WHERE game_id = 53
+  AND `date` BETWEEN 20260527 AND 20260527;
+```
+
+### 说明
+
+- 包含机器人和真人数据，通过 `robot` 字段区分
+- 玩法分类 `play_mode`：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房
+- 货币字段已统一命名，简化后续分析
+- 建议每日凌晨执行，导入前一日数据
+- 详细文档：[dws/dws_ddz_daily_game.md](../dws/dws_ddz_daily_game.md)
+
+---
+
+## 16. 执行顺序与依赖关系
 
 ### 表依赖关系
 
@@ -868,8 +979,8 @@ dws_crazyddz_daily_game        ← 无依赖，可并行执行
 dws_game_prop_log              ← 无依赖，可并行执行
 dws_dq_silver_logs             ← 依赖 dws_channel_category_map
 dws_dq_app_daily_reg           ← 依赖 dws_dq_daily_reg, dws_dq_daily_login, dws_channel_category_map
-dws_app_game_active            ← 依赖 dws_ddz_daily_game
-dws_app_gamemode_active        ← 依赖 dws_ddz_daily_game
+dws_app_game_active            ← 依赖 dws_ddz_daily_game, dws_crazyddz_daily_game
+dws_app_gamemode_active        ← 依赖 dws_ddz_daily_game, dws_crazyddz_daily_game
 dws_ddz_app_game_stat          ← 依赖 dws_ddz_daily_game
 dws_ddz_app_gamemode_stat      ← 依赖 dws_ddz_daily_game
 dws_ddz_firstday_game          ← 依赖 dws_ddz_daily_game, dws_dq_daily_reg
@@ -924,7 +1035,7 @@ echo "数据增量更新完成！"
 
 ---
 
-## 16. 常见问题
+## 17. 常见问题
 
 ### Q1: 如何补历史数据？
 
@@ -991,8 +1102,8 @@ SELECT ... -- 见第1节初始化 SQL
 | dws_ddz_daily_game | 对局明细表（统一字段） | 每日增量 | 无 |
 | dws_crazyddz_daily_game | 疯狂斗地主对局战绩表 | 每日增量 | 无 |
 | dws_game_prop_log | 游戏道具流水日志表 | 每日增量 | 无 |
-| dws_app_game_active | APP端每日游戏活跃用户表 | 每日增量 | dws_ddz_daily_game |
-| dws_app_gamemode_active | APP端每日游戏活跃用户×玩法表 | 每日增量 | dws_ddz_daily_game |
+| dws_app_game_active | APP端每日游戏活跃用户表 | 每日增量 | dws_ddz_daily_game, dws_crazyddz_daily_game |
+| dws_app_gamemode_active | APP端每日游戏活跃用户×玩法表 | 每日增量 | dws_ddz_daily_game, dws_crazyddz_daily_game |
 | dws_ddz_app_game_stat | APP端每日游戏行为统计（混合玩法） | 每日增量 | dws_ddz_daily_game |
 | dws_ddz_app_gamemode_stat | APP端每日游戏行为统计（按玩法拆分） | 每日增量 | dws_ddz_daily_game |
 | dws_ddz_firstday_game | 首日对局明细表 | 初始化 | dws_ddz_daily_game, dws_dq_daily_reg |
@@ -1001,5 +1112,5 @@ SELECT ... -- 见第1节初始化 SQL
 ---
 
 > **文档版本**：v2.1
-> **更新时间**：2026-05-06
+> **更新时间**：2026-05-27
 > **维护说明**：如有新增 DWS 表，请及时更新本文档

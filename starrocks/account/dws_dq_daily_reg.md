@@ -25,6 +25,19 @@
 
 本表数据来源于 Hive 表 `hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st`，将时间戳转换为 datetime 格式。
 
+### 上游表字段结构说明
+
+上游表 `hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st` 为用户首次注册登录信息表。
+
+| 字段名 | 类型 | 说明 | 示例值 |
+| ------ | ---- | ---- | ------ |
+| uid | bigint | 玩家唯一标识 ID | 123456789 |
+| app_id | bigint | 应用 ID | 1880053 |
+| first_login_ts | bigint | 游戏注册时间戳（毫秒级） | 1707523200 |
+| dt | int | 注册日期（格式：YYYYMMDD，分区字段） | 20260210 |
+
+> **注意**：查询上游表时必须指定 `dt` 分区条件和 `app_id` 过滤条件。
+
 ### 建表语句
 
 ```sql

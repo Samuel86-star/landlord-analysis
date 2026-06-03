@@ -82,9 +82,10 @@
 
 ```sql
 CREATE TABLE tcy_temp.dws_ddz_app_game_stat (
-  `app_id` int(11) NOT NULL COMMENT "应用ID",
+  `game_id` int(11) NOT NULL COMMENT "游戏ID",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `dt` DATE NOT NULL COMMENT "游戏日期",
+  `app_id` int(11) NOT NULL COMMENT "应用ID",
   `app_code` varchar(32) NULL COMMENT "",
   `game_count` int(11) NULL COMMENT "",
   `total_play_seconds` int(11) NULL COMMENT "",
@@ -115,7 +116,7 @@ CREATE TABLE tcy_temp.dws_ddz_app_game_stat (
   `distinct_rooms` tinyint(4) NULL COMMENT "",
   `play_modes` varchar(256) NULL COMMENT ""
 ) ENGINE=OLAP
-DUPLICATE KEY(`app_id`, `uid`, `dt`)
+DUPLICATE KEY(`game_id`, `uid`, `dt`)
 COMMENT "游戏用户对局聚合信息表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
@@ -171,7 +172,7 @@ max_streaks AS (
     GROUP BY uid, app_code
 )
 SELECT
-    g.app_id, g.uid, g.dt, g.app_code,
+    53, g.uid, g.dt, g.app_id, g.app_code,
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
     ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
