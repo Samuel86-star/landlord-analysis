@@ -177,8 +177,8 @@ SELECT
     MAX(CASE WHEN row_start = 1 THEN fee END) AS room_fee,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) AS start_money,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) + SUM(depositdiff) AS end_money,
-    SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END) AS game_outcome_money,
-    SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN ABS(depositdiff) END) AS game_outcome_gdp,
+    IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END), 0) AS game_outcome_money,
+    IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN ABS(depositdiff) END), 0) AS game_outcome_gdp,
     MAX(CASE WHEN row_end = 1 THEN cut END) AS is_escape,
     SUM(ABS(magnification)) AS total_magnification,
     MAX(CASE WHEN row_start = 1 THEN app_id END) AS app_id,
@@ -246,8 +246,8 @@ SELECT
     MAX(CASE WHEN row_start = 1 THEN fee END) AS room_fee,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) AS start_money,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) + SUM(depositdiff) AS end_money,
-    SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END) AS game_outcome_money,
-    SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN ABS(depositdiff) END) AS game_outcome_gdp,
+    IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END), 0) AS game_outcome_money,
+    IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN ABS(depositdiff) END), 0) AS game_outcome_gdp,
     MAX(CASE WHEN row_end = 1 THEN cut END) AS is_escape,
     SUM(ABS(magnification)) AS total_magnification,
     MAX(CASE WHEN row_start = 1 THEN app_id END) AS app_id,
@@ -279,9 +279,11 @@ SELECT
     ROUND(SUM(CASE WHEN result_id = 2 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS lose_rate
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
-  AND dt = '2026-04-27'
+  AND app_id = 1880053
+  AND dt between '2026-05-01' and '2026-06-03'
   AND robot != 1
-GROUP BY dt;
+GROUP BY dt
+ORDER BY dt desc 
 ```
 
 ### 2. 用户每日游戏统计
@@ -298,7 +300,8 @@ SELECT
     ROUND(AVG(settle_count), 2) AS avg_settle_count
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
-  AND dt BETWEEN '2026-04-20' AND '2026-04-27'
+  AND app_id = 1880053
+  AND dt between '2026-05-01' and '2026-06-03'
   AND robot != 1
 GROUP BY uid, dt;
 ```
@@ -314,7 +317,8 @@ SELECT
     ROUND(AVG(ABS(game_outcome_money)), 2) AS avg_deposit_diff
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
-  AND dt = '2026-04-27'
+  AND app_id = 1880053
+  AND dt between '2026-05-01' and '2026-06-03'
   AND robot != 1
 GROUP BY settle_count
 ORDER BY settle_count;
@@ -353,6 +357,7 @@ ORDER BY settle_count;
 SELECT resultguid, uid, COUNT(*) AS cnt
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
+  AND app_id = 1880053
   AND dt between '2026-03-01' and '2026-06-01'
 GROUP BY resultguid, uid
 HAVING COUNT(*) > 1
@@ -369,7 +374,8 @@ LIMIT 10;
 WITH src AS (
     SELECT COUNT(DISTINCT resultguid) AS src_cnt
     FROM tcy_temp.crazyddz_daily_game_raw
-    WHERE game_id = 521 
+    WHERE game_id = 521
+    AND app_id = 1880053
       AND dt between '2026-03-01' and '2026-06-01'
       AND fee != 0
 ),
@@ -377,6 +383,7 @@ tgt AS (
     SELECT COUNT(DISTINCT resultguid) AS tgt_cnt
     FROM tcy_temp.dws_crazyddz_daily_game
     WHERE game_id = 521
+    AND app_id = 1880053
       AND dt between '2026-03-01' and '2026-06-01'
       AND room_fee != 0 
 )
@@ -400,7 +407,8 @@ SELECT
     COUNT(*) AS total_cnt
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
-    AND dt between '2026-03-01' and '2026-06-01';
+  AND app_id = 1880053
+  AND dt between '2026-03-01' and '2026-06-01';
 ```
 
 > **期望结果**：所有 `null_*` 字段应为 0。
@@ -422,6 +430,7 @@ SELECT
     (end_money - start_money - game_outcome_money + is_escape) AS residual
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
+  AND app_id = 1880053
   AND dt between '2026-03-01' and '2026-06-01'
   AND ABS(end_money - start_money - game_outcome_money + room_fee + is_escape) > 1
 LIMIT 10;
@@ -442,6 +451,7 @@ SELECT
     (LENGTH(deposit_magnification_path) - LENGTH(REPLACE(deposit_magnification_path, '#', '')) + 1) AS mag_path_seg
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
+  AND app_id = 1880053
   AND dt between '2026-03-01' and '2026-06-01'
   AND settle_count > 0
   AND (
@@ -466,6 +476,7 @@ SELECT
     ROUND(SUM(CASE WHEN DATE(end_datetime) > dt THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS cross_day_pct
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
+  AND app_id = 1880053
   AND dt between '2026-03-01' and '2026-06-01'
 GROUP BY dt;
 ```

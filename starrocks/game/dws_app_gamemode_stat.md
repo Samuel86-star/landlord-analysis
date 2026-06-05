@@ -5,15 +5,15 @@
 | 项目 | 说明 |
 | ---- | ---- |
 | 库名 | `tcy_temp` |
-| 表名 | `dws_ddz_app_gamemode_stat` |
-| 全名 | `tcy_temp.dws_ddz_app_gamemode_stat` |
+| 表名 | `dws_app_gamemode_stat` |
+| 全名 | `tcy_temp.dws_app_gamemode_stat` |
 | 类型 | DWS 层聚合表（每日增量） |
-| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），与 `dws_ddz_app_game_stat` 字段一致，粒度增加 play_mode 维度 |
-| 粒度 | uid × dt × play_mode × app_code（一个用户一天一种玩法一个客户端版本一行） |
+| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），与 `dws_app_game_stat` 字段一致，粒度增加 play_mode 维度 |
+| 粒度 | uid × dt × play_mode（一个用户一天一种玩法一行） |
 
 ## 设计背景
 
-`dws_ddz_app_game_stat` 的粒度为 uid × dt，一天内玩了多种玩法（经典/不洗牌/赖子/比赛）的用户数据混合在一起。但不同玩法的倍数分布差异显著：
+`dws_app_game_stat` 的粒度为 uid × dt，一天内玩了多种玩法（经典/不洗牌/赖子/比赛）的用户数据混合在一起。但不同玩法的倍数分布差异显著：
 
 | 玩法 | 倍数特点 | 影响 |
 | ---- | ------- | ---- |
@@ -39,7 +39,6 @@
 | play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=赖子，5=比赛 | 1 |
 | uid | int | 玩家唯一标识 | 123456789 |
 | dt | date | 对局日期 | 2026-02-10 |
-| app_code | varchar(32) | 客户端代码（zgdx=cocos creator, zgda=cocos lua） | "zgdx" |
 | game_count | int | 当日该玩法对局总数 | 8 |
 | total_play_seconds | int | 当日该玩法总游戏时长（秒） | 2400 |
 | avg_game_seconds | double | 该玩法平均每局时长 | 180.5 |
@@ -68,15 +67,6 @@
 | escape_count | int | 该玩法逃跑次数 | 0 |
 | distinct_rooms | int | 该玩法游玩房间数 | 2 |
 
-## 客户端开发语言说明
-
-| app_code | 客户端开发语言 | 界面和流程特点 |
-| ------- | ------------ | -------------- |
-| zgdx | Cocos Creator | 界面和流程较新，体验优化 |
-| zgda | Cocos Lua | 界面和流程较传统 |
-
-> **说明**：本表支持按客户端开发语言和玩法双维度分析用户行为差异。通过 `app_code` 和 `play_mode` 字段区分不同客户端版本和玩法的用户，粒度为 uid × dt × play_mode × app_code（一个用户一天一种玩法一个客户端版本一行）。
-
 ## 玩法分类说明
 
 | play_mode | 玩法 | 币种 |
@@ -93,12 +83,11 @@
 ### 建表语句
 
 ```sql
-CREATE TABLE tcy_temp.dws_ddz_app_gamemode_stat (
+CREATE TABLE tcy_temp.dws_app_gamemode_stat (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `play_mode` tinyint(4) NULL COMMENT "游戏玩法",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `dt` DATE NOT NULL COMMENT "游戏日期",
-  `app_code` varchar(32) NULL COMMENT "",
   `game_count` int(11) NULL COMMENT "",
   `total_play_seconds` int(11) NULL COMMENT "",
   `avg_game_seconds` double NULL COMMENT "",
@@ -147,12 +136,12 @@ PROPERTIES (
 ### 增量数据导入
 
 ```sql
-insert into tcy_temp.dws_ddz_app_gamemode_stat
+insert into tcy_temp.dws_app_gamemode_stat
 WITH game_enriched AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime ASC) AS game_seq,
-        ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime DESC) AS rank_desc
+        ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime ASC) AS game_seq,
+        ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt between '2026-02-10' and '2026-04-21'
       AND robot != 1
@@ -161,30 +150,29 @@ WITH game_enriched AS (
 ),
 streaks_calc AS (
     SELECT
-        uid, app_code, play_mode, result_id, COUNT(*) AS streak_len
+        uid, play_mode, result_id, COUNT(*) AS streak_len
     FROM (
         SELECT
-            uid, app_code, play_mode, result_id,
-            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code, result_id ORDER BY game_seq) AS grp
+            uid, play_mode, result_id,
+            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY game_seq) AS grp
         FROM game_enriched
         WHERE result_id IN (1, 2)
     ) t
-    GROUP BY uid, app_code, play_mode, result_id, grp
+    GROUP BY uid, play_mode, result_id, grp
 ),
 max_streaks AS (
     SELECT
-        uid, app_code, play_mode,
+        uid, play_mode,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM streaks_calc
-    GROUP BY uid, app_code, play_mode
+    GROUP BY uid, play_mode
 )
 SELECT
     g.app_id,
     g.play_mode,
     g.uid,
     g.dt,
-    g.app_code,
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
     ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
@@ -213,13 +201,13 @@ SELECT
     COUNT(CASE WHEN g.cut < 0 THEN 1 END),
     COUNT(DISTINCT g.room_id)
 FROM game_enriched g
-LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode AND g.app_code = s.app_code
-GROUP BY g.app_id, g.play_mode, g.uid, g.dt, g.app_code;
+LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode
+GROUP BY g.app_id, g.play_mode, g.uid, g.dt;
 ```
 
 ## 字段使用注意
 
-1. **与原表的关系**：本表是 `dws_ddz_app_game_stat` 的按玩法拆分版本，两表并存互补
+1. **与原表的关系**：本表是 `dws_app_game_stat` 的按玩法拆分版本，两表并存互补
    - 原表（uid × dt）：适合不需要区分玩法的分析（如按对局数分组、总体经济变化）
    - 本表（uid × dt × play_mode）：适合需要控制玩法变量的分析（如倍数、胜率、连胜连败、经济变化）
 2. **行数膨胀**：一天内玩了 N 种玩法的用户会产生 N 行记录（原表只有 1 行），预计行数约为原表的 1.2-1.5 倍（多数用户只玩一种玩法）
@@ -232,16 +220,17 @@ GROUP BY g.app_id, g.play_mode, g.uid, g.dt, g.app_code;
 ```text
 tcy_temp.dws_ddz_daily_game              （对局明细表）
             ↓  APP端+银子玩法聚合
-tcy_temp.dws_ddz_app_game_stat         （用户每日统计 - 混合玩法）
-tcy_temp.dws_ddz_app_gamemode_stat （用户每日统计 - 按玩法拆分）  ← 本表
+tcy_temp.dws_app_game_stat             （用户每日统计 - 混合玩法）
+tcy_temp.dws_app_gamemode_stat         （用户每日统计 - 按玩法拆分）  ← 本表
             ↓  关联分析
-tcy_temp.dws_dq_app_daily_reg              （APP 端注册用户宽表）
-tcy_temp.dws_dq_daily_login                （每日登录聚合表）
+tcy_temp.dws_dq_app_daily_reg          （APP 端注册用户宽表）
+tcy_temp.dws_dq_daily_login            （每日登录聚合表）
 ```
 
-> **文档版本**：v1.0
+> **文档版本**：v1.1
 > **创建时间**：2026-04-13
 > **更新说明**：
 
 >
+> - v1.1：表名去掉 ddz 前缀，去掉 app_code 维度，粒度调整为 uid × dt × play_mode
 > - v1.0：初始版本，从 `dws_ddz_app_game_stat` 拆分出按玩法维度的聚合表

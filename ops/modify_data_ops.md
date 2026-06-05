@@ -17,7 +17,7 @@
 7. [dws_app_game_active 表修改](#7-dws_app_game_active-表修改)
 8. [dws_app_gamemode_active 表修改](#8-dws_app_gamemode_active-表修改)
 9. [dws_ddz_app_game_stat 表修改](#9-dws_ddz_app_game_stat-表修改)
-10. [dws_ddz_app_gamemode_stat 表修改](#10-dws_ddz_app_gamemode_stat-表修改)
+10. [dws_app_gamemode_stat 表修改](#10-dws_app_gamemode_stat-表修改)
 11. [dws_channel_category_map 表修改](#11-dws_channel_category_map-表修改)
 12. [执行顺序建议](#12-执行顺序建议)
 
@@ -661,7 +661,7 @@ DROP TABLE tcy_temp.dws_ddz_app_game_stat_old;
 
 ---
 
-## 10. dws_ddz_app_gamemode_stat 表修改
+## 10. dws_app_gamemode_stat 表修改
 
 ### 修改说明
 
@@ -671,9 +671,8 @@ DROP TABLE tcy_temp.dws_ddz_app_game_stat_old;
 | play_mode | int | tinyint | **是** | 重建表 |
 | uid | bigint(20) | int(11) | **是** | 重建表 |
 | dt | date | date | **是** | 无需修改 |
-| app_code | varchar(64) | varchar(32) | 否 | 可 ALTER |
 
-> **说明**：app_id、play_mode、uid 为 DUPLICATE KEY 字段，必须重建表。
+> **说明**：app_id、play_mode、uid 为 DUPLICATE KEY 字段，必须重建表。同时去掉 `app_code` 字段，粒度调整为 uid × dt × play_mode。
 
 ### 操作步骤
 
@@ -681,12 +680,11 @@ DROP TABLE tcy_temp.dws_ddz_app_game_stat_old;
 -- ============================================
 -- Step 1: 创建新表
 -- ============================================
-CREATE TABLE tcy_temp.dws_ddz_app_gamemode_stat_new (
+CREATE TABLE tcy_temp.dws_app_gamemode_stat_new (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `play_mode` tinyint(4) NULL COMMENT "游戏玩法",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `dt` DATE NOT NULL COMMENT "游戏日期",
-  `app_code` varchar(32) NULL COMMENT "",
   `game_count` int(11) NULL COMMENT "",
   `total_play_seconds` int(11) NULL COMMENT "",
   `avg_game_seconds` double NULL COMMENT "",
@@ -732,16 +730,26 @@ PROPERTIES (
 );
 
 -- ============================================
--- Step 2: 导入数据
+-- Step 2: 导入数据（去掉 app_code 字段）
 -- ============================================
-INSERT INTO tcy_temp.dws_ddz_app_gamemode_stat_new
-SELECT * FROM tcy_temp.dws_ddz_app_gamemode_stat;
+INSERT INTO tcy_temp.dws_app_gamemode_stat_new
+SELECT app_id, play_mode, uid, dt,
+    game_count, total_play_seconds, avg_game_seconds,
+    win_count, lose_count, win_rate,
+    max_win_streak, max_lose_streak,
+    avg_magnification, max_magnification, avg_real_magnification,
+    low_multi_games, mid_multi_games, high_multi_games,
+    high_multi_wins, high_multi_losses,
+    total_bomb_count, games_with_grab, games_player_doubled,
+    start_money, end_money, money_peak, money_valley,
+    total_diff_money, total_fee_paid, escape_count, distinct_rooms
+FROM tcy_temp.dws_ddz_app_gamemode_stat;
 
 -- ============================================
 -- Step 3: 验证数据
 -- ============================================
-SELECT COUNT(*) FROM tcy_temp.dws_ddz_app_gamemode_stat;      -- 旧表行数
-SELECT COUNT(*) FROM tcy_temp.dws_ddz_app_gamemode_stat_new;  -- 新表行数
+SELECT COUNT(*) FROM tcy_temp.dws_ddz_app_gamemode_stat;      -- 旧表行数（注意：旧表名仍带 ddz）
+SELECT COUNT(*) FROM tcy_temp.dws_app_gamemode_stat_new;  -- 新表行数
 
 -- ============================================
 -- Step 4: 重命名旧表
@@ -751,7 +759,7 @@ ALTER TABLE tcy_temp.dws_ddz_app_gamemode_stat RENAME dws_ddz_app_gamemode_stat_
 -- ============================================
 -- Step 5: 重命名新表
 -- ============================================
-ALTER TABLE tcy_temp.dws_ddz_app_gamemode_stat_new RENAME dws_ddz_app_gamemode_stat;
+ALTER TABLE tcy_temp.dws_app_gamemode_stat_new RENAME dws_app_gamemode_stat;
 
 -- ============================================
 -- Step 6: 验证完成后删除旧表
@@ -839,7 +847,7 @@ dws_ddz_daily_game        ← 基础表
 dws_app_game_active       ← 依赖 dws_ddz_daily_game
 dws_app_gamemode_active   ← 依赖 dws_ddz_daily_game
 dws_ddz_app_game_stat     ← 依赖 dws_ddz_daily_game
-dws_ddz_app_gamemode_stat ← 依赖 dws_ddz_daily_game
+dws_app_gamemode_stat ← 依赖 dws_ddz_daily_game
        ↓
 dws_channel_category_map  ← 维表（无依赖）
 ```
@@ -853,7 +861,7 @@ dws_channel_category_map  ← 维表（无依赖）
 5. **dws_app_game_active** - 依赖对局表
 6. **dws_app_gamemode_active** - 依赖对局表
 7. **dws_ddz_app_game_stat** - 依赖对局表
-8. **dws_ddz_app_gamemode_stat** - 依赖对局表
+8. **dws_app_gamemode_stat** - 依赖对局表
 9. **dws_channel_category_map** - 维表（无依赖，可随时执行）
 
 ### 执行前检查
@@ -870,7 +878,7 @@ DESC tcy_temp.dws_ddz_daily_game;
 DESC tcy_temp.dws_app_game_active;
 DESC tcy_temp.dws_app_gamemode_active;
 DESC tcy_temp.dws_ddz_app_game_stat;
-DESC tcy_temp.dws_ddz_app_gamemode_stat;
+DESC tcy_temp.dws_app_gamemode_stat;
 DESC tcy_temp.dws_channel_category_map;
 ```
 
@@ -885,7 +893,7 @@ DESC tcy_temp.dws_ddz_daily_game;
 DESC tcy_temp.dws_app_game_active;
 DESC tcy_temp.dws_app_gamemode_active;
 DESC tcy_temp.dws_ddz_app_game_stat;
-DESC tcy_temp.dws_ddz_app_gamemode_stat;
+DESC tcy_temp.dws_app_gamemode_stat;
 DESC tcy_temp.dws_channel_category_map;
 
 -- 验证 colocate_with 属性
@@ -896,7 +904,7 @@ SHOW CREATE TABLE tcy_temp.dws_ddz_daily_game;
 SHOW CREATE TABLE tcy_temp.dws_app_game_active;
 SHOW CREATE TABLE tcy_temp.dws_app_gamemode_active;
 SHOW CREATE TABLE tcy_temp.dws_ddz_app_game_stat;
-SHOW CREATE TABLE tcy_temp.dws_ddz_app_gamemode_stat;
+SHOW CREATE TABLE tcy_temp.dws_app_gamemode_stat;
 
 -- 验证数据行数
 SELECT 'dws_dq_daily_reg' AS tbl, COUNT(*) AS cnt FROM tcy_temp.dws_dq_daily_reg
@@ -906,7 +914,7 @@ UNION ALL SELECT 'dws_ddz_daily_game', COUNT(*) FROM tcy_temp.dws_ddz_daily_game
 UNION ALL SELECT 'dws_app_game_active', COUNT(*) FROM tcy_temp.dws_app_game_active
 UNION ALL SELECT 'dws_app_gamemode_active', COUNT(*) FROM tcy_temp.dws_app_gamemode_active
 UNION ALL SELECT 'dws_ddz_app_game_stat', COUNT(*) FROM tcy_temp.dws_ddz_app_game_stat
-UNION ALL SELECT 'dws_ddz_app_gamemode_stat', COUNT(*) FROM tcy_temp.dws_ddz_app_gamemode_stat
+UNION ALL SELECT 'dws_app_gamemode_stat', COUNT(*) FROM tcy_temp.dws_app_gamemode_stat
 UNION ALL SELECT 'dws_channel_category_map', COUNT(*) FROM tcy_temp.dws_channel_category_map;
 ```
 
@@ -947,7 +955,7 @@ ALTER TABLE tcy_temp.dws_channel_category_map MODIFY COLUMN channel_category_tag
 -- 8. dws_ddz_app_game_stat（需重建）
 -- ... 执行上述 Step 1-6 ...
 
--- 9. dws_ddz_app_gamemode_stat（需重建）
+-- 9. dws_app_gamemode_stat（需重建）
 -- ... 执行上述 Step 1-6 ...
 ```
 

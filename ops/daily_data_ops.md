@@ -463,18 +463,18 @@ GROUP BY g.app_id, g.uid, g.dt, g.app_code;
 
 | 源表 | 目标表 |
 | ------ | -------- |
-| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_ddz_app_gamemode_stat` |
+| `tcy_temp.dws_ddz_daily_game` | `tcy_temp.dws_app_gamemode_stat` |
 
 ### 增量更新 SQL
 
 ```sql
 -- APP 端每日游戏行为统计增量导入（按玩法拆分）
-insert into tcy_temp.dws_ddz_app_gamemode_stat
+insert into tcy_temp.dws_app_gamemode_stat
 WITH game_enriched AS (
     SELECT
         *,
-        ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime ASC) AS game_seq,
-        ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code ORDER BY game_datetime DESC) AS rank_desc
+        ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime ASC) AS game_seq,
+        ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
     WHERE dt BETWEEN '2026-05-27' AND '2026-05-27'
       AND robot != 1
@@ -483,30 +483,29 @@ WITH game_enriched AS (
 ),
 streaks_calc AS (
     SELECT
-        uid, app_code, play_mode, result_id, COUNT(*) AS streak_len
+        uid, play_mode, result_id, COUNT(*) AS streak_len
     FROM (
         SELECT
-            uid, app_code, play_mode, result_id,
-            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, app_code, result_id ORDER BY game_seq) AS grp
+            uid, play_mode, result_id,
+            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY game_seq) AS grp
         FROM game_enriched
         WHERE result_id IN (1, 2)
     ) t
-    GROUP BY uid, app_code, play_mode, result_id, grp
+    GROUP BY uid, play_mode, result_id, grp
 ),
 max_streaks AS (
     SELECT
-        uid, app_code, play_mode,
+        uid, play_mode,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM streaks_calc
-    GROUP BY uid, app_code, play_mode
+    GROUP BY uid, play_mode
 )
 SELECT
     g.app_id,
     g.play_mode,
     g.uid,
     g.dt,
-    g.app_code,
     COUNT(*) AS game_count,
     SUM(g.timecost) AS total_play_seconds,
     ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
@@ -535,19 +534,19 @@ SELECT
     COUNT(CASE WHEN g.cut < 0 THEN 1 END),
     COUNT(DISTINCT g.room_id)
 FROM game_enriched g
-LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode AND g.app_code = s.app_code
-GROUP BY g.app_id, g.play_mode, g.uid, g.dt, g.app_code;
+LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode
+GROUP BY g.app_id, g.play_mode, g.uid, g.dt;
 ```
 
 ### 说明
 
 - 依赖 `dws_ddz_daily_game` 表，需在其之后执行
-- **新增 `app_code` 维度**：粒度为 uid × dt × play_mode × app_code，支持按客户端开发语言和玩法双维度分析
+- **粒度为 uid × dt × play_mode**：不再区分 app_code，一个用户一天一种玩法一行
 - **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
 - 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
-- 与 `dws_ddz_app_game_stat` 字段基本一致，增加 `play_mode` 维度
+- 与 `dws_app_game_stat` 字段基本一致，增加 `play_mode` 维度
 - 适用于需要控制玩法变量的分析（倍数、胜率、连胜连败、经济变化）
-- 详细文档：[dws/dws_ddz_app_gamemode_stat.md](../dws/dws_ddz_app_gamemode_stat.md)
+- 详细文档：[game/dws_app_gamemode_stat.md](../starrocks/game/dws_app_gamemode_stat.md)
 
 ---
 
@@ -982,7 +981,7 @@ dws_dq_app_daily_reg           ← 依赖 dws_dq_daily_reg, dws_dq_daily_login, 
 dws_app_game_active            ← 依赖 dws_ddz_daily_game, dws_crazyddz_daily_game
 dws_app_gamemode_active        ← 依赖 dws_ddz_daily_game, dws_crazyddz_daily_game
 dws_ddz_app_game_stat          ← 依赖 dws_ddz_daily_game
-dws_ddz_app_gamemode_stat      ← 依赖 dws_ddz_daily_game
+dws_app_gamemode_stat      ← 依赖 dws_ddz_daily_game
 dws_ddz_firstday_game          ← 依赖 dws_ddz_daily_game, dws_dq_daily_reg
 ddz_gamemode_firstday_features ← 依赖 dws_dq_app_daily_reg, dws_ddz_firstday_game, dws_app_game_active, dws_app_gamemode_active
 ```
@@ -991,7 +990,7 @@ ddz_gamemode_firstday_features ← 依赖 dws_dq_app_daily_reg, dws_ddz_firstday
 
 1. **初始化阶段**：执行维表初始化（dws_channel_category_map）
 2. **每日凌晨 02:00**：并行执行基础表增量导入（dws_dq_daily_reg、dws_dq_daily_login、dws_ddz_daily_game、dws_crazyddz_daily_game、dws_game_prop_log、dws_dq_silver_logs）
-3. **每日凌晨 03:00**：执行依赖表增量导入（dws_dq_app_daily_reg、dws_app_game_active、dws_app_gamemode_active、dws_ddz_app_game_stat、dws_ddz_app_gamemode_stat）
+3. **每日凌晨 03:00**：执行依赖表增量导入（dws_dq_app_daily_reg、dws_app_game_active、dws_app_gamemode_active、dws_ddz_app_game_stat、dws_app_gamemode_stat）
 4. **首日数据构建**：执行首日对局数据和宽表初始化（dws_ddz_firstday_game、ddz_gamemode_firstday_features）
 5. **数据校验**：检查导入数据量是否符合预期
 
@@ -1076,7 +1075,7 @@ DELETE FROM tcy_temp.dws_ddz_daily_game WHERE dt = 20260409;
 DELETE FROM tcy_temp.dws_app_game_active WHERE dt = '2026-04-09';
 DELETE FROM tcy_temp.dws_app_gamemode_active WHERE dt = '2026-04-09';
 DELETE FROM tcy_temp.dws_ddz_app_game_stat WHERE dt = 20260409;
-DELETE FROM tcy_temp.dws_ddz_app_gamemode_stat WHERE dt = 20260409;
+DELETE FROM tcy_temp.dws_app_gamemode_stat WHERE dt = 20260409;
 ```
 
 ### Q4: 如何更新渠道分类维表？
@@ -1105,7 +1104,7 @@ SELECT ... -- 见第1节初始化 SQL
 | dws_app_game_active | APP端每日游戏活跃用户表 | 每日增量 | dws_ddz_daily_game, dws_crazyddz_daily_game |
 | dws_app_gamemode_active | APP端每日游戏活跃用户×玩法表 | 每日增量 | dws_ddz_daily_game, dws_crazyddz_daily_game |
 | dws_ddz_app_game_stat | APP端每日游戏行为统计（混合玩法） | 每日增量 | dws_ddz_daily_game |
-| dws_ddz_app_gamemode_stat | APP端每日游戏行为统计（按玩法拆分） | 每日增量 | dws_ddz_daily_game |
+| dws_app_gamemode_stat | APP端每日游戏行为统计（按玩法拆分） | 每日增量 | dws_ddz_daily_game |
 | dws_ddz_firstday_game | 首日对局明细表 | 初始化 | dws_ddz_daily_game, dws_dq_daily_reg |
 | ddz_gamemode_firstday_features | 分玩法首日对局特征宽表 | 初始化 | dws_dq_app_daily_reg, dws_ddz_firstday_game, dws_app_game_active, dws_app_gamemode_active |
 
