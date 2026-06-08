@@ -54,11 +54,12 @@
 | avg_magnification | double | 该玩法平均理论倍数 | 12.5 |
 | max_magnification | int | 该玩法最大理论倍数 | 48 |
 | avg_real_magnification | double | 该玩法平均实际倍数（ABS） | 10.2 |
-| low_multi_games | int | 低倍局数（magnification <= 6） | 3 |
-| mid_multi_games | int | 中倍局数（6 < magnification <= 24） | 3 |
-| high_multi_games | int | 高倍局数（magnification > 24） | 2 |
-| high_multi_wins | int | 高倍局胜利数 | 1 |
-| high_multi_losses | int | 高倍局失败数 | 1 |
+| multi_q1_games | int | Q1 局数（倍数的 0-25 分位） | 2 |
+| multi_q2_games | int | Q2 局数（倍数的 25-50 分位） | 2 |
+| multi_q3_games | int | Q3 局数（倍数的 50-75 分位） | 2 |
+| multi_q4_games | int | Q4 局数（倍数的 75-100 分位） | 2 |
+| multi_q4_wins | int | Q4 局中胜利数 | 1 |
+| multi_q4_losses | int | Q4 局中失败数 | 1 |
 | total_bomb_count | int | 当日该玩法炸弹总数 | 6 |
 | games_with_grab | int | 抢地主局数 | 4 |
 | games_player_doubled | int | 玩家加倍局数 | 2 |
@@ -70,6 +71,10 @@
 | total_fee_paid | int | 该玩法总服务费 | 800 |
 | escape_count | int | 该玩法逃跑次数 | 0 |
 | distinct_rooms | int | 该玩法游玩房间数 | 2 |
+| total_settle_rounds | int | 510K 总结算轮数（仅 play_mode=7） | 25 |
+| avg_settle_rounds | double | 510K 平均每局轮数（仅 play_mode=7） | 5.2 |
+| outcome_gdp | bigint | 510K 货币流转绝对值累计（仅 play_mode=7） | 150000 |
+| max_settle_round_single | int | 510K 单局最多轮数（仅 play_mode=7） | 12 |
 
 ## 玩法分类说明
 
@@ -108,11 +113,12 @@ CREATE TABLE tcy_temp.dws_app_gamemode_stat (
   `avg_magnification` double NULL COMMENT "",
   `max_magnification` int(11) NULL COMMENT "",
   `avg_real_magnification` double NULL COMMENT "",
-  `low_multi_games` int(11) NULL COMMENT "",
-  `mid_multi_games` int(11) NULL COMMENT "",
-  `high_multi_games` int(11) NULL COMMENT "",
-  `high_multi_wins` int(11) NULL COMMENT "",
-  `high_multi_losses` int(11) NULL COMMENT "",
+  `multi_q1_games` int(11) NULL COMMENT "倍数Q1(0-25分位)局数",
+  `multi_q2_games` int(11) NULL COMMENT "倍数Q2(25-50分位)局数",
+  `multi_q3_games` int(11) NULL COMMENT "倍数Q3(50-75分位)局数",
+  `multi_q4_games` int(11) NULL COMMENT "倍数Q4(75-100分位)局数",
+  `multi_q4_wins` int(11) NULL COMMENT "Q4局中胜利数",
+  `multi_q4_losses` int(11) NULL COMMENT "Q4局中失败数",
   `total_bomb_count` int(11) NULL COMMENT "",
   `games_with_grab` int(11) NULL COMMENT "",
   `games_player_doubled` int(11) NULL COMMENT "",
@@ -123,7 +129,11 @@ CREATE TABLE tcy_temp.dws_app_gamemode_stat (
   `total_diff_money` bigint(20) NULL COMMENT "",
   `total_fee_paid` int(11) NULL COMMENT "",
   `escape_count` int(11) NULL COMMENT "",
-  `distinct_rooms` tinyint(4) NULL COMMENT ""
+  `distinct_rooms` tinyint(4) NULL COMMENT "",
+  `total_settle_rounds` int(11) NULL COMMENT "510K总结算轮数",
+  `avg_settle_rounds` double NULL COMMENT "510K平均每局轮数",
+  `outcome_gdp` bigint(20) NULL COMMENT "510K货币流转绝对值累计",
+  `max_settle_round_single` int(11) NULL COMMENT "510K单局最多轮数"
 ) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `play_mode`, `uid`, `dt`)
 COMMENT "游戏玩法用户对局聚合信息表"
@@ -158,6 +168,11 @@ WITH ddz_modes AS (
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 ),
+ddz_modes_qt AS (
+    SELECT *,
+        NTILE(4) OVER (PARTITION BY play_mode ORDER BY magnification) AS multi_quartile
+    FROM ddz_modes
+),
 ddz_streaks AS (
     SELECT
         uid, play_mode,
@@ -168,7 +183,7 @@ ddz_streaks AS (
         FROM (
             SELECT uid, play_mode, result_id,
                 game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY game_seq) AS grp
-            FROM ddz_modes
+            FROM ddz_modes_qt
             WHERE result_id IN (1, 2)
         ) g
         GROUP BY uid, play_mode, result_id, grp
@@ -189,11 +204,12 @@ ddz_agg AS (
         ROUND(AVG(g.magnification), 2) AS avg_magnification,
         MAX(g.magnification) AS max_magnification,
         ROUND(AVG(ABS(g.real_magnification)), 2) AS avg_real_magnification,
-        COUNT(CASE WHEN g.magnification <= 6 THEN 1 END) AS low_multi_games,
-        COUNT(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 END) AS mid_multi_games,
-        COUNT(CASE WHEN g.magnification > 24 THEN 1 END) AS high_multi_games,
-        COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 END) AS high_multi_wins,
-        COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 END) AS high_multi_losses,
+        COUNT(CASE WHEN g.multi_quartile = 1 THEN 1 END) AS multi_q1_games,
+        COUNT(CASE WHEN g.multi_quartile = 2 THEN 1 END) AS multi_q2_games,
+        COUNT(CASE WHEN g.multi_quartile = 3 THEN 1 END) AS multi_q3_games,
+        COUNT(CASE WHEN g.multi_quartile = 4 THEN 1 END) AS multi_q4_games,
+        COUNT(CASE WHEN g.multi_quartile = 4 AND g.result_id = 1 THEN 1 END) AS multi_q4_wins,
+        COUNT(CASE WHEN g.multi_quartile = 4 AND g.result_id = 2 THEN 1 END) AS multi_q4_losses,
         SUM(g.bomb_bet / 2) AS total_bomb_count,
         COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END) AS games_with_grab,
         COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END) AS games_player_doubled,
@@ -205,7 +221,7 @@ ddz_agg AS (
         SUM(g.room_fee) AS total_fee_paid,
         COUNT(CASE WHEN g.cut < 0 THEN 1 END) AS escape_count,
         COUNT(DISTINCT g.room_id) AS distinct_rooms
-    FROM ddz_modes g
+    FROM ddz_modes_qt g
     LEFT JOIN ddz_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode
     GROUP BY g.app_id, g.play_mode, g.uid, g.dt
 ),
@@ -226,11 +242,12 @@ crazyddz_agg AS (
         ROUND(AVG(total_magnification), 2) AS avg_magnification,
         MAX(total_magnification) AS max_magnification,
         ROUND(AVG(ABS(game_outcome_money) / NULLIF(room_base, 0)), 2) AS avg_real_magnification,
-        COUNT(CASE WHEN total_magnification <= 6 THEN 1 END) AS low_multi_games,
-        COUNT(CASE WHEN total_magnification > 6 AND total_magnification <= 24 THEN 1 END) AS mid_multi_games,
-        COUNT(CASE WHEN total_magnification > 24 THEN 1 END) AS high_multi_games,
-        COUNT(CASE WHEN total_magnification > 24 AND result_id = 1 THEN 1 END) AS high_multi_wins,
-        COUNT(CASE WHEN total_magnification > 24 AND result_id = 2 THEN 1 END) AS high_multi_losses,
+        COUNT(CASE WHEN g.multi_quartile = 1 THEN 1 END) AS multi_q1_games,
+        COUNT(CASE WHEN g.multi_quartile = 2 THEN 1 END) AS multi_q2_games,
+        COUNT(CASE WHEN g.multi_quartile = 3 THEN 1 END) AS multi_q3_games,
+        COUNT(CASE WHEN g.multi_quartile = 4 THEN 1 END) AS multi_q4_games,
+        COUNT(CASE WHEN g.multi_quartile = 4 AND g.result_id = 1 THEN 1 END) AS multi_q4_wins,
+        COUNT(CASE WHEN g.multi_quartile = 4 AND g.result_id = 2 THEN 1 END) AS multi_q4_losses,
         0 AS total_bomb_count,
         0 AS games_with_grab,
         0 AS games_player_doubled,
@@ -241,11 +258,16 @@ crazyddz_agg AS (
         SUM(game_outcome_money) AS total_diff_money,
         SUM(room_fee) AS total_fee_paid,
         COUNT(CASE WHEN is_escape < 0 THEN 1 END) AS escape_count,
-        COUNT(DISTINCT room_id) AS distinct_rooms
+        COUNT(DISTINCT room_id) AS distinct_rooms,
+        SUM(g.settle_count) AS total_settle_rounds,
+        ROUND(AVG(g.settle_count), 2) AS avg_settle_rounds,
+        SUM(g.game_outcome_gdp) AS outcome_gdp,
+        MAX(g.settle_count) AS max_settle_round_single
     FROM (
         SELECT *,
             ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime ASC) AS seq_asc,
-            ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime DESC) AS seq_desc
+            ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime DESC) AS seq_desc,
+            NTILE(4) OVER (ORDER BY total_magnification) AS multi_quartile
         FROM tcy_temp.dws_crazyddz_daily_game
         WHERE game_id = 521
           AND dt = '2026-06-08'
@@ -283,18 +305,19 @@ UNION ALL
 SELECT * FROM crazyddz_agg;
 ```
 
-> **倍数阈值说明**：510K（play_mode=7）的 low/mid/high 分类沿用经典阈值（≤6 / 6~24 / >24）。由于 510K 累积倍数常在 20~200+ 区间，几乎全部落入 high_multi_games。**分析 510K 倍数时建议不走这几个分类字段，改用 `NTILE` 或分位数在查询 SQL 层重新分桶。**
+> **分位分桶说明**：multi_q1~q4 基于当天该玩法内所有对局的倍数分布，用 NTILE(4) 计算。Q1=0-25分位，Q2=25-50分位，Q3=50-75分位，Q4=75-100分位。分位阈值每天动态变化，跨天对比时需注意阈值漂移。`avg_magnification` 字段保留绝对倍数，可与分位字段配合使用。
 
 ## 字段使用注意
 
 1. **币种差异**：经济字段（`start_money` / `end_money` / `total_diff_money` / `money_peak` / `money_valley`）对 play_mode IN (1,2,3,7) 记录银子，对 play_mode IN (4,5,6) 记录积分。**跨币种的金额不可直接比较或加总**，分析经济指标时须按 play_mode 或币种分组
-2. **倍数阈值差异**：倍数分桶（≤6 / 6~24 / >24）基于经典玩法校准。不洗牌/癞子/510K 的倍数分布天然偏高，分桶结果仅供参考。510K 的累积倍数常 >100，几乎全部落入 high_multi_games。分析 510K 倍数建议用 `NTILE` 或分位数在查询 SQL 中自定义分桶
+2. **分位分桶**：`multi_q1~q4` 基于当天该玩法内所有对局的倍数分布用 NTILE(4) 动态计算，各玩法独立分桶。玩法间 Q4 的绝对倍数值不同（如经典的 Q4 可能 >24 倍，510K 的 Q4 可能 >100 倍），但含义一致——都是当天该玩法的最高 25% 倍数区间。跨天对比时注意分位阈值漂移，结合 `avg_magnification` 绝对倍数一起看
 3. **与 game_stat 的分工**：
    - `dws_app_game_stat`（uid × dt）：仅含银子玩法（1,2,3,7），专注金流归因
    - 本表（uid × dt × play_mode）：涵盖所有玩法，专注控制玩法变量的体验分析
 4. **行数膨胀**：一天内玩了 N 种玩法的用户产生 N 行，预计约为 game_stat 的 1.2-1.5 倍
 5. **连胜连败**：玩法内的对局序列独立计算，不跨玩法
 6. **数据完整性**：如用户当日在某玩法下无对局，本表无对应记录
+7. **510K 专属字段**：`total_settle_rounds` / `avg_settle_rounds` / `outcome_gdp` / `max_settle_round_single` 仅 play_mode=7 有值，其他玩法为 0 或 NULL。`outcome_gdp` 为货币流转绝对值累计（非净输赢），反映多轮结算的资金进出总强度
 
 ## 表数据流向
 
@@ -308,10 +331,12 @@ tcy_temp.dws_dq_app_daily_reg            （APP 端注册用户宽表）
 tcy_temp.dws_dq_daily_login              （每日登录聚合表）
 ```
 
-> **文档版本**：v2.0
+> **文档版本**：v2.2
 > **创建时间**：2026-04-13
 > **更新说明**：
 >
+> - **v2.2**：倍数分桶从硬编码阈值（≤6 / 6~24 / >24）改为分位分桶（multi_q1~q4），使用 NTILE(4) 按当天该玩法倍数分布动态计算，解决不洗牌/癞子/510K 阈值不适用的问题
+> - **v2.1**：新增 510K 体验字段（total_settle_rounds / avg_settle_rounds / outcome_gdp / max_settle_round_single），从 game_stat 迁移至本表，保持两表边界清晰
 > - **v2.0**：修正比赛(play_mode=5)币种为积分（原误标为银子）；新增 pay_mode=4/6 积分玩法和 play_mode=7 510K；移除 `app_code` 维度；新增 510K 增量 SQL；币种差异和倍数阈值差异写入使用注意
 > - v1.1：表名去掉 ddz 前缀，去掉 app_code 维度，粒度调整为 uid × dt × play_mode
 > - v1.0：初始版本，从 `dws_ddz_app_game_stat` 拆分出按玩法维度的聚合表

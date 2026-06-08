@@ -97,20 +97,7 @@ dws_app_gamemode_stat（uid × dt × play_mode）
 └─ total_fee_paid       -- 服务费
 ```
 
-### 3.3 510K 专异字段（点缀在 game_stat 末尾）
-
-510K 有哪些东西是"公共指标没法表达的"、但对留存分析有用的？
-
-| 字段 | 类型 | 含义 | 留存分析用途 |
-| ---- | ---- | ---- | ---- |
-| `crazyddz_total_settle_rounds` | int | 当日 510K 总结算轮数 | 多轮 = 游戏节奏快/刺激 → 可能影响留存 |
-| `crazyddz_avg_settle_rounds` | double | 平均每局轮数 | 同上 |
-| `crazyddz_outcome_gdp` | bigint | 510K 货币流转绝对值累计 | 游戏内资金进出的总强度（多轮特有的"波动感"） |
-| `crazyddz_max_settle_round_single` | int | 单局最多轮数 | 极端体验识别 |
-
-> 注意：不设 `crazyddz_outcome_money` 和 `crazyddz_win_rate`，因为 510K 的输赢/胜负已并入公共字段，避免重复存储。
-
-### 3.4 建表 SQL
+### 3.3 建表 SQL
 
 ```sql
 CREATE TABLE tcy_temp.dws_app_game_stat (
@@ -136,12 +123,7 @@ CREATE TABLE tcy_temp.dws_app_game_stat (
   `total_diff_money` bigint(20) NULL COMMENT "净输赢（不含服务费）",
   `total_fee_paid` int(11) NULL COMMENT "服务费",
   -- 行为
-  `escape_count` int(11) NULL COMMENT "逃跑次数",
-  -- 510K 多轮信号
-  `crazyddz_total_settle_rounds` int(11) NULL COMMENT "510K总结算轮数",
-  `crazyddz_avg_settle_rounds` double NULL COMMENT "510K平均每局轮数",
-  `crazyddz_outcome_gdp` bigint(20) NULL COMMENT "510K货币流转绝对值累计",
-  `crazyddz_max_settle_round_single` int(11) NULL COMMENT "510K单局最多轮数"
+  `escape_count` int(11) NULL COMMENT "逃跑次数"
 ) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `uid`, `dt`)
 COMMENT "APP端用户每日游戏统计（金流+参与度，不含倍数）"
@@ -249,11 +231,7 @@ SELECT
     MIN(r.end_money) AS money_valley,
     SUM(r.game_outcome_money) AS total_diff_money,
     SUM(r.room_fee) AS total_fee_paid,
-    SUM(r.escape_flag) AS escape_count,
-    SUM(CASE WHEN r.is_crazyddz = 1 THEN r.settle_count ELSE 0 END) AS crazyddz_total_settle_rounds,
-    ROUND(AVG(CASE WHEN r.is_crazyddz = 1 THEN r.settle_count END), 2) AS crazyddz_avg_settle_rounds,
-    SUM(CASE WHEN r.is_crazyddz = 1 THEN r.outcome_gdp ELSE 0 END) AS crazyddz_outcome_gdp,
-    MAX(CASE WHEN r.is_crazyddz = 1 THEN r.settle_count END) AS crazyddz_max_settle_round_single
+    SUM(r.escape_flag) AS escape_count
 FROM ranked r
 LEFT JOIN streaks st ON r.app_id = st.app_id AND r.uid = st.uid
 GROUP BY r.app_id, r.uid, r.dt;
@@ -278,9 +256,12 @@ GROUP BY r.app_id, r.uid, r.dt;
 | `avg_magnification` | ✅ `magnification` | ✅ `total_magnification` | **数值含义不同，不可跨玩法对比** |
 | `max_magnification` | ✅ | ✅ | 同上 |
 | `avg_real_magnification` | ✅ | ✅ | `ABS(outcome)/room_base`，可跨玩法对比 |
-| `low_multi_games`（≤6） | ✅ | ⚠️ 510K 几乎全 ≥6 | 阈值对 510K 偏严，建议分析 SQL 层用玩法专属分桶 |
-| `mid_multi_games`（6~24） | ✅ | ⚠️ 同上 | |
-| `high_multi_games`（>24） | ✅ | ⚠️ 510K 累积倍数常 >24 | 对 510K 过于宽松，几乎全是高倍 |
+| `multi_q1_games` | ✅ | ✅ | 倍数 Q1(0-25分位)局数，NTILE(4) 动态计算 |
+| `multi_q2_games` | ✅ | ✅ | 倍数 Q2(25-50分位)局数 |
+| `multi_q3_games` | ✅ | ✅ | 倍数 Q3(50-75分位)局数 |
+| `multi_q4_games` | ✅ | ✅ | 倍数 Q4(75-100分位)局数，玩法间可比（都是最高25%） |
+| `multi_q4_wins` | ✅ | ✅ | Q4局中胜利数 |
+| `multi_q4_losses` | ✅ | ✅ | Q4局中失败数 |
 | `total_bomb_count` | ✅ | ❌ NULL | 510K 无炸弹概念 |
 | `games_with_grab` | ✅ | ❌ NULL | 510K 无抢地主 |
 | `games_player_doubled` | ✅ | ❌ NULL | 无加倍 |
@@ -289,19 +270,17 @@ GROUP BY r.app_id, r.uid, r.dt;
 | `escape_count` | ✅ | ✅ | |
 | `distinct_rooms` | ✅ | ✅ | |
 
-### 4.3 510K 倍数阈值问题
+### 4.3 倍数分位分桶方案
 
-这是 gamemode_stat 纳入 510K 后**最大的设计问题**：
+已从硬编码阈值（≤6 / 6~24 / >24）改为 **NTILE(4) 分位分桶**，每个玩法按当天倍数分布独立计算四等分。这解决了不洗牌/癞子/510K 倍数天然偏高、硬编码阈值不适用的根本问题：
 
+```text
+经典 magnification:      典型分布 3~48   → Q4 ≈ >24 倍
+不洗牌 magnification:    典型分布 3~96   → Q4 ≈ >48 倍
+510K total_magnification: 典型分布 20~200+ → Q4 ≈ >100 倍
 ```
-现有硬编码阈值（≤6 / 6~24 / >24）对 510K 的累积倍数不适用：
-- 510K cumulative total_magnification: 典型分布 20~200+
-- 经典 magnification: 典型分布 3~48
-```
 
-**推荐方案**：gamemode_stat 表的 `low/mid/high_multi_*` 字段**仍然按现有 SQL 填入**（不改表结构，向后兼容），但文档中**明确标注**：
-
-> 510K（play_mode=7）的 low/mid/high 分类基于经典玩法阈值（≤6 / 6~24 / >24），由于 510K 累积倍数天然偏高，几乎全部落入 high_multi_games。**分析 510K 倍数时，建议不走这几个分类字段，而是在查询 SQL 中用 `NTILE` 或分位数自行分桶。**
+每个玩法的 Q4 都代表该玩法当天最高 25% 的倍数区间，玩法间含义可比。结合 `avg_magnification` 字段可同时获得绝对倍数数值。
 
 ### 4.4 510K 纳入 gamemode_stat 的增量 SQL（核心改动）
 
@@ -326,12 +305,13 @@ SELECT
     ROUND(AVG(total_magnification), 2) AS avg_magnification,
     MAX(total_magnification) AS max_magnification,
     ROUND(AVG(ABS(game_outcome_money) / NULLIF(room_base, 0)), 2) AS avg_real_magnification,
-    -- 高/中/低倍（注意：对510K意义不同，见文档说明）
-    COUNT(CASE WHEN total_magnification <= 6 THEN 1 END) AS low_multi_games,
-    COUNT(CASE WHEN total_magnification > 6 AND total_magnification <= 24 THEN 1 END) AS mid_multi_games,
-    COUNT(CASE WHEN total_magnification > 24 THEN 1 END) AS high_multi_games,
-    COUNT(CASE WHEN total_magnification > 24 AND result_id = 1 THEN 1 END) AS high_multi_wins,
-    COUNT(CASE WHEN total_magnification > 24 AND result_id = 2 THEN 1 END) AS high_multi_losses,
+    -- 分位分桶（NTILE(4) 按 total_magnification 动态计算）
+    COUNT(CASE WHEN g.multi_quartile = 1 THEN 1 END) AS multi_q1_games,
+    COUNT(CASE WHEN g.multi_quartile = 2 THEN 1 END) AS multi_q2_games,
+    COUNT(CASE WHEN g.multi_quartile = 3 THEN 1 END) AS multi_q3_games,
+    COUNT(CASE WHEN g.multi_quartile = 4 THEN 1 END) AS multi_q4_games,
+    COUNT(CASE WHEN g.multi_quartile = 4 AND g.result_id = 1 THEN 1 END) AS multi_q4_wins,
+    COUNT(CASE WHEN g.multi_quartile = 4 AND g.result_id = 2 THEN 1 END) AS multi_q4_losses,
     0 AS total_bomb_count,        -- 510K 无此概念
     0 AS games_with_grab,         -- 510K 无抢地主
     0 AS games_player_doubled,    -- 510K 无加倍
@@ -347,7 +327,8 @@ SELECT
 FROM (
     SELECT *,
         ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime ASC)  AS seq_asc,
-        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime DESC) AS seq_desc
+        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime DESC) AS seq_desc,
+        NTILE(4) OVER (ORDER BY total_magnification) AS multi_quartile
     FROM tcy_temp.dws_crazyddz_daily_game
     WHERE game_id = 521
       AND dt = '2026-06-08'
@@ -383,34 +364,39 @@ GROUP BY 1;
 ### 5.2 玩法体验对比 → 留存
 
 ```sql
--- 用 gamemode_stat：分玩法看
--- 510K 的高倍局阈值换成 NTILE 分桶
+-- 用 gamemode_stat：分玩法看 Q4（最高25%倍数区间）对留存的影响
 SELECT
     play_mode,
-    NTILE(4) OVER (PARTITION BY play_mode ORDER BY avg_magnification) AS multi_quartile,
+    CASE
+        WHEN g.multi_q4_games > 0 THEN '有Q4局'
+        ELSE '无Q4局'
+    END AS has_q4,
     COUNT(DISTINCT g.uid) AS n,
     ROUND(AVG(g.win_rate), 2) AS avg_win_rate,
     ROUND(AVG(g.total_diff_money), 0) AS avg_outcome
 FROM tcy_temp.dws_app_gamemode_stat g
 WHERE g.dt = '20260601'
   AND g.game_count > 0
-GROUP BY play_mode, multi_quartile;
+GROUP BY play_mode, has_q4;
 ```
 
 ### 5.3 510K 玩家专项：多轮是否更"刺激"→ 更黏还是更伤？
 
 ```sql
--- 用 game_stat 的 crazyddz_* 字段
+-- 用 gamemode_stat：play_mode=7，按 settle_rounds 分桶
+-- 需要 JOIN game_stat 拿用户整体金流画像
 SELECT
     CASE
-        WHEN crazyddz_avg_settle_rounds <= 3 THEN '短(≤3轮)'
-        WHEN crazyddz_avg_settle_rounds <= 6 THEN '中(4-6轮)'
-        ELSE '长(>6轮)'
+        WHEN g.total_settle_rounds <= 10 THEN '短(≤10轮)'
+        WHEN g.total_settle_rounds <= 25 THEN '中(11-25轮)'
+        ELSE '长(>25轮)'
     END AS round_group,
-    COUNT(DISTINCT s.uid) AS n,
-    ROUND(AVG(s.crazyddz_outcome_gdp), 0) AS avg_gdp
-FROM tcy_temp.dws_app_game_stat s
-WHERE s.dt = '20260601' AND s.crazyddz_total_settle_rounds > 0
+    COUNT(DISTINCT g.uid) AS n,
+    ROUND(AVG(g.outcome_gdp), 0) AS avg_gdp
+FROM tcy_temp.dws_app_gamemode_stat g
+WHERE g.dt = '20260601'
+  AND g.play_mode = 7
+  AND g.game_count > 0
 GROUP BY 1;
 ```
 
@@ -422,23 +408,22 @@ GROUP BY 1;
 dws_ddz_daily_game ──────┐
 (经典/不洗牌/癞子 等银子玩法)  │
                           ├─ UNION ALL ─→ dws_app_game_stat （金流+参与, uid×dt）
-dws_crazyddz_daily_game ──┘                  │
-(510K, 多轮)                      510K: 银子并进去，轮数单独标
-                                              │
+dws_crazyddz_daily_game ──┘
+(510K, 多轮)
 dws_ddz_daily_game ───→ dws_app_gamemode_stat（玩法体验, uid×dt×play_mode）
                              play_mode = 1, 2, 3
 dws_crazyddz_daily_game ─→ dws_app_gamemode_stat
                              play_mode = 7 (new)
-                             倍数分桶阈值不适用，标注后由分析 SQL 处理
+                             NTILE(4) 分位分桶，与经典玩法口径一致
 ```
 
 | 分析问题 | 用哪张表 | 510K 怎么处理 |
 | ---- | ---- | ---- |
 | 首日银子波动 → 留存 | game_stat | 并入 |
 | 首日总对局数 → 留存 | game_stat | 并入 |
-| 510K 多轮时长 → 留存 | game_stat | crazyddz_* 字段 |
-| 经典高倍局 → 留存 | gamemode_stat | 不涉及 |
-| 510K 高倍局 → 留存 | gamemode_stat, play_mode=7 | NTILE 分桶 |
+| 510K 多轮体验 → 留存 | gamemode_stat, play_mode=7 | total_settle_rounds / outcome_gdp 字段 |
+| 经典高倍局 → 留存 | gamemode_stat | multi_q4_games / multi_q4_wins / multi_q4_losses |
+| 510K 高倍局 → 留存 | gamemode_stat, play_mode=7 | multi_q4_games / multi_q4_wins / multi_q4_losses |
 | 各玩法破产率对比 | gamemode_stat | 分玩法对比 |
 
 ---
@@ -475,13 +460,17 @@ WHERE play_mode = 7 AND dt BETWEEN '20260601' AND '20260607';
 
 ## 八、版本历史
 
-> **文档版本**：v4.0（终版）
+> **文档版本**：v4.2
 > **设计时间**：2026-06-08
 > **设计目标**：APP 新增留存归因 → 金流 + 玩法体验两维度分层分析
 > **核心决策**：
 >
-> - game_stat = 金流 + 参与度，不含任何倍数指标，510K 完全并入
-> - gamemode_stat = 玩法体验，新增 play_mode=7(510K)，倍数阈值差异标注在文档中
+> - game_stat = 金流 + 参与度，不含任何倍数/体验指标，510K 金流完全并入
+> - gamemode_stat = 玩法体验，倍数分桶改为 NTILE(4) 分位分桶（multi_q1~q4），各玩法独立分布
+> - gamemode_stat 新增 play_mode=7(510K)，510K 体验字段（settle_rounds、outcome_gdp）归入此表
 > - 两表都从明细表（dws_ddz_daily_game + dws_crazyddz_daily_game）直接 UNION ALL 重算
 > - 粒度：game_stat = uid × dt，gamemode_stat = uid × dt × play_mode
 > - app_code 维度去除
+>
+> **v4.2 变更**：gamemode_stat 倍数分桶从硬编码阈值（≤6/6~24/>24）改为 NTILE(4) 分位分桶（multi_q1~q4），解决不洗牌/癞子/510K 阈值不适用问题
+> **v4.1 变更**：game_stat 移除 crazyddz_* 专属字段（total_settle_rounds / avg_settle_rounds / outcome_gdp / max_settle_round_single），510K 体验信号统一由 gamemode_stat（play_mode=7）承载，保持 game_stat 的纯金流边界
