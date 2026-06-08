@@ -78,12 +78,9 @@ dws_app_gamemode_stat（uid × dt × play_mode）
 
 参与度（含 510K）
 ├─ game_count           -- 总局数
-├─ ddz_game_count       -- 其中经典系对局数（play_mode 1,2,3，均为银子）
-├─ crazyddz_game_count  -- 其中 510K 对局数
 ├─ total_play_seconds   -- 总时长（510K 用 time_cost 对 timecost）
 ├─ avg_game_seconds     -- 平均时长
 ├─ distinct_rooms       -- 不同房间数
-└─ play_modes           -- 玩法标签（"1,2,7"）
 
 胜负（含 510K，按最终 result_id）
 ├─ win_count, lose_count
@@ -122,12 +119,9 @@ CREATE TABLE tcy_temp.dws_app_game_stat (
   `dt` DATE NOT NULL COMMENT "游戏日期",
   -- 参与度
   `game_count` int(11) NULL COMMENT "总局数（含510K）",
-  `ddz_game_count` int(11) NULL COMMENT "经典系对局数（1,2,3，均为银子）",
-  `crazyddz_game_count` int(11) NULL COMMENT "510K对局数",
   `total_play_seconds` int(11) NULL COMMENT "总时长（秒）",
   `avg_game_seconds` double NULL COMMENT "平均每局时长（秒）",
   `distinct_rooms` int(11) NULL COMMENT "不同房间数",
-  `play_modes` varchar(64) NULL COMMENT "玩法标签，如'1,2,7'",
   -- 胜负
   `win_count` int(11) NULL COMMENT "胜利局数（含510K）",
   `lose_count` int(11) NULL COMMENT "失败局数（含510K）",
@@ -241,12 +235,9 @@ SELECT
     r.uid,
     r.dt,
     COUNT(*) AS game_count,
-    COUNT(CASE WHEN r.is_crazyddz = 0 THEN 1 END) AS ddz_game_count,
-    COUNT(CASE WHEN r.is_crazyddz = 1 THEN 1 END) AS crazyddz_game_count,
     SUM(r.time_cost) AS total_play_seconds,
     ROUND(AVG(r.time_cost), 1) AS avg_game_seconds,
     COUNT(DISTINCT r.room_id) AS distinct_rooms,
-    GROUP_CONCAT(DISTINCT CAST(r.play_mode AS VARCHAR) ORDER BY r.play_mode SEPARATOR ',') AS play_modes,
     COUNT(CASE WHEN r.result_id = 1 THEN 1 END) AS win_count,
     COUNT(CASE WHEN r.result_id = 2 THEN 1 END) AS lose_count,
     ROUND(COUNT(CASE WHEN r.result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
@@ -419,7 +410,7 @@ SELECT
     COUNT(DISTINCT s.uid) AS n,
     ROUND(AVG(s.crazyddz_outcome_gdp), 0) AS avg_gdp
 FROM tcy_temp.dws_app_game_stat s
-WHERE s.dt = '20260601' AND s.crazyddz_game_count > 0
+WHERE s.dt = '20260601' AND s.crazyddz_total_settle_rounds > 0
 GROUP BY 1;
 ```
 
@@ -429,7 +420,7 @@ GROUP BY 1;
 
 ```text
 dws_ddz_daily_game ──────┐
-(经典/不洗牌/癞子/比赛)    │
+(经典/不洗牌/癞子 等银子玩法)  │
                           ├─ UNION ALL ─→ dws_app_game_stat （金流+参与, uid×dt）
 dws_crazyddz_daily_game ──┘                  │
 (510K, 多轮)                      510K: 银子并进去，轮数单独标
@@ -462,11 +453,11 @@ LEFT JOIN dws_app_gamemode_stat g ON s.uid = g.uid AND s.dt = g.dt AND s.app_id 
 WHERE s.dt = '20260608'
 GROUP BY s.dt;
 
--- 2. 510K 局数一致性
-SELECT s.dt, SUM(s.crazyddz_game_count) AS stat_crazyddz,
-       SUM(CASE WHEN g.play_mode = 7 THEN g.game_count ELSE 0 END) AS gms_crazyddz
+-- 2. 银子玩法局数一致性（game_stat 总局数 = gamemode_stat 银子玩法 game_count 之和）
+SELECT s.dt, SUM(s.game_count) AS stat_total_games,
+       SUM(CASE WHEN g.play_mode IN (1,2,3,7) THEN g.game_count ELSE 0 END) AS gms_silver_games
 FROM dws_app_game_stat s
-LEFT JOIN dws_app_gamemode_stat g ON s.uid = g.uid AND s.dt = g.dt
+LEFT JOIN dws_app_gamemode_stat g ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
 WHERE s.dt = '20260608'
 GROUP BY s.dt;
 
