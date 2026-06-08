@@ -8,35 +8,39 @@
 | 表名 | `dws_app_gamemode_stat` |
 | 全名 | `tcy_temp.dws_app_gamemode_stat` |
 | 类型 | DWS 层聚合表（每日增量） |
-| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），与 `dws_app_game_stat` 字段一致，粒度增加 play_mode 维度 |
+| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），涵盖所有玩法（含积分玩法），专注控制玩法变量的体验分析。倍数/炸弹等玩法特异指标见本表，金流归因见 `dws_app_game_stat` |
 | 粒度 | uid × dt × play_mode（一个用户一天一种玩法一行） |
 
 ## 设计背景
 
-`dws_app_game_stat` 的粒度为 uid × dt，一天内玩了多种玩法（经典/不洗牌/赖子/比赛）的用户数据混合在一起。但不同玩法的倍数分布差异显著：
+`dws_app_game_stat` 的粒度为 uid × dt，专注**银子金流归因**（仅含 play_mode 1,2,3,7），不含玩法特异的倍数/炸弹指标。但做留存分析时，很多问题必须固定玩法变量才能回答：
 
-| 玩法 | 倍数特点 | 影响 |
-| ---- | ------- | ---- |
-| 经典 | 标准倍数，炸弹频率适中 | 基准线 |
-| 不洗牌 | 保留上局牌序，连续炸弹概率更高 | 倍数偏高 |
-| 赖子 | 万能牌存在，炸弹概率远高于经典 | 倍数显著偏高 |
-| 比赛 | 独立规则 | 单独分析 |
+| 分析问题 | 为什么必须按玩法拆 |
+| ---- | ---- |
+| "首日经历高倍局的用户，留存更高还是更低？" | 赖子天然高倍多，不拆玩法 = 把"玩了赖子"当成"经历高倍" |
+| "首日大赢/大输对留存的影响？" | 赖子单局波动大，不拆 = 把"玩法波动"当成"用户运气" |
+| "510K 多轮体验 vs 经典单局体验，哪个更伤留存？" | 结算方式根本不同 |
+| "比赛/好友房（积分）对留存有正向作用吗？" | 积分玩法不消耗银子，走的是社交/竞技路径 |
 
-**影响链条**：玩法 → 倍数分布 → 单局输赢 → 经济变化/破产 → 留存
+**影响链条**：玩法 → 倍数分布/结算方式 → 单局输赢 → 经济变化/破产 → 留存
 
-混合分析会将玩法差异误读为用户行为差异。例如赖子玩法用户的"高倍局占比高"是玩法特性而非用户激进。
+**本表的定位**：涵盖所有玩法（含积分玩法和 510K），按 play_mode 拆分，固定玩法变量，让倍数/炸弹/胜率等被玩法污染的指标变得可比。
 
-**解决方案**：新建按玩法拆分的聚合表，保留原表不动。两表并存，按需使用：
+**与 dws_app_game_stat 的分工**：
 
-- 不关心玩法差异的分析（如按对局数分组）→ 用原表
-- 与倍数/经济/胜率/时长相关的分析 → 用本表
+| | dws_app_game_stat | dws_app_gamemode_stat（本表） |
+| ---- | ---- | ---- |
+| 粒度 | uid × dt | uid × dt × play_mode |
+| 玩法范围 | 仅银子玩法（1,2,3,7） | 所有玩法（1,2,3,4,5,6,7） |
+| 核心指标 | 参与度、金流（银子可加总） | 倍数、炸弹、玩法内胜率（玩法间不可比） |
+| 典型问题 | "新用户首日银子亏了多少？" | "经典 vs 赖子，哪个高倍局更多？" |
 
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
 | app_id | int | 应用 ID | 1880053 |
-| play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=赖子，5=比赛 | 1 |
+| play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房 | 1 |
 | uid | int | 玩家唯一标识 | 123456789 |
 | dt | date | 对局日期 | 2026-02-10 |
 | game_count | int | 当日该玩法对局总数 | 8 |
@@ -58,8 +62,8 @@
 | total_bomb_count | int | 当日该玩法炸弹总数 | 6 |
 | games_with_grab | int | 抢地主局数 | 4 |
 | games_player_doubled | int | 玩家加倍局数 | 2 |
-| start_money | bigint | 该玩法首局前货币数量 | 10000 |
-| end_money | bigint | 该玩法末局后货币数量 | 12000 |
+| start_money | bigint | 该玩法首局前货币数量（见币种说明） | 10000 |
+| end_money | bigint | 该玩法末局后货币数量（见币种说明） | 12000 |
 | money_peak | bigint | 该玩法货币峰值 | 15000 |
 | money_valley | bigint | 该玩法货币谷值 | 8000 |
 | total_diff_money | bigint | 该玩法总输赢（含服务费还原） | 2000 |
@@ -69,14 +73,19 @@
 
 ## 玩法分类说明
 
-| play_mode | 玩法 | 币种 |
-| --------- | ---- | ---- |
-| 1 | 经典 | 银子 |
-| 2 | 不洗牌 | 银子 |
-| 3 | 癞子 | 银子 |
-| 5 | 比赛（APP/小游戏端） | 银子 |
+| play_mode | 玩法 | 币种 | 备注 |
+| --------- | ---- | ---- | ---- |
+| 1 | 经典 | 银子 | |
+| 2 | 不洗牌 | 银子 | |
+| 3 | 癞子 | 银子 | |
+| 4 | 积分 | 积分 | PC 端 |
+| 5 | 比赛（APP/小游戏端） | 积分 | 共用 room_id=11534 积分房 |
+| 6 | 好友房 | 积分 | |
+| 7 | 510K | 银子 | 多轮结算，内嵌于 APP |
 
-> **说明**：本表仅统计 APP 端用户（`group_id` IN 6,66,8,88,33,44,77,99）的银子玩法（play_mode IN 1,2,3,5），排除 PC 端积分玩法。
+> **币种说明**：经济字段（`start_money` / `end_money` / `total_diff_money` 等）对银子玩法记录银子，对积分玩法记录积分。**跨币种不可直接比较金额**，分析时需按 play_mode 或币种分组。
+>
+> **与 dws_app_game_stat 的分工**：本表涵盖所有玩法（含积分玩法），game_stat 仅含银子玩法（1,2,3,7），专注金流归因。
 
 ## 构建 SQL
 
@@ -136,101 +145,173 @@ PROPERTIES (
 ### 增量数据导入
 
 ```sql
-insert into tcy_temp.dws_app_gamemode_stat
-WITH game_enriched AS (
+-- 参数：将 '2026-06-08' 替换为目标日期
+INSERT INTO tcy_temp.dws_app_gamemode_stat
+WITH ddz_modes AS (
+    -- 经典/不洗牌/癞子/比赛/积分/好友房（从 dws_ddz_daily_game 统一聚合）
     SELECT
         *,
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime ASC) AS game_seq,
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt between '2026-02-10' and '2026-04-21'
+    WHERE dt = '2026-06-08'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
-      AND play_mode IN (1, 2, 3, 5)
 ),
-streaks_calc AS (
-    SELECT
-        uid, play_mode, result_id, COUNT(*) AS streak_len
-    FROM (
-        SELECT
-            uid, play_mode, result_id,
-            game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY game_seq) AS grp
-        FROM game_enriched
-        WHERE result_id IN (1, 2)
-    ) t
-    GROUP BY uid, play_mode, result_id, grp
-),
-max_streaks AS (
+ddz_streaks AS (
     SELECT
         uid, play_mode,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
-    FROM streaks_calc
+    FROM (
+        SELECT uid, play_mode, result_id, grp, COUNT(*) AS streak_len
+        FROM (
+            SELECT uid, play_mode, result_id,
+                game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY game_seq) AS grp
+            FROM ddz_modes
+            WHERE result_id IN (1, 2)
+        ) g
+        GROUP BY uid, play_mode, result_id, grp
+    ) s
     GROUP BY uid, play_mode
+),
+ddz_agg AS (
+    SELECT
+        g.app_id, g.play_mode, g.uid, g.dt,
+        COUNT(*) AS game_count,
+        SUM(g.timecost) AS total_play_seconds,
+        ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
+        COUNT(CASE WHEN g.result_id = 1 THEN 1 END) AS win_count,
+        COUNT(CASE WHEN g.result_id = 2 THEN 1 END) AS lose_count,
+        ROUND(COUNT(CASE WHEN g.result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
+        ANY_VALUE(s.max_win_streak),
+        ANY_VALUE(s.max_lose_streak),
+        ROUND(AVG(g.magnification), 2) AS avg_magnification,
+        MAX(g.magnification) AS max_magnification,
+        ROUND(AVG(ABS(g.real_magnification)), 2) AS avg_real_magnification,
+        COUNT(CASE WHEN g.magnification <= 6 THEN 1 END) AS low_multi_games,
+        COUNT(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 END) AS mid_multi_games,
+        COUNT(CASE WHEN g.magnification > 24 THEN 1 END) AS high_multi_games,
+        COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 END) AS high_multi_wins,
+        COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 END) AS high_multi_losses,
+        SUM(g.bomb_bet / 2) AS total_bomb_count,
+        COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END) AS games_with_grab,
+        COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END) AS games_player_doubled,
+        MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END) AS start_money,
+        MAX(CASE WHEN g.rank_desc = 1 THEN g.end_money END) AS end_money,
+        MAX(g.end_money) AS money_peak,
+        MIN(g.end_money) AS money_valley,
+        SUM(g.game_outcome_money) AS total_diff_money,
+        SUM(g.room_fee) AS total_fee_paid,
+        COUNT(CASE WHEN g.cut < 0 THEN 1 END) AS escape_count,
+        COUNT(DISTINCT g.room_id) AS distinct_rooms
+    FROM ddz_modes g
+    LEFT JOIN ddz_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode
+    GROUP BY g.app_id, g.play_mode, g.uid, g.dt
+),
+crazyddz_agg AS (
+    -- 510K（从 dws_crazyddz_daily_game 聚合，倍数用 total_magnification）
+    SELECT
+        app_id,
+        7 AS play_mode,
+        uid, dt,
+        COUNT(*) AS game_count,
+        SUM(time_cost) AS total_play_seconds,
+        ROUND(AVG(time_cost), 1) AS avg_game_seconds,
+        COUNT(CASE WHEN result_id = 1 THEN 1 END) AS win_count,
+        COUNT(CASE WHEN result_id = 2 THEN 1 END) AS lose_count,
+        ROUND(COUNT(CASE WHEN result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
+        MAX(CASE WHEN result_id = 1 THEN win_streak ELSE 0 END) AS max_win_streak,
+        MAX(CASE WHEN result_id = 2 THEN lose_streak ELSE 0 END) AS max_lose_streak,
+        ROUND(AVG(total_magnification), 2) AS avg_magnification,
+        MAX(total_magnification) AS max_magnification,
+        ROUND(AVG(ABS(game_outcome_money) / NULLIF(room_base, 0)), 2) AS avg_real_magnification,
+        COUNT(CASE WHEN total_magnification <= 6 THEN 1 END) AS low_multi_games,
+        COUNT(CASE WHEN total_magnification > 6 AND total_magnification <= 24 THEN 1 END) AS mid_multi_games,
+        COUNT(CASE WHEN total_magnification > 24 THEN 1 END) AS high_multi_games,
+        COUNT(CASE WHEN total_magnification > 24 AND result_id = 1 THEN 1 END) AS high_multi_wins,
+        COUNT(CASE WHEN total_magnification > 24 AND result_id = 2 THEN 1 END) AS high_multi_losses,
+        0 AS total_bomb_count,
+        0 AS games_with_grab,
+        0 AS games_player_doubled,
+        MAX(CASE WHEN seq_asc = 1 THEN start_money END) AS start_money,
+        MAX(CASE WHEN seq_desc = 1 THEN end_money END) AS end_money,
+        MAX(end_money) AS money_peak,
+        MIN(end_money) AS money_valley,
+        SUM(game_outcome_money) AS total_diff_money,
+        SUM(room_fee) AS total_fee_paid,
+        COUNT(CASE WHEN is_escape < 0 THEN 1 END) AS escape_count,
+        COUNT(DISTINCT room_id) AS distinct_rooms
+    FROM (
+        SELECT *,
+            ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime ASC) AS seq_asc,
+            ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime DESC) AS seq_desc
+        FROM tcy_temp.dws_crazyddz_daily_game
+        WHERE game_id = 521
+          AND dt = '2026-06-08'
+          AND robot != 1
+          AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    ) g
+    LEFT JOIN (
+        SELECT uid,
+            MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS win_streak,
+            MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS lose_streak
+        FROM (
+            SELECT uid, result_id, grp, COUNT(*) AS streak_len
+            FROM (
+                SELECT uid, result_id,
+                    seq_asc - ROW_NUMBER() OVER (PARTITION BY uid, result_id ORDER BY seq_asc) AS grp
+                FROM (
+                    SELECT uid, result_id,
+                        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime ASC) AS seq_asc
+                    FROM tcy_temp.dws_crazyddz_daily_game
+                    WHERE game_id = 521
+                      AND dt = '2026-06-08'
+                      AND robot != 1
+                      AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+                      AND result_id IN (1, 2)
+                ) r
+            ) g
+            GROUP BY uid, result_id, grp
+        ) s
+        GROUP BY uid
+    ) str ON g.uid = str.uid
+    GROUP BY app_id, uid, dt
 )
-SELECT
-    g.app_id,
-    g.play_mode,
-    g.uid,
-    g.dt,
-    COUNT(*) AS game_count,
-    SUM(g.timecost) AS total_play_seconds,
-    ROUND(AVG(g.timecost), 1) AS avg_game_seconds,
-    COUNT(CASE WHEN g.result_id = 1 THEN 1 END) AS win_count,
-    COUNT(CASE WHEN g.result_id = 2 THEN 1 END) AS lose_count,
-    ROUND(COUNT(CASE WHEN g.result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
-    ANY_VALUE(s.max_win_streak),
-    ANY_VALUE(s.max_lose_streak),
-    ROUND(AVG(g.magnification), 2),
-    MAX(g.magnification),
-    ROUND(AVG(ABS(g.real_magnification)), 2),
-    COUNT(CASE WHEN g.magnification <= 6 THEN 1 END),
-    COUNT(CASE WHEN g.magnification > 6 AND g.magnification <= 24 THEN 1 END),
-    COUNT(CASE WHEN g.magnification > 24 THEN 1 END),
-    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 1 THEN 1 END),
-    COUNT(CASE WHEN g.magnification > 24 AND g.result_id = 2 THEN 1 END),
-    SUM(g.bomb_bet / 2),
-    COUNT(CASE WHEN g.grab_landlord_bet > 3 THEN 1 END),
-    COUNT(CASE WHEN g.magnification_stacked > 1 THEN 1 END),
-    MAX(CASE WHEN g.game_seq = 1 THEN g.start_money END),
-    MAX(CASE WHEN g.rank_desc = 1 THEN g.end_money END),
-    MAX(g.end_money),
-    MIN(g.end_money),
-    SUM(g.diff_money_pre_tax),
-    SUM(g.room_fee),
-    COUNT(CASE WHEN g.cut < 0 THEN 1 END),
-    COUNT(DISTINCT g.room_id)
-FROM game_enriched g
-LEFT JOIN max_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode
-GROUP BY g.app_id, g.play_mode, g.uid, g.dt;
+SELECT * FROM ddz_agg
+UNION ALL
+SELECT * FROM crazyddz_agg;
 ```
+
+> **倍数阈值说明**：510K（play_mode=7）的 low/mid/high 分类沿用经典阈值（≤6 / 6~24 / >24）。由于 510K 累积倍数常在 20~200+ 区间，几乎全部落入 high_multi_games。**分析 510K 倍数时建议不走这几个分类字段，改用 `NTILE` 或分位数在查询 SQL 层重新分桶。**
 
 ## 字段使用注意
 
-1. **与原表的关系**：本表是 `dws_app_game_stat` 的按玩法拆分版本，两表并存互补
-   - 原表（uid × dt）：适合不需要区分玩法的分析（如按对局数分组、总体经济变化）
-   - 本表（uid × dt × play_mode）：适合需要控制玩法变量的分析（如倍数、胜率、连胜连败、经济变化）
-2. **行数膨胀**：一天内玩了 N 种玩法的用户会产生 N 行记录（原表只有 1 行），预计行数约为原表的 1.2-1.5 倍（多数用户只玩一种玩法）
-3. **start_money / end_money**：按玩法内的时间顺序取首局/末局，不同玩法之间的银子变化可能交叉（用户在经典和赖子间切换时银子是连续的）
-4. **连胜连败**：按玩法内的对局序列计算，跨玩法的连胜连败不统计
-5. **数据完整性**：如用户当日在某玩法下无对局，本表无对应记录
+1. **币种差异**：经济字段（`start_money` / `end_money` / `total_diff_money` / `money_peak` / `money_valley`）对 play_mode IN (1,2,3,7) 记录银子，对 play_mode IN (4,5,6) 记录积分。**跨币种的金额不可直接比较或加总**，分析经济指标时须按 play_mode 或币种分组
+2. **倍数阈值差异**：倍数分桶（≤6 / 6~24 / >24）基于经典玩法校准。不洗牌/癞子/510K 的倍数分布天然偏高，分桶结果仅供参考。510K 的累积倍数常 >100，几乎全部落入 high_multi_games。分析 510K 倍数建议用 `NTILE` 或分位数在查询 SQL 中自定义分桶
+3. **与 game_stat 的分工**：
+   - `dws_app_game_stat`（uid × dt）：仅含银子玩法（1,2,3,7），专注金流归因
+   - 本表（uid × dt × play_mode）：涵盖所有玩法，专注控制玩法变量的体验分析
+4. **行数膨胀**：一天内玩了 N 种玩法的用户产生 N 行，预计约为 game_stat 的 1.2-1.5 倍
+5. **连胜连败**：玩法内的对局序列独立计算，不跨玩法
+6. **数据完整性**：如用户当日在某玩法下无对局，本表无对应记录
 
 ## 表数据流向
 
 ```text
-tcy_temp.dws_ddz_daily_game              （对局明细表）
-            ↓  APP端+银子玩法聚合
-tcy_temp.dws_app_game_stat             （用户每日统计 - 混合玩法）
-tcy_temp.dws_app_gamemode_stat         （用户每日统计 - 按玩法拆分）  ← 本表
+tcy_temp.dws_ddz_daily_game              （单轮对局明细：经典/不洗牌/癞子/比赛/积分/好友房）
+tcy_temp.dws_crazyddz_daily_game         （多轮对局明细：510K）
+            ↓  按 play_mode 聚合（UNION ALL）
+tcy_temp.dws_app_gamemode_stat           （玩法体验分析：uid × dt × play_mode）  ← 本表
             ↓  关联分析
-tcy_temp.dws_dq_app_daily_reg          （APP 端注册用户宽表）
-tcy_temp.dws_dq_daily_login            （每日登录聚合表）
+tcy_temp.dws_dq_app_daily_reg            （APP 端注册用户宽表）
+tcy_temp.dws_dq_daily_login              （每日登录聚合表）
 ```
 
-> **文档版本**：v1.1
+> **文档版本**：v2.0
 > **创建时间**：2026-04-13
 > **更新说明**：
-
 >
+> - **v2.0**：修正比赛(play_mode=5)币种为积分（原误标为银子）；新增 pay_mode=4/6 积分玩法和 play_mode=7 510K；移除 `app_code` 维度；新增 510K 增量 SQL；币种差异和倍数阈值差异写入使用注意
 > - v1.1：表名去掉 ddz 前缀，去掉 app_code 维度，粒度调整为 uid × dt × play_mode
 > - v1.0：初始版本，从 `dws_ddz_app_game_stat` 拆分出按玩法维度的聚合表
