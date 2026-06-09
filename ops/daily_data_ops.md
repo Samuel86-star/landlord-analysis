@@ -544,7 +544,7 @@ GROUP BY g.app_id, g.play_mode, g.uid, g.dt;
 - **粒度为 uid × dt × play_mode**：不再区分 app_code，一个用户一天一种玩法一行
 - **仅统计 APP 端用户**（group_id IN 6,66,8,88,33,44,77,99）
 - 仅统计银子玩法（play_mode IN 1,2,3,5），排除积分玩法
-- 与 `dws_app_game_stat` 字段基本一致，增加 `play_mode` 维度
+- 与 `dws_app_silvergame_stat` 字段基本一致，增加 `play_mode` 维度
 - 适用于需要控制玩法变量的分析（倍数、胜率、连胜连败、经济变化）
 - 详细文档：[game/dws_app_gamemode_stat.md](../starrocks/game/dws_app_gamemode_stat.md)
 

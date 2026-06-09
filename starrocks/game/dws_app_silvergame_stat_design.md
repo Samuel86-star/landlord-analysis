@@ -1,4 +1,4 @@
-# APP 游戏统计层两表设计（纳入 510K）
+# APP 游戏统计层两表设计：金流 / 玩法体验（纳入 510K）
 
 ## 一、背景：为什么要重新设计
 
@@ -25,6 +25,8 @@
 | **局中多轮结算** | 一局内多次银子变动，不能简单当单次输赢处理 |
 | **倍数累积** | 多轮倍数叠加可达 100+，与经典（通常 3~48）的量级完全不同 |
 
+> **多轮已在上游合并**：`crazyddz_daily_game_raw`（原始日志）中一局多轮结算对应多条记录（`resultguid + uid` 多条），上游 `dws_crazyddz_daily_game` 已将其合并为整局一行（`resultguid + uid` 唯一），`game_outcome_money` 即整局净输赢。因此本层接入 510K 时与经典系粒度一致（一局一行），UNION ALL 后直接 SUM 即可，无需在统计层处理多轮。
+
 ---
 
 ## 二、两表分工原则
@@ -36,8 +38,8 @@
 
 基于这个判断，两表分工：
 
-```
-dws_app_game_stat（uid × dt）
+```text
+dws_app_silvergame_stat（uid × dt）
 ├─ 角色：金流 + 参与度
 ├─ 510K：完全并入（因为是银子）
 ├─ 问题："这个人今天整体怎么样？银子亏了多少？"
@@ -64,11 +66,13 @@ dws_app_gamemode_stat（uid × dt × play_mode）
 
 ---
 
-## 三、dws_app_game_stat 设计
+## 三、dws_app_silvergame_stat 设计
 
 ### 3.1 定位
 
 **纯金流 + 参与度**。不含任何倍数指标。
+
+> **命名与边界**：表名 `dws_app_silvergame_stat` 的 `silvergame` 明确只覆盖银子玩法（1/2/3/7）。积分玩法（4/5/6）金流币种不同、不可与银子加总，规划独立姊妹表 `dws_app_scoregame_stat`（待建），两表 play_mode 互不重叠、并集即全玩法。跨币种的玩法体验对比走 `dws_app_gamemode_stat`。
 
 ### 3.2 字段
 
@@ -84,7 +88,8 @@ dws_app_gamemode_stat（uid × dt × play_mode）
 
 胜负（含 510K，按最终 result_id）
 ├─ win_count, lose_count
-├─ win_rate             -- 已含 510K
+├─ win_rate             -- win_count/game_count
+├─ lose_rate            -- lose_count/game_count；510K 有平局，与 win_rate 不互补
 ├─ max_win_streak       -- 跨玩法按时间序列
 └─ max_lose_streak
 
@@ -100,7 +105,7 @@ dws_app_gamemode_stat（uid × dt × play_mode）
 ### 3.3 建表 SQL
 
 ```sql
-CREATE TABLE tcy_temp.dws_app_game_stat (
+CREATE TABLE tcy_temp.dws_app_silvergame_stat (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `uid` int(11) NOT NULL COMMENT "用户ID",
   `dt` DATE NOT NULL COMMENT "游戏日期",
@@ -112,7 +117,8 @@ CREATE TABLE tcy_temp.dws_app_game_stat (
   -- 胜负
   `win_count` int(11) NULL COMMENT "胜利局数（含510K）",
   `lose_count` int(11) NULL COMMENT "失败局数（含510K）",
-  `win_rate` double NULL COMMENT "胜率（%）",
+  `win_rate` double NULL COMMENT "胜率（%）= win_count/game_count",
+  `lose_rate` double NULL COMMENT "负率（%）= lose_count/game_count，510K有平局故与胜率不互补",
   `max_win_streak` int(11) NULL COMMENT "最大连胜（跨玩法）",
   `max_lose_streak` int(11) NULL COMMENT "最大连败（跨玩法）",
   -- 金流
@@ -149,7 +155,7 @@ PROPERTIES (
 
 ```sql
 -- 参数：将 '2026-06-08' 替换为目标日期
-INSERT INTO tcy_temp.dws_app_game_stat
+INSERT INTO tcy_temp.dws_app_silvergame_stat
 WITH unified AS (
     -- 经典系（单轮）
     SELECT
@@ -223,6 +229,7 @@ SELECT
     COUNT(CASE WHEN r.result_id = 1 THEN 1 END) AS win_count,
     COUNT(CASE WHEN r.result_id = 2 THEN 1 END) AS lose_count,
     ROUND(COUNT(CASE WHEN r.result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
+    ROUND(COUNT(CASE WHEN r.result_id = 2 THEN 1 END) * 100.0 / COUNT(*), 2) AS lose_rate,
     ANY_VALUE(st.max_win_streak) AS max_win_streak,
     ANY_VALUE(st.max_lose_streak) AS max_lose_streak,
     MAX(CASE WHEN r.seq_asc = 1 THEN r.start_money END) AS start_money,
@@ -355,7 +362,7 @@ SELECT
     END AS bottom_group,
     COUNT(DISTINCT s.uid) AS n,
     ROUND(COUNT(DISTINCT r.day1.uid) * 100.0 / COUNT(DISTINCT s.uid), 2) AS day1_rate
-FROM tcy_temp.dws_app_game_stat s
+FROM tcy_temp.dws_app_silvergame_stat s
 JOIN tcy_temp.dws_dq_app_daily_reg r ON s.uid = r.uid
 WHERE s.dt = r.reg_date AND r.reg_date = '20260601'
 GROUP BY 1;
@@ -407,7 +414,7 @@ GROUP BY 1;
 ```text
 dws_ddz_daily_game ──────┐
 (经典/不洗牌/癞子 等银子玩法)  │
-                          ├─ UNION ALL ─→ dws_app_game_stat （金流+参与, uid×dt）
+                          ├─ UNION ALL ─→ dws_app_silvergame_stat （金流+参与, uid×dt）
 dws_crazyddz_daily_game ──┘
 (510K, 多轮)
 dws_ddz_daily_game ───→ dws_app_gamemode_stat（玩法体验, uid×dt×play_mode）
@@ -433,7 +440,7 @@ dws_crazyddz_daily_game ─→ dws_app_gamemode_stat
 ```sql
 -- 1. game_stat 行数与 gamemode_stat 的用户覆盖一致
 SELECT s.dt, COUNT(DISTINCT s.uid) AS stat_users, COUNT(DISTINCT g.uid) AS gms_users
-FROM dws_app_game_stat s
+FROM dws_app_silvergame_stat s
 LEFT JOIN dws_app_gamemode_stat g ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
 WHERE s.dt = '20260608'
 GROUP BY s.dt;
@@ -441,7 +448,7 @@ GROUP BY s.dt;
 -- 2. 银子玩法局数一致性（game_stat 总局数 = gamemode_stat 银子玩法 game_count 之和）
 SELECT s.dt, SUM(s.game_count) AS stat_total_games,
        SUM(CASE WHEN g.play_mode IN (1,2,3,7) THEN g.game_count ELSE 0 END) AS gms_silver_games
-FROM dws_app_game_stat s
+FROM dws_app_silvergame_stat s
 LEFT JOIN dws_app_gamemode_stat g ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
 WHERE s.dt = '20260608'
 GROUP BY s.dt;
@@ -460,17 +467,18 @@ WHERE play_mode = 7 AND dt BETWEEN '20260601' AND '20260607';
 
 ## 八、版本历史
 
-> **文档版本**：v4.2
+> **文档版本**：v4.3
 > **设计时间**：2026-06-08
 > **设计目标**：APP 新增留存归因 → 金流 + 玩法体验两维度分层分析
 > **核心决策**：
 >
-> - game_stat = 金流 + 参与度，不含任何倍数/体验指标，510K 金流完全并入
+> - silvergame_stat = 银子玩法金流 + 参与度，不含任何倍数/体验指标，510K 金流完全并入
 > - gamemode_stat = 玩法体验，倍数分桶改为 NTILE(4) 分位分桶（multi_q1~q4），各玩法独立分布
 > - gamemode_stat 新增 play_mode=7(510K)，510K 体验字段（settle_rounds、outcome_gdp）归入此表
 > - 两表都从明细表（dws_ddz_daily_game + dws_crazyddz_daily_game）直接 UNION ALL 重算
 > - 粒度：game_stat = uid × dt，gamemode_stat = uid × dt × play_mode
 > - app_code 维度去除
 >
+> **v4.3 变更**：金流表从 `dws_app_game_stat` 改名为 `dws_app_silvergame_stat`，"game"易被误读为"全量玩法"，新名以币种明确边界；规划积分玩法姊妹表 `dws_app_scoregame_stat`（待建，play_mode 4/5/6）
 > **v4.2 变更**：gamemode_stat 倍数分桶从硬编码阈值（≤6/6~24/>24）改为 NTILE(4) 分位分桶（multi_q1~q4），解决不洗牌/癞子/510K 阈值不适用问题
 > **v4.1 变更**：game_stat 移除 crazyddz_* 专属字段（total_settle_rounds / avg_settle_rounds / outcome_gdp / max_settle_round_single），510K 体验信号统一由 gamemode_stat（play_mode=7）承载，保持 game_stat 的纯金流边界

@@ -8,12 +8,12 @@
 | 表名 | `dws_app_gamemode_stat` |
 | 全名 | `tcy_temp.dws_app_gamemode_stat` |
 | 类型 | DWS 层聚合表（每日增量） |
-| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），涵盖所有玩法（含积分玩法），专注控制玩法变量的体验分析。倍数/炸弹等玩法特异指标见本表，金流归因见 `dws_app_game_stat` |
+| 描述 | APP 端用户每日游戏行为统计表（按玩法拆分），涵盖所有玩法（含积分玩法），专注控制玩法变量的体验分析。倍数/炸弹等玩法特异指标见本表，金流归因见 `dws_app_silvergame_stat` |
 | 粒度 | uid × dt × play_mode（一个用户一天一种玩法一行） |
 
 ## 设计背景
 
-`dws_app_game_stat` 的粒度为 uid × dt，专注**银子金流归因**（仅含 play_mode 1,2,3,7），不含玩法特异的倍数/炸弹指标。但做留存分析时，很多问题必须固定玩法变量才能回答：
+`dws_app_silvergame_stat` 的粒度为 uid × dt，专注**银子金流归因**（仅含 play_mode 1,2,3,7），不含玩法特异的倍数/炸弹指标。但做留存分析时，很多问题必须固定玩法变量才能回答：
 
 | 分析问题 | 为什么必须按玩法拆 |
 | ---- | ---- |
@@ -26,9 +26,9 @@
 
 **本表的定位**：涵盖所有玩法（含积分玩法和 510K），按 play_mode 拆分，固定玩法变量，让倍数/炸弹/胜率等被玩法污染的指标变得可比。
 
-**与 dws_app_game_stat 的分工**：
+**与 dws_app_silvergame_stat 的分工**：
 
-| | dws_app_game_stat | dws_app_gamemode_stat（本表） |
+| | dws_app_silvergame_stat | dws_app_gamemode_stat（本表） |
 | ---- | ---- | ---- |
 | 粒度 | uid × dt | uid × dt × play_mode |
 | 玩法范围 | 仅银子玩法（1,2,3,7） | 所有玩法（1,2,3,4,5,6,7） |
@@ -90,7 +90,7 @@
 
 > **币种说明**：经济字段（`start_money` / `end_money` / `total_diff_money` 等）对银子玩法记录银子，对积分玩法记录积分。**跨币种不可直接比较金额**，分析时需按 play_mode 或币种分组。
 >
-> **与 dws_app_game_stat 的分工**：本表涵盖所有玩法（含积分玩法），game_stat 仅含银子玩法（1,2,3,7），专注金流归因。
+> **与 dws_app_silvergame_stat 的分工**：本表涵盖所有玩法（含积分玩法），game_stat 仅含银子玩法（1,2,3,7），专注金流归因。
 
 ## 构建 SQL
 
@@ -312,7 +312,7 @@ SELECT * FROM crazyddz_agg;
 1. **币种差异**：经济字段（`start_money` / `end_money` / `total_diff_money` / `money_peak` / `money_valley`）对 play_mode IN (1,2,3,7) 记录银子，对 play_mode IN (4,5,6) 记录积分。**跨币种的金额不可直接比较或加总**，分析经济指标时须按 play_mode 或币种分组
 2. **分位分桶**：`multi_q1~q4` 基于当天该玩法内所有对局的倍数分布用 NTILE(4) 动态计算，各玩法独立分桶。玩法间 Q4 的绝对倍数值不同（如经典的 Q4 可能 >24 倍，510K 的 Q4 可能 >100 倍），但含义一致——都是当天该玩法的最高 25% 倍数区间。跨天对比时注意分位阈值漂移，结合 `avg_magnification` 绝对倍数一起看
 3. **与 game_stat 的分工**：
-   - `dws_app_game_stat`（uid × dt）：仅含银子玩法（1,2,3,7），专注金流归因
+   - `dws_app_silvergame_stat`（uid × dt）：仅含银子玩法（1,2,3,7），专注金流归因
    - 本表（uid × dt × play_mode）：涵盖所有玩法，专注控制玩法变量的体验分析
 4. **行数膨胀**：一天内玩了 N 种玩法的用户产生 N 行，预计约为 game_stat 的 1.2-1.5 倍
 5. **连胜连败**：玩法内的对局序列独立计算，不跨玩法

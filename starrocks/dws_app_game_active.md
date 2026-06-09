@@ -22,12 +22,12 @@
 
 > **活跃口径**：只要在经典斗地主（`dws_ddz_daily_game`）或疯狂斗地主（`dws_crazyddz_daily_game`）任一存在对局，即算当日游戏活跃。
 
-## 与 `dws_app_game_stat` 的区别
+## 与 `dws_app_silvergame_stat` 的区别
 
 | 表 | 用途 | 列数 |
 | ---- | ------ | ------ |
 | `dws_app_game_active` | 留存 flag 计算（当日是否有对局） | 3 列 |
-| `dws_app_game_stat` | 完整游戏行为统计（对局数、胜率、倍数、经济等） | 30+ 列 |
+| `dws_app_silvergame_stat` | 银子玩法金流 + 参与度统计（对局数、胜率、经济等，不含倍数） | 19 列 |
 
 留存计算需对**注册期 + 30 天**全量数据做高频 LEFT JOIN，`dws_app_game_active` 以极少列数保证 JOIN 性能。
 
@@ -146,5 +146,5 @@ tcy_temp.dws_dq_app_daily_reg         （APP 端注册用户宽表）
 >
 > - v1.0：初始版本（原名 `dws_ddz_daily_play`）
 > - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid`）
-> - v2.0：重命名为 `dws_app_game_active`；新增 `app_id` 字段；补充与 `dws_app_game_stat` 的对比说明
+> - v2.0：重命名为 `dws_app_game_active`；新增 `app_id` 字段；补充与 `dws_app_silvergame_stat` 的对比说明
 > - **v2.1**：活跃口径扩展为 `dws_ddz_daily_game` ∪ `dws_crazyddz_daily_game`（任一存在对局即算活跃）
