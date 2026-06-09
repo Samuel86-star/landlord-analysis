@@ -20,7 +20,7 @@
 | 表名 | 币种 | play_mode | 状态 |
 | ---- | ---- | --------- | ---- |
 | `dws_app_silvergame_stat`（本表） | 银子 | 1=经典, 2=不洗牌, 3=癞子, 7=510K | ✅ 已建 |
-| `dws_app_scoregame_stat` | 积分 | 4=积分(PC), 5=比赛, 6=好友房 | 🔜 待建 |
+| `dws_app_scoregame_stat` | 积分 | 4=积分(PC), 5=比赛, 6=好友房 | ✅ 已建 |
 
 > **边界约定**：两表 play_mode 互不重叠，并集即全部玩法。`dws_app_scoregame_stat` 建表时直接复用本表结构（去掉银子专属语义即可），金流字段在各自币种内独立加总，**不得**跨表相加。需要跨币种的玩法体验对比走 `dws_app_gamemode_stat`（全玩法、按 play_mode 拆分、不加总金流）。
 
@@ -155,7 +155,7 @@ PROPERTIES (
     "colocate_with" = "group_daily_data",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80",
+    "dynamic_partition.start" = "-120",
     "dynamic_partition.end" = "3",
     "dynamic_partition.prefix" = "p"
 );
@@ -171,70 +171,69 @@ INSERT INTO tcy_temp.dws_app_silvergame_stat
 WITH unified AS (
     -- 经典系（单轮）
     SELECT
-        app_id, uid, dt,
+        app_id, uid, dt, resultguid,
         game_datetime AS event_time,
         timecost AS time_cost,
         room_id, result_id,
         start_money, end_money,
         game_outcome_money, room_fee,
-        CASE WHEN cut < 0 THEN 1 ELSE 0 END AS escape_flag,
+        CASE WHEN cut = 0 THEN 0 ELSE 1 END AS escape_flag,
         play_mode,
         0 AS is_crazyddz,
-        NULL AS settle_count,
-        NULL AS outcome_gdp
+        1 AS settle_count
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt = '2026-06-08'
+    WHERE game_id = 53
+      AND dt BETWEEN '2026-03-01' AND '2026-06-07'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND play_mode IN (1, 2, 3)
     UNION ALL
     -- 510K（多轮累计）
     SELECT
-        app_id, uid, dt,
+        app_id, uid, dt, resultguid,
         start_datetime AS event_time,
         time_cost,
         room_id, result_id,
         start_money, end_money,
         game_outcome_money, room_fee,
-        CASE WHEN is_escape < 0 THEN 1 ELSE 0 END AS escape_flag,
+        CASE WHEN is_escape = 0 THEN 0 ELSE 1 END AS escape_flag,
         7 AS play_mode,
         1 AS is_crazyddz,
-        settle_count,
-        game_outcome_gdp AS outcome_gdp
+        settle_count
     FROM tcy_temp.dws_crazyddz_daily_game
     WHERE game_id = 521
-      AND dt = '2026-06-08'
+      AND dt BETWEEN '2026-03-01' AND '2026-06-07'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 ),
 ranked AS (
     SELECT *,
-        ROW_NUMBER() OVER (PARTITION BY app_id, uid ORDER BY event_time ASC)  AS seq_asc,
-        ROW_NUMBER() OVER (PARTITION BY app_id, uid ORDER BY event_time DESC) AS seq_desc
+        ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt ORDER BY event_time ASC)  AS seq_asc,
+        ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt ORDER BY event_time DESC) AS seq_desc
     FROM unified
 ),
 streaks AS (
     SELECT
-        app_id, uid,
+        app_id, uid, dt,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM (
-        SELECT app_id, uid, result_id, grp, COUNT(*) AS streak_len
+        SELECT app_id, uid, dt, result_id, grp, COUNT(*) AS streak_len
         FROM (
-            SELECT app_id, uid, result_id,
-                seq_asc - ROW_NUMBER() OVER (PARTITION BY app_id, uid, result_id ORDER BY seq_asc) AS grp
+            SELECT app_id, uid, dt, result_id,
+                seq_asc - ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt, result_id ORDER BY seq_asc) AS grp
             FROM ranked
             WHERE result_id IN (1, 2)
         ) g
-        GROUP BY app_id, uid, result_id, grp
+        GROUP BY app_id, uid, dt, result_id, grp
     ) s
-    GROUP BY app_id, uid
+    GROUP BY app_id, uid, dt
 )
 SELECT
     r.app_id,
     r.uid,
     r.dt,
-    COUNT(*) AS game_count,
+    COUNT(resultguid) AS game_count,
     SUM(r.time_cost) AS total_play_seconds,
     ROUND(AVG(r.time_cost), 1) AS avg_game_seconds,
     COUNT(DISTINCT r.room_id) AS distinct_rooms,
@@ -252,7 +251,7 @@ SELECT
     SUM(r.room_fee) AS total_fee_paid,
     SUM(r.escape_flag) AS escape_count
 FROM ranked r
-LEFT JOIN streaks st ON r.app_id = st.app_id AND r.uid = st.uid
+LEFT JOIN streaks st ON r.app_id = st.app_id AND r.uid = st.uid AND r.dt = st.dt
 GROUP BY r.app_id, r.uid, r.dt;
 ```
 
@@ -297,9 +296,10 @@ SELECT
     COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) AS day1_retained,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT s.uid), 2) AS day1_rate
 FROM tcy_temp.dws_app_silvergame_stat s
-JOIN tcy_temp.dws_dq_app_daily_reg r ON s.uid = r.uid AND s.dt = r.reg_date
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+JOIN tcy_temp.dws_dq_app_daily_reg r ON s.uid = r.uid AND s.app_id = r.app_id AND s.dt = r.reg_date
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND r.app_id = l.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260601
+  AND r.app_id = 1880053
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -319,9 +319,10 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 6 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_app_silvergame_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_app_silvergame_stat g ON r.uid = g.uid AND r.app_id = g.app_id AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND r.app_id = l.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260601
+  AND r.app_id = 1880053
 GROUP BY r.reg_date, game_count_group
 ORDER BY r.reg_date, game_count_group;
 ```
@@ -341,9 +342,10 @@ SELECT
     ROUND(AVG(g.game_count), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d'), INTERVAL 1 DAY) THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
 FROM tcy_temp.dws_dq_app_daily_reg r
-LEFT JOIN tcy_temp.dws_app_silvergame_stat g ON r.uid = g.uid AND r.reg_date = g.dt
-LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
+LEFT JOIN tcy_temp.dws_app_silvergame_stat g ON r.uid = g.uid AND r.app_id = g.app_id AND r.reg_date = g.dt
+LEFT JOIN tcy_temp.dws_dq_daily_login l ON r.uid = l.uid AND r.app_id = l.app_id AND l.login_date > DATE_FORMAT(CAST(r.reg_date AS VARCHAR), '%Y%m%d')
 WHERE r.reg_date = 20260601
+  AND r.app_id = 1880053
   AND g.game_count > 0
 GROUP BY r.reg_date, win_rate_group
 ORDER BY r.reg_date, win_rate_group;
@@ -374,37 +376,124 @@ ORDER BY g.play_mode, bottom_group;
 
 ## 数据校验
 
+### 上游明细层校验（dws_ddz_daily_game + dws_crazyddz_daily_game）
+
 ```sql
--- 1. game_stat 与 gamemode_stat 的用户覆盖一致
+-- 1. 每局会计等式：game_outcome_money + room_fee 应等于 end_money - start_money
+-- 银子玩法有金流波动，等式偏差意味着数据异常，聚合前必须先验
+-- 经典系（单轮）
+SELECT 'classic' AS source,
+       dt,
+       COUNT(*) AS total_rows,
+       SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) AS mismatch_rows,
+       ROUND(SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
+FROM tcy_temp.dws_ddz_daily_game
+WHERE dt = '2026-06-08'
+  AND play_mode IN (1, 2, 3)
+  AND robot != 1
+  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+GROUP BY dt
+UNION ALL
+-- 510K（多轮，已在 dws_crazyddz_daily_game 中汇总为整局一行）
+SELECT '510k' AS source,
+       dt,
+       COUNT(*) AS total_rows,
+       SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) AS mismatch_rows,
+       ROUND(SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
+FROM tcy_temp.dws_crazyddz_daily_game
+WHERE game_id = 521
+  AND dt = '2026-06-08'
+  AND robot != 1
+  AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+GROUP BY dt;
+```
+
+### 聚合层校验（dws_app_silvergame_stat ↔ 上游明细）
+
+```sql
+-- 2. 用户覆盖一致：silvergame_stat 去重 uid 数 = 上游明细去重 uid 数
+WITH detail_users AS (
+    SELECT DISTINCT app_id, uid, dt
+    FROM (
+        SELECT app_id, uid, dt
+        FROM tcy_temp.dws_ddz_daily_game
+        WHERE dt = '2026-06-08'
+          AND play_mode IN (1, 2, 3)
+          AND robot != 1
+          AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+        UNION ALL
+        SELECT app_id, uid, dt
+        FROM tcy_temp.dws_crazyddz_daily_game
+        WHERE game_id = 521
+          AND dt = '2026-06-08'
+          AND robot != 1
+          AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    ) u
+)
 SELECT s.dt,
        COUNT(DISTINCT s.uid) AS stat_users,
-       COUNT(DISTINCT g.uid) AS gms_users
+       COUNT(DISTINCT d.uid) AS detail_users
 FROM tcy_temp.dws_app_silvergame_stat s
-LEFT JOIN tcy_temp.dws_app_gamemode_stat g
-  ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
+FULL OUTER JOIN detail_users d
+  ON s.uid = d.uid AND s.dt = d.dt AND s.app_id = d.app_id
 WHERE s.dt = '2026-06-08'
 GROUP BY s.dt;
 
--- 2. 银子玩法局数一致性：game_stat 总局数 = gamemode_stat 银子玩法 game_count 之和
-SELECT s.dt,
-       SUM(s.game_count) AS stat_total_games,
-       SUM(CASE WHEN g.play_mode IN (1, 2, 3, 7) THEN g.game_count ELSE 0 END) AS gms_silver_games
+-- 3. 总局数一致性：silvergame_stat 总局数 = 上游明细总行数
+WITH detail_agg AS (
+    SELECT app_id, uid, dt, COUNT(*) AS detail_games
+    FROM (
+        SELECT app_id, uid, dt
+        FROM tcy_temp.dws_ddz_daily_game
+        WHERE dt = '2026-06-08'
+          AND play_mode IN (1, 2, 3)
+          AND robot != 1
+          AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+        UNION ALL
+        SELECT app_id, uid, dt
+        FROM tcy_temp.dws_crazyddz_daily_game
+        WHERE game_id = 521
+          AND dt = '2026-06-08'
+          AND robot != 1
+          AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    ) u
+    GROUP BY app_id, uid, dt
+)
+SELECT SUM(s.game_count) AS stat_total_games,
+       SUM(d.detail_games) AS detail_total_games
 FROM tcy_temp.dws_app_silvergame_stat s
-LEFT JOIN tcy_temp.dws_app_gamemode_stat g
-  ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
-WHERE s.dt = '2026-06-08'
-GROUP BY s.dt;
+FULL OUTER JOIN detail_agg d
+  ON s.uid = d.uid AND s.dt = d.dt AND s.app_id = d.app_id
+WHERE COALESCE(s.dt, d.dt) = '2026-06-08';
 
--- 3. 净输赢一致性：game_stat.total_diff_money = gamemode_stat 银子玩法的 SUM
+-- 4. 净输赢一致性：silvergame_stat.total_diff_money = 上游明细 SUM(game_outcome_money)
+WITH detail_agg AS (
+    SELECT app_id, uid, dt, SUM(game_outcome_money) AS detail_diff
+    FROM (
+        SELECT app_id, uid, dt, game_outcome_money
+        FROM tcy_temp.dws_ddz_daily_game
+        WHERE dt = '2026-06-08'
+          AND play_mode IN (1, 2, 3)
+          AND robot != 1
+          AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+        UNION ALL
+        SELECT app_id, uid, dt, game_outcome_money
+        FROM tcy_temp.dws_crazyddz_daily_game
+        WHERE game_id = 521
+          AND dt = '2026-06-08'
+          AND robot != 1
+          AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+    ) u
+    GROUP BY app_id, uid, dt
+)
 SELECT s.uid, s.dt,
        s.total_diff_money AS stat_diff,
-       SUM(CASE WHEN g.play_mode IN (1, 2, 3, 7) THEN g.total_diff_money ELSE 0 END) AS gms_diff
+       d.detail_diff
 FROM tcy_temp.dws_app_silvergame_stat s
-LEFT JOIN tcy_temp.dws_app_gamemode_stat g
-  ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
+LEFT JOIN detail_agg d
+  ON s.uid = d.uid AND s.dt = d.dt AND s.app_id = d.app_id
 WHERE s.dt = '2026-06-08'
-GROUP BY s.uid, s.dt, s.total_diff_money
-HAVING stat_diff != gms_diff;
+  AND s.total_diff_money != d.detail_diff;
 ```
 
 ## 版本历史

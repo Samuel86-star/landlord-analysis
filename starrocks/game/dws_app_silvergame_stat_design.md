@@ -72,7 +72,7 @@ dws_app_gamemode_stat（uid × dt × play_mode）
 
 **纯金流 + 参与度**。不含任何倍数指标。
 
-> **命名与边界**：表名 `dws_app_silvergame_stat` 的 `silvergame` 明确只覆盖银子玩法（1/2/3/7）。积分玩法（4/5/6）金流币种不同、不可与银子加总，规划独立姊妹表 `dws_app_scoregame_stat`（待建），两表 play_mode 互不重叠、并集即全玩法。跨币种的玩法体验对比走 `dws_app_gamemode_stat`。
+> **命名与边界**：表名 `dws_app_silvergame_stat` 的 `silvergame` 明确只覆盖银子玩法（1/2/3/7）。积分玩法（4/5/6）金流币种不同、不可与银子加总，规划独立姊妹表 `dws_app_scoregame_stat`（已建），两表 play_mode 互不重叠、并集即全玩法。跨币种的玩法体验对比走 `dws_app_gamemode_stat`。
 
 ### 3.2 字段
 
@@ -197,26 +197,26 @@ WITH unified AS (
 ),
 ranked AS (
     SELECT *,
-        ROW_NUMBER() OVER (PARTITION BY app_id, uid ORDER BY event_time ASC)  AS seq_asc,
-        ROW_NUMBER() OVER (PARTITION BY app_id, uid ORDER BY event_time DESC) AS seq_desc
+        ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt ORDER BY event_time ASC)  AS seq_asc,
+        ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt ORDER BY event_time DESC) AS seq_desc
     FROM unified
 ),
 streaks AS (
     SELECT
-        app_id, uid,
+        app_id, uid, dt,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM (
-        SELECT app_id, uid, result_id, grp, COUNT(*) AS streak_len
+        SELECT app_id, uid, dt, result_id, grp, COUNT(*) AS streak_len
         FROM (
-            SELECT app_id, uid, result_id,
-                seq_asc - ROW_NUMBER() OVER (PARTITION BY app_id, uid, result_id ORDER BY seq_asc) AS grp
+            SELECT app_id, uid, dt, result_id,
+                seq_asc - ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt, result_id ORDER BY seq_asc) AS grp
             FROM ranked
             WHERE result_id IN (1, 2)
         ) g
-        GROUP BY app_id, uid, result_id, grp
+        GROUP BY app_id, uid, dt, result_id, grp
     ) s
-    GROUP BY app_id, uid
+    GROUP BY app_id, uid, dt
 )
 SELECT
     r.app_id,
@@ -240,7 +240,7 @@ SELECT
     SUM(r.room_fee) AS total_fee_paid,
     SUM(r.escape_flag) AS escape_count
 FROM ranked r
-LEFT JOIN streaks st ON r.app_id = st.app_id AND r.uid = st.uid
+LEFT JOIN streaks st ON r.app_id = st.app_id AND r.uid = st.uid AND r.dt = st.dt
 GROUP BY r.app_id, r.uid, r.dt;
 ```
 
@@ -363,8 +363,9 @@ SELECT
     COUNT(DISTINCT s.uid) AS n,
     ROUND(COUNT(DISTINCT r.day1.uid) * 100.0 / COUNT(DISTINCT s.uid), 2) AS day1_rate
 FROM tcy_temp.dws_app_silvergame_stat s
-JOIN tcy_temp.dws_dq_app_daily_reg r ON s.uid = r.uid
+JOIN tcy_temp.dws_dq_app_daily_reg r ON s.uid = r.uid AND s.app_id = r.app_id
 WHERE s.dt = r.reg_date AND r.reg_date = '20260601'
+  AND r.app_id = 1880053
 GROUP BY 1;
 ```
 
@@ -438,20 +439,41 @@ dws_crazyddz_daily_game ─→ dws_app_gamemode_stat
 ## 七、数据校验
 
 ```sql
--- 1. game_stat 行数与 gamemode_stat 的用户覆盖一致
-SELECT s.dt, COUNT(DISTINCT s.uid) AS stat_users, COUNT(DISTINCT g.uid) AS gms_users
+-- 1. silvergame_stat 用户覆盖 = 上游明细去重 uid 数
+WITH detail_users AS (
+    SELECT DISTINCT app_id, uid, dt
+    FROM (
+        SELECT app_id, uid, dt
+        FROM dws_ddz_daily_game
+        WHERE dt = '20260608' AND play_mode IN (1,2,3) AND robot != 1 AND group_id IN (6,66,8,88,33,44,77,99)
+        UNION ALL
+        SELECT app_id, uid, dt
+        FROM dws_crazyddz_daily_game
+        WHERE game_id = 521 AND dt = '20260608' AND robot != 1 AND group_id IN (6,66,8,88,33,44,77,99)
+    ) u
+)
+SELECT s.dt, COUNT(DISTINCT s.uid) AS stat_users, COUNT(DISTINCT d.uid) AS detail_users
 FROM dws_app_silvergame_stat s
-LEFT JOIN dws_app_gamemode_stat g ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
+FULL OUTER JOIN detail_users d ON s.uid = d.uid AND s.dt = d.dt AND s.app_id = d.app_id
 WHERE s.dt = '20260608'
 GROUP BY s.dt;
 
--- 2. 银子玩法局数一致性（game_stat 总局数 = gamemode_stat 银子玩法 game_count 之和）
-SELECT s.dt, SUM(s.game_count) AS stat_total_games,
-       SUM(CASE WHEN g.play_mode IN (1,2,3,7) THEN g.game_count ELSE 0 END) AS gms_silver_games
+-- 2. 银子玩法局数一致性（silvergame_stat 总局数 = 上游明细总行数）
+WITH detail_agg AS (
+    SELECT app_id, uid, dt, COUNT(*) AS detail_games
+    FROM (
+        SELECT app_id, uid, dt FROM dws_ddz_daily_game
+        WHERE dt = '20260608' AND play_mode IN (1,2,3) AND robot != 1 AND group_id IN (6,66,8,88,33,44,77,99)
+        UNION ALL
+        SELECT app_id, uid, dt FROM dws_crazyddz_daily_game
+        WHERE game_id = 521 AND dt = '20260608' AND robot != 1 AND group_id IN (6,66,8,88,33,44,77,99)
+    ) u
+    GROUP BY app_id, uid, dt
+)
+SELECT SUM(s.game_count) AS stat_total_games, SUM(d.detail_games) AS detail_total_games
 FROM dws_app_silvergame_stat s
-LEFT JOIN dws_app_gamemode_stat g ON s.uid = g.uid AND s.dt = g.dt AND s.app_id = g.app_id
-WHERE s.dt = '20260608'
-GROUP BY s.dt;
+FULL OUTER JOIN detail_agg d ON s.uid = d.uid AND s.dt = d.dt AND s.app_id = d.app_id
+WHERE COALESCE(s.dt, d.dt) = '20260608';
 
 -- 3. gamemode_stat 中 play_mode=7 的倍数分布（了解真实数据）
 SELECT
@@ -479,6 +501,6 @@ WHERE play_mode = 7 AND dt BETWEEN '20260601' AND '20260607';
 > - 粒度：game_stat = uid × dt，gamemode_stat = uid × dt × play_mode
 > - app_code 维度去除
 >
-> **v4.3 变更**：金流表从 `dws_app_game_stat` 改名为 `dws_app_silvergame_stat`，"game"易被误读为"全量玩法"，新名以币种明确边界；规划积分玩法姊妹表 `dws_app_scoregame_stat`（待建，play_mode 4/5/6）
+> **v4.3 变更**：金流表从 `dws_app_game_stat` 改名为 `dws_app_silvergame_stat`，"game"易被误读为"全量玩法"，新名以币种明确边界；规划积分玩法姊妹表 `dws_app_scoregame_stat`（已建，play_mode 4/5/6）
 > **v4.2 变更**：gamemode_stat 倍数分桶从硬编码阈值（≤6/6~24/>24）改为 NTILE(4) 分位分桶（multi_q1~q4），解决不洗牌/癞子/510K 阈值不适用问题
 > **v4.1 变更**：game_stat 移除 crazyddz_* 专属字段（total_settle_rounds / avg_settle_rounds / outcome_gdp / max_settle_round_single），510K 体验信号统一由 gamemode_stat（play_mode=7）承载，保持 game_stat 的纯金流边界
