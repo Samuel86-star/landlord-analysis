@@ -31,7 +31,7 @@
 | channel_category_id | int | 渠道分类 ID | 1 |
 | channel_category_name | varchar(255) | 渠道分类名称 | '官方' |
 | channel_category_tag_id | tinyint | 渠道分类标签：1=官方，2=渠道，3=小游戏 | 1 |
-| is_login_log_missing | tinyint | 是否登录日志缺失：1=缺失，0=正常 | 0 |
+| is_login_log_missing | tinyint | 是否APP端登录日志缺失：该字段无效，因INNER JOIN保证必能匹配到登录记录，不可用于分析 | 0 |
 | first_day_login_cnt | int | 首日登录次数 | 5 |
 
 ## APP 端分端规则
@@ -68,7 +68,7 @@ CREATE TABLE tcy_temp.dws_dq_app_daily_reg (
   `channel_category_id` int(11) NULL COMMENT "渠道分类ID",
   `channel_category_name` varchar(255) NULL COMMENT "渠道分类名称",
   `channel_category_tag_id` tinyint(4) NULL COMMENT "渠道标签ID",
-  `is_login_log_missing` tinyint(4) NULL DEFAULT '0' COMMENT "是否缺失登录日志: 0-否, 1-是",
+  `is_login_log_missing` tinyint(4) NULL DEFAULT '0' COMMENT "已废弃：该字段无效，INNER JOIN保证必能匹配到登录记录，不可用于分析",
   `first_day_login_cnt` int(11) NULL DEFAULT '0' COMMENT "首日登录次数"
 ) ENGINE=OLAP
 DUPLICATE KEY(`app_id`, `reg_date`, `reg_channel_id`)
@@ -101,26 +101,26 @@ insert into tcy_temp.dws_dq_app_daily_reg
 SELECT
     r.app_id,
     r.reg_date,
-    COALESCE(l.first_channel_id, -1) AS reg_channel_id,
+    l.first_channel_id AS reg_channel_id,
     r.uid,
     r.reg_datetime,
-    COALESCE(l.first_group_id, -1) AS reg_group_id,
-    COALESCE(l.first_app_code, '') AS reg_app_code,
-    COALESCE(chn.channel_category_id, -1) AS channel_category_id,
-    COALESCE(chn.channel_category_name, '未知/日志丢失') AS channel_category_name,
-    COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
-    CASE WHEN l.uid IS NULL THEN 1 ELSE 0 END AS is_login_log_missing,
-    COALESCE(l.login_count, 0) AS first_day_login_cnt
+    l.first_group_id AS reg_group_id,
+    l.first_app_code AS reg_app_code,
+    chn.channel_category_id,
+    chn.channel_category_name,
+    chn.channel_category_tag_id,
+    0 AS is_login_log_missing,
+    l.login_count AS first_day_login_cnt
 FROM tcy_temp.dws_dq_daily_reg r
 INNER JOIN tcy_temp.dws_dq_daily_login l
     ON r.app_id = l.app_id
     AND r.reg_date = l.login_date
     AND r.uid = l.uid
-LEFT JOIN tcy_temp.dws_channel_category_map chn
+    AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88)
+LEFT JOIN tcy_temp.dq_channel_category_map chn
     ON l.first_channel_id = chn.channel_id
 WHERE r.app_id = 1880053
-  AND r.reg_date between '2026-02-10' and '2026-04-21'
-  AND l.first_group_id IN (6, 66, 33, 44, 77, 99, 8, 88);
+  AND r.reg_date between '2026-02-10' and '2026-04-21';
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
@@ -134,10 +134,9 @@ SELECT
     reg_date,
     COUNT(DISTINCT uid) AS total_users,
     SUM(CASE WHEN reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 1 ELSE 0 END) AS android_users,
-    SUM(CASE WHEN reg_group_id IN (8, 88) THEN 1 ELSE 0 END) AS ios_users,
-    SUM(CASE WHEN is_login_log_missing = 1 THEN 1 ELSE 0 END) AS missing_log_users
+    SUM(CASE WHEN reg_group_id IN (8, 88) THEN 1 ELSE 0 END) AS ios_users
 FROM tcy_temp.dws_dq_app_daily_reg
-WHERE reg_date BETWEEN 20260210 AND 20260215
+WHERE reg_date BETWEEN '2026-03-01' AND '2026-06-09'
 GROUP BY reg_date
 ORDER BY reg_date;
 ```
@@ -155,8 +154,7 @@ SELECT
     END AS platform,
     COUNT(DISTINCT uid) AS user_count
 FROM tcy_temp.dws_dq_app_daily_reg
-WHERE reg_date = 20260210
-  AND is_login_log_missing = 0
+WHERE reg_date = '2026-03-01'
 GROUP BY reg_date, channel_category_name,
     CASE
         WHEN reg_group_id IN (8, 88) THEN 'iOS'
@@ -179,7 +177,7 @@ SELECT
     reg_date,
     COUNT(DISTINCT uid) AS user_count
 FROM tcy_temp.dws_dq_app_daily_reg
-WHERE reg_date BETWEEN 20260210 AND 20260215
+WHERE reg_date BETWEEN '2026-03-01' AND '2026-06-09'
 GROUP BY reg_date,
     CASE
         WHEN first_day_login_cnt = 1 THEN '0：1次'
@@ -198,23 +196,20 @@ SELECT
     r.uid,
     r.reg_date,
     r.reg_group_id,
-    r.channel_category_name,
-    COUNT(DISTINCT g.resultguid) AS first_day_game_cnt
+    r.channel_category_name
 FROM tcy_temp.dws_dq_app_daily_reg r
-INNER JOIN tcy_temp.dws_ddz_daily_game g
-    ON r.uid = g.uid
-    AND r.reg_date = g.dt
-WHERE r.reg_date = 20260210
-  AND r.is_login_log_missing = 0
-  AND g.robot != 1
-GROUP BY r.uid, r.reg_date, r.reg_group_id, r.channel_category_name;
+INNER JOIN tcy_temp.dws_app_game_active a
+    ON r.uid = a.uid
+    AND r.reg_date = a.dt
+    AND r.app_id = a.app_id
+WHERE r.reg_date = '2026-03-01';
 ```
 
 ## 字段使用注意
 
 1. **APP 端过滤**：本表仅包含 APP 端用户（Android + iOS），通过 `reg_group_id` 区分
-2. **登录日志缺失**：`is_login_log_missing = 1` 表示注册当日无登录日志，可能是数据缺失或异常
-3. **渠道分类**：通过关联 `dws_channel_category_map` 获取渠道分类信息
+2. **登录日志缺失**：`is_login_log_missing` 字段已废弃，因 INNER JOIN 保证所有记录均有登录日志，不可参与分析
+3. **渠道分类**：通过关联 `dq_channel_category_map` 获取渠道分类信息
 4. **与 dws_dq_daily_reg 的关系**：本表是 `dws_dq_daily_reg` 的 APP 端扩展视图，包含更多维度字段
 5. **留存口径**：新增用户留存 = Day1注册且Day2登录 / Day1注册人数，与是否游戏无关
 
@@ -227,17 +222,17 @@ tcy_temp.dws_dq_daily_login        （每日登录多维度聚合）
             ↓  过滤 APP 端 + 关联渠道映射
 tcy_temp.dws_dq_app_daily_reg         （APP 端注册用户宽表）
             ↓  关联对局数据
-tcy_temp.dws_ddz_daily_game        （对局战绩统一字段表）
+tcy_temp.dws_app_game_active        （APP 端每日游戏活跃用户表，留存计算专用）
 ```
 
 ## 数据流向
 
 ```text
 dws_dq_daily_reg ──┐
-                   ├── INNER JOIN ──→ dws_dq_app_daily_reg
+                   ├── LEFT JOIN (APP端) ──→ dws_dq_app_daily_reg
 dws_dq_daily_login ─┘
                    │
-                   └── LEFT JOIN ──→ dws_channel_category_map
+                   └── LEFT JOIN ──→ dq_channel_category_map
 ```
 
 > **文档版本**：v1.0
@@ -245,3 +240,4 @@ dws_dq_daily_login ─┘
 > **更新说明**：
 >
 > - v1.0：初始版本，基于 `dws_dq_daily_reg` 方案2扩展设计，专用于 APP 端注册用户分析
+                                                                                                                                                                                                                                                                                                  

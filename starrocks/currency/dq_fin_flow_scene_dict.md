@@ -1,13 +1,13 @@
-# DWS 中间表：金流场景配置表
+# 配置维表：金流场景配置表
 
 ## 表基本信息
 
 | 项目 | 说明 |
 | ---- | ---- |
 | 库名 | `tcy_temp` |
-| 表名 | `fin_flow_scene_dict` |
-| 全名 | `tcy_temp.fin_flow_scene_dict` |
-| 类型 | DWS 层维表 |
+| 表名 | `dq_fin_flow_scene_dict` |
+| 全名 | `tcy_temp.dq_fin_flow_scene_dict` |
+| 类型 | 配置维表 |
 | 描述 | 金流场景配置表，记录银子变动的场景和类型信息 |
 
 ## 字段说明
@@ -26,7 +26,7 @@
 ### 建表语句
 
 ```sql
-CREATE TABLE IF NOT EXISTS tcy_temp.fin_flow_scene_dict (
+CREATE TABLE IF NOT EXISTS tcy_temp.dq_fin_flow_scene_dict (
     scene_id INT NOT NULL COMMENT '场景id',
     scene_name VARCHAR(64) NOT NULL COMMENT '场景名称',
     scene_remark VARCHAR(255) DEFAULT NULL COMMENT '场景信息备注',
@@ -46,7 +46,7 @@ PROPERTIES (
 ### 初始化数据
 
 ```sql
-INSERT INTO tcy_temp.fin_flow_scene_dict
+INSERT INTO tcy_temp.dq_fin_flow_scene_dict
 SELECT scene_id, scene_name, scene_remark, fin_flow_type_id, fin_flow_type_name, fin_flow_type_remark
 FROM hive_catalog_cdh5.dwd.dim_fin_flow_scene_dict
 WHERE scene_id IN (
@@ -71,7 +71,7 @@ SELECT
     d.scene_name,
     d.fin_flow_type_name
 FROM tcy_dwd.dwd_silver_si s
-LEFT JOIN tcy_temp.fin_flow_scene_dict d
+LEFT JOIN tcy_temp.dq_fin_flow_scene_dict d
     ON s.fin_flow_scn_id = d.scene_id
 WHERE s.dt = 20260429
   AND s.app_id = 1880053;

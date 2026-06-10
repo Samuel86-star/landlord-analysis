@@ -31,21 +31,21 @@
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
 | game_id | int | 游戏 ID | 53 |
-| dt | date | 游戏日期（同时也是注册日期） | 2026-04-08 |
-| uid | int | 玩家 ID | 123456789 |
+| dt | date | 日期 | 2026-04-08 |
+| uid | int | 用户ID | 123456789 |
 | game_datetime | datetime | 对局时间 | 2026-04-08 10:30:00 |
-| resultguid | varchar(64) | 本局战绩 ID | "abc123xyz" |
-| timecost | int | 对局耗时（秒） | 180 |
-| room_id | int | 房间号 | 1001 |
-| play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，0=其他 | 1 |
-| room_base | int | 房间底分（统一字段） | 100 |
-| room_fee | int | 房间服务费（统一字段） | 10 |
+| resultguid | varchar(64) | 对局GUID | "abc123xyz" |
+| timecost | int | 耗时 | 180 |
+| room_id | int | 房间ID | 1001 |
 | room_currency_lower | bigint | 进入房间所需最少携带货币 | 1000 |
 | room_currency_upper | bigint | 进入房间最大携带货币 | 10000 |
 | robot | tinyint | 机器人标记：1=机器人，其他=真人 | 0 |
 | role | tinyint | 角色：1=地主，2=农民 | 1 |
 | chairno | tinyint | 座位号（0/1/2） | 0 |
 | result_id | tinyint | 结果：1=获胜，2=失败 | 1 |
+| play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，0=其他 | 1 |
+| room_base | int | 房间底分 | 100 |
+| room_fee | int | 房间服务费 | 10 |
 | start_money | bigint | 对局前货币数量（统一字段） | 5000 |
 | end_money | bigint | 对局后货币数量（统一字段） | 5500 |
 | game_outcome_money | bigint | 游戏输赢（不包括服务费，统一字段） | 600 |
@@ -55,20 +55,23 @@
 | magnification_stacked | int | 个人加倍：1=不加倍，2=加倍，4=超级加倍 | 2 |
 | channel_id | int | 渠道号 | 1001 |
 | group_id | int | 分端 ID | 6 |
-| app_id | int | 应用 ID | 1880053 |
+| app_id | int | 应用ID | 1880053 |
 | app_code | varchar(32) | 应用code | zgda |
 | afk_turn_cnt | int | 托管出牌次数 | 0 |
-| magnification_subdivision | varchar(512) | 倍数细分（公共倍数 + 行为倍数） | {"behavior_bet":{...},"public_bet":{...}} |
-| extend_content | varchar(512) | 扩展信息（新格式：牌信息 + 牌力值 + 用户属性 + AI等级） | {"card_info":{...},"card_power":{...},"user_attr":{...},"ai_level":{...}} |
 
-> **注意**：`extend_content` 存在新旧两种格式，详见 [dws_ddz_daily_game](dws_ddz_daily_game.md) 中「更新SQL」章节的新旧格式差异对照。
-| initial_bet | tinyint | 初始倍数: 1 | 1 |
+## 扩展字段
+
+> **注意**：`extend_content` 存在新旧两种格式，更新 SQL 已在 `dws_ddz_daily_game` 中通过 `get_json_*` 与正则混合提取统一覆盖。
+
+| 字段名 | 类型 | 说明 | 示例值 |
+| ------ | ---- | ---- | ------ |
+| initial_bet | tinyint | 初始倍数 | 1 |
 | grab_landlord_bet | tinyint | 抢地主倍数：3=无人抢，6=1人抢，12=2人抢，24=3人抢 | 6 |
 | complete_victory_bet | tinyint | 春天/反春标记：1=无，2=春天或反春 | 1 |
 | bomb_bet | int | 炸弹个数：1=无炸弹，否则 bomb_bet/2 为炸弹个数（打出炸弹数，非持有炸弹数） | 4 |
 | landlord_double_bet | tinyint | 地主加倍倍数：1=不加倍，2=加倍，4=超级加倍 | 1 |
 | total_farmer_double_bet | tinyint | 所有农民加倍倍数 | 2 |
-| real_magnification | double | 本局实际输赢倍数（绝对值，始终为正数） | 5.0 |
+| real_magnification | double | 游戏输赢实际倍数 | 5.0 |
 | hand_cards | varchar(32) | 手牌 | "3455677888999JJJQQQKKKAAA222" |
 | bottom_cards | varchar(16) | 底牌 | "345" |
 | shuffle_type | int | 配牌类型: 0=随机发牌，201=新手保护机器人，202=充值保护机器人匹配，203=老用户每日前N，204=房间前N次触发机器人保护，205=低保次数触发机器人保护，206=连输保护机器人匹配，207=连输银两触发机器人匹配，默认为0 | 0 |
@@ -127,12 +130,12 @@ CASE WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee ELSE
 ```sql
 CREATE TABLE tcy_temp.dws_ddz_firstday_game (
   `game_id` int(11) NULL COMMENT "游戏 ID",
-  `dt` DATE NOT NULL COMMENT "对局日期",
-  `uid` int(11) NOT NULL COMMENT "玩家ID",
+  `dt` DATE NOT NULL COMMENT "日期",
+  `uid` int(11) NOT NULL COMMENT "用户ID",
   `game_datetime` datetime NOT NULL COMMENT "对局时间",
-  `resultguid` varchar(64) NULL COMMENT "本局战绩ID",
-  `timecost` int(11) NULL COMMENT "对局耗时（秒）",
-  `room_id` int(11) NULL COMMENT "房间号",
+  `resultguid` varchar(64) NULL COMMENT "对局GUID",
+  `timecost` int(11) NULL COMMENT "耗时",
+  `room_id` int(11) NULL COMMENT "房间ID",
   `room_currency_lower` bigint(20) NULL COMMENT "进入房间所需最少携带货币",
   `room_currency_upper` bigint(20) NULL COMMENT "进入房间最大携带货币",
   `robot` tinyint(4) NULL COMMENT "机器人标记：1=机器人，其他=真人",
@@ -140,8 +143,8 @@ CREATE TABLE tcy_temp.dws_ddz_firstday_game (
   `chairno` tinyint(4) NULL COMMENT "座位号（0/1/2）",
   `result_id` tinyint(4) NULL COMMENT "结果：1=获胜，2=失败",
   `play_mode` tinyint(4) NULL COMMENT "玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，0=其他",
-  `room_base` int(11) NULL COMMENT "房间底分（统一字段）",
-  `room_fee` int(11) NULL COMMENT "房间服务费（统一字段）",
+  `room_base` int(11) NULL COMMENT "房间底分",
+  `room_fee` int(11) NULL COMMENT "房间服务费",
   `start_money` bigint(20) NULL COMMENT "对局前货币数量（统一字段）",
   `end_money` bigint(20) NULL COMMENT "对局后货币数量（统一字段）",
   `game_outcome_money` bigint(20) NULL COMMENT "游戏输赢（不包括服务费，统一字段）",
@@ -150,19 +153,17 @@ CREATE TABLE tcy_temp.dws_ddz_firstday_game (
   `magnification` int(11) NULL COMMENT "个人理论总倍数",
   `magnification_stacked` int(11) NULL COMMENT "个人加倍：1=不加倍，2=加倍，4=超级加倍",
   `channel_id` int(11) NULL COMMENT "渠道号",
-  `group_id` int(11) NULL COMMENT "分端ID",
+  `group_id` int(11) NULL COMMENT "分端 ID",
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `app_code` varchar(32) NULL COMMENT "应用code",
   `afk_turn_cnt` int(11) NULL COMMENT "托管出牌次数",
-  `magnification_subdivision` varchar(512) NULL COMMENT "倍数细分（公共倍数+行为倍数）",
-  `extend_content` varchar(512) NULL COMMENT "扩展信息（牌信息+牌力值+用户属性+AI等级）",
   `initial_bet` tinyint(4) NULL COMMENT "初始倍数",
   `grab_landlord_bet` tinyint(4) NULL COMMENT "抢地主倍数：3=无人抢，6=1人抢，12=2人抢，24=3人抢",
   `complete_victory_bet` tinyint(4) NULL COMMENT "春天/反春标记：1=无，2=春天或反春",
   `bomb_bet` int(11) NULL COMMENT "炸弹个数：1=无炸弹，否则 bomb_bet/2 为炸弹个数（打出炸弹数，非持有炸弹数）",
   `landlord_double_bet` tinyint(4) NULL COMMENT "地主加倍倍数：1=不加倍，2=加倍，4=超级加倍",
   `total_farmer_double_bet` tinyint(4) NULL COMMENT "所有农民加倍倍数",
-  `real_magnification` double NULL COMMENT "本局实际输赢倍数（绝对值，始终为正数）",
+  `real_magnification` double NULL COMMENT "游戏输赢实际倍数",
   `hand_cards` varchar(32) NULL COMMENT "手牌",
   `bottom_cards` varchar(16) NULL COMMENT "底牌",
   `shuffle_type` int(11) NULL COMMENT "配牌类型: 0=随机发牌，201=新手保护机器人，202=充值保护机器人匹配，203=老用户每日前N，204=房间前N次触发机器人保护，205=低保次数触发机器人保护，206=连输保护机器人匹配，207=连输银两触发机器人匹配，默认为0",
@@ -209,7 +210,7 @@ SELECT
     g.start_money, g.end_money, g.game_outcome_money,
     g.cut, g.safebox_deposit, g.magnification, g.magnification_stacked,
     g.channel_id, g.group_id, g.app_id, g.app_code, 
-    g.afk_turn_cnt, g.magnification_subdivision, g.extend_content,
+    g.afk_turn_cnt,
     g.initial_bet, g.grab_landlord_bet, g.complete_victory_bet, g.bomb_bet,
     g.landlord_double_bet, g.total_farmer_double_bet, g.real_magnification,
     g.hand_cards, g.bottom_cards, g.shuffle_type, g.card_id,
@@ -354,9 +355,8 @@ GROUP BY play_mode;
    - 使用 `ABS` 取绝对值，始终为正数，反映本局实际输赢倍数大小
    - 如需区分输赢方向，配合 `result_id` 使用
 
-4. **JSON 倍数提取**：
-   - 使用 `get_json_int` 函数从 `magnification_subdivision` 提取
-   - 如果 JSON 无对应字段，返回 NULL（建议用 `COALESCE` 处理）
+4. **JSON 提取**：
+   - 倍数和扩展信息已在 `dws_ddz_daily_game` 层通过 `get_json_*` 与 `regexp_extract` 提取为独立字段，本表直接继承
 
 5. **首日限定**：
    - 本表仅包含注册当日的对局数据
@@ -395,11 +395,12 @@ tcy_temp.dws_ddz_daily_game       （扩展字段对局表）
 tcy_temp.dws_ddz_firstday_game    （首日对局战绩表）
 ```
 
-> **文档版本**：v1.3
+> **文档版本**：v1.4
 > **创建时间**：2026-04-24
 > **更新说明**：
 >
-> - v1.3：real_magnification 改为绝对值（始终为正数），extend_content 新增新旧格式说明
+> - v1.4：字段说明与 CREATE TABLE 严格对齐（顺序及描述），CREATE TABLE COMMENT 与 dws_ddz_daily_game 统一real_magnification 改为绝对值（始终为正数），extend_content 新增新旧格式说明
 > - v1.2：明确表定位（首日数据切片）、增加上下游依赖字段、强调字段与 daily_game 完全一致、优化数据流向
 > - v1.1：字段与 dws_ddz_daily_game 完全对齐，统一 diff_money_pre_tax → game_outcome_money，补充缺失字段
 > - v1.0：初始版本，参照 dws_ddz_daily_game 结构，限定首日数据范围
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               

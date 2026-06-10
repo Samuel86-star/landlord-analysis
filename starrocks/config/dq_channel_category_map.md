@@ -1,20 +1,20 @@
-# 渠道分类维表说明
+# 配置维表：渠道分类映射关系表
 
 ## 表基本信息
 
 | 项目 | 说明 |
 | ---- | ---- |
 | 库名 | `tcy_temp` |
-| 表名 | `dws_channel_category_map` |
-| 全名 | `tcy_temp.dws_channel_category_map` |
-| 类型 | DWS 层中间表（维表） |
+| 表名 | `dq_channel_category_map` |
+| 全名 | `tcy_temp.dq_channel_category_map` |
+| 类型 | 配置维表 |
 | 描述 | 渠道号与渠道分类映射关系表 |
 | 更新频率 | 每日更新（随渠道配置变化） |
 
 ## 表生成逻辑
 
 ```sql
-CREATE TABLE tcy_temp.dws_channel_category_map (
+CREATE TABLE tcy_temp.dq_channel_category_map (
   `channel_id` int(11) NOT NULL COMMENT "渠道ID",
   `channel_category_id` int(11) NULL COMMENT "分类ID",
   `channel_category_name` varchar(255) NULL COMMENT "分类名称",
@@ -32,7 +32,7 @@ PROPERTIES (
 ## 初始化数据SQL
 
 ```sql
-INSERT INTO tcy_temp.dws_channel_category_map
+INSERT INTO tcy_temp.dq_channel_category_map
 SELECT
     t1.channel_id,
     ANY_VALUE(t2.channel_category_id),
@@ -120,7 +120,7 @@ SELECT
         WHEN 3 THEN '小游戏'
     END AS tag_name,
     COUNT(DISTINCT channel_id) AS channel_count
-FROM tcy_temp.dws_channel_category_map
+FROM tcy_temp.dq_channel_category_map
 GROUP BY channel_category_tag_id;
 ```
 
@@ -130,7 +130,7 @@ GROUP BY channel_category_tag_id;
 SELECT
     channel_category_name,
     COUNT(DISTINCT channel_id) AS channel_count
-FROM tcy_temp.dws_channel_category_map
+FROM tcy_temp.dq_channel_category_map
 GROUP BY channel_category_name;
 ```
 
@@ -141,7 +141,7 @@ SELECT
     channel_id,
     channel_category_name,
     channel_category_tag_id
-FROM dws.dws_channel_category_map
+FROM tcy_temp.dq_channel_category_map
 WHERE channel_id = 1001;
 ```
 
@@ -149,15 +149,15 @@ WHERE channel_id = 1001;
 
 ```sql
 SELECT
-    g.dt,
+    g.login_date,
     m.channel_category_name,
     COUNT(DISTINCT g.uid) AS user_count
 FROM tcy_temp.dws_dq_daily_login g
-LEFT JOIN tcy_temp.dws_channel_category_map m
-    ON g.channel_id = m.channel_id
+LEFT JOIN tcy_temp.dq_channel_category_map m
+    ON g.most_freq_channel_id = m.channel_id
 WHERE g.app_id = 1880053
-  AND g.dt BETWEEN '2026-01-01' AND '2026-04-08'
-GROUP BY g.dt, m.channel_category_name;
+  AND g.login_date BETWEEN '2026-01-01' AND '2026-04-08'
+GROUP BY g.login_date, m.channel_category_name;
 ```
 
 ## 注意事项
@@ -165,4 +165,4 @@ GROUP BY g.dt, m.channel_category_name;
 1. 该表为维表，数据量较小，适合广播 join
 2. 渠道配置可能发生变化，建议每日更新
 3. 部分历史 `channel_id` 可能在维表中找不到映射，需处理 null 值
-4. 如有新增渠道类型，需及时更新维表
+4. 如有新增渠�

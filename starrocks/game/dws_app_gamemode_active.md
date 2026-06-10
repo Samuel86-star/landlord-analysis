@@ -9,7 +9,7 @@
 | 全名 | `tcy_temp.dws_app_gamemode_active` |
 | 类型 | DWS 层聚合表（一次性创建，**T-2 可用**） |
 | 描述 | APP 端每日按玩法活跃用户去重清单，**专用于"同玩法留存"flag 计算** |
-| 粒度 | uid × dt × app_id × game_mode（一个用户一天一个应用一种玩法一行） |
+| 粒度 | uid × dt × app_id × play_mode（一个用户一天一个应用一种玩法一行） |
 | 数据延迟 | **T-2**：依赖 `dws_crazyddz_daily_game`（跨天对局需 T+1 日日志才可聚合），T 日活跃数据在 T+2 日才可产出 |
 
 ## 与 `dws_app_game_active` 的区别
@@ -18,6 +18,17 @@
 | ---- | ------ |
 | `dws_app_game_active` | 整体留存（任意玩法有对局即算留存） |
 | `dws_app_gamemode_active` | 同玩法留存（需在同一玩法有对局才算该玩法留存） |
+
+## 与 stat 表（silvergame / scoregame / allgame）的关系
+
+| 表 | 类型 | 用途 |
+| ---- | ---- | ---- |
+| `dws_app_gamemode_active` | 活跃清单（无指标） | 留存 flag：某日某玩法是否有对局 |
+| `dws_app_silvergame_stat` | 统计聚合（金流+参与度） | 银子归因：亏了多少、谷值多低 |
+| `dws_app_scoregame_stat` | 统计聚合（参与度+胜负） | 积分归因：打了几局、胜率如何 |
+| `dws_app_allgame_stat` | 统计聚合（玩法体验） | 体验归因：倍数分布、炸弹、玩法内胜率 |
+
+> **选表逻辑**：需要留存 flag → `gamemode_active`；需要归因指标 → 对应 stat 表。典型用法是 gamemode_active LEFT JOIN stat 表，用 flag 算留存率，用指标做归因分桶。stat 表之间的分工细节见各表自身文档，此处不再重复。
 
 ## 字段说明
 
@@ -90,7 +101,7 @@ tcy_temp.dws_ddz_daily_game                   （经典斗地主对局明细表�
 tcy_temp.dws_crazyddz_daily_game              （疯狂斗地主对局明细表，play_mode=7）
             ↓  UNION 去重聚合到 uid × dt × app_id × play_mode
 tcy_temp.dws_app_gamemode_active              （每日游戏活跃用户×玩法表，同玩法留存 flag 专用）  ← 本表
-            ↑  LEFT JOIN uid + app_id，dt > reg_date，game_mode = target_mode
+            ↑  LEFT JOIN uid + app_id，dt > reg_date，play_mode = target_mode
 tcy_temp.dws_dq_app_daily_reg                 （APP 端注册用户宽表）
             ↓  用于计算"同玩法留存 flag"
 tcy_temp.ddz_gamemode_firstday_features       （分玩法分析宽表）
@@ -98,9 +109,8 @@ tcy_temp.ddz_gamemode_firstday_features       （分玩法分析宽表）
 
 > **文档版本**：v2.1
 > **更新说明**：
-
 >
 > - v1.0：初始版本（原名 `dws_ddz_daily_play_by_mode`）
-> - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid, game_mode`）
+> - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid, play_mode`）
 > - v2.0：重命名为 `dws_app_gamemode_active`；新增 `app_id` 字段；更新与配对表的对比说明
 > - **v2.1**：新增疯狂斗地主（play_mode=7）数据源；活跃口径扩展为 `dws_ddz_daily_game` ∪ `dws_crazyddz_daily_game`

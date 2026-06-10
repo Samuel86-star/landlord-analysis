@@ -138,7 +138,7 @@ SELECT
     COALESCE(gc.guid_title, '') AS guid_title,
     COALESCE(gc.guid_type, CASE WHEN s.op_id = 300104 THEN 0 ELSE -1 END) AS guid_type
 FROM tcy_dwd.dwd_silver_si s
-LEFT JOIN tcy_temp.dws_channel_category_map chn
+LEFT JOIN tcy_temp.dq_channel_category_map chn
     ON s.channel_id = chn.channel_id
 LEFT JOIN tcy_temp.dq_currency_op_config op
     ON s.app_id = op.app_id AND s.op_id = op.op_id
@@ -181,7 +181,7 @@ SELECT
     COALESCE(gc.guid_title, '') AS guid_title,
     COALESCE(gc.guid_type, CASE WHEN s.op_id = 300104 THEN 0 ELSE -1 END) AS guid_type
 FROM tcy_dwd.dwd_silver_si s
-LEFT JOIN tcy_temp.dws_channel_category_map chn
+LEFT JOIN tcy_temp.dq_channel_category_map chn
     ON s.channel_id = chn.channel_id
 LEFT JOIN tcy_temp.dq_currency_op_config op
     ON s.app_id = op.app_id AND s.op_id = op.op_id
@@ -416,8 +416,9 @@ tcy_temp.dws_ddz_daily_game        （对局战绩统一字段表）
 1. 仅包含斗地主游戏数据（`app_id = 1880053`，`game_id = 53`）
 2. `silver_diff` 含服务费，`silver_amount` 不含服务费，分析实际输赢时使用 `silver_amount`
 3. `silver_balance` 为操作后余额，`silver_initial` 为操作前余额
-4. 渠道分类通过 `LEFT JOIN dws_channel_category_map` 获取，未匹配到的标记为 `'其他'`
-5. 不包含渠道分类信息的 `channel_id` 可通过关联 `dws_channel_category_map` 补全
+4. 渠道分类通过 `LEFT JOIN dq_channel_category_map` 获取，未匹配到的标记为 `'其他'`
+5. 不包含渠道分类信息的 `channel_id` 可通过关联 `dq_channel_category_map` 补全
 
 > **文档版本**：v1.0
 > **创建时间**：2026-04-29
+    

@@ -63,6 +63,7 @@
 | ---- | ---- | ---- |
 | `dws_` | DWS 层中间表 | `dws_ddz_daily_game` |
 | `dwd_` | DWD 层明细表 | `dwd_game_combat_si` |
+| `dq_` | 配置维表（业务配置、元数据映射） | `dq_currency_guid_config` |
 
 ---
 
@@ -79,8 +80,4 @@ starrocks/           # StarRocks 数仓能力
   currency/          # 货币域（银子、积分等）
   config/            # 配置表（道具、渠道、货币配置等）
 ops/                 # 运维操作手册
-requirements/        # 研发需求文档
-tech/                # 技术参考文档
-```
-
----
+requ

@@ -38,12 +38,12 @@
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
 | game_id | int | 游戏 ID | 53 |
-| dt | date | 对局日期 | 2026-04-08 |
-| uid | int | 玩家 ID | 123456789 |
+| dt | date | 日期 | 2026-04-08 |
+| uid | int | 用户ID | 123456789 |
 | game_datetime | datetime | 对局时间 | 2026-04-08 10:30:00 |
-| resultguid | varchar(64) | 本局战绩 ID | "abc123xyz" |
-| timecost | int | 对局耗时（秒） | 180 |
-| room_id | int | 房间号 | 1001 |
+| resultguid | varchar(64) | 对局GUID | "abc123xyz" |
+| timecost | int | 耗时 | 180 |
+| room_id | int | 房间ID | 1001 |
 | room_currency_lower | bigint | 进入房间所需最少携带货币 | 1000 |
 | room_currency_upper | bigint | 进入房间最大携带货币 | 10000 |
 | robot | tinyint | 机器人标记：1=机器人，其他=真人 | 0 |
@@ -51,8 +51,8 @@
 | chairno | tinyint | 座位号（0/1/2） | 0 |
 | result_id | tinyint | 结果：1=获胜，2=失败 | 1 |
 | play_mode | tinyint | 玩法分类：1=经典，2=不洗牌，3=癞子，4=积分，5=比赛，6=好友房，0=其他 | 1 |
-| room_base | int | 房间底分（统一字段） | 100 |
-| room_fee | int | 房间服务费（统一字段） | 10 |
+| room_base | int | 房间底分 | 100 |
+| room_fee | int | 房间服务费 | 10 |
 | start_money | bigint | 对局前货币数量（统一字段） | 5000 |
 | end_money | bigint | 对局后货币数量（统一字段） | 5500 |
 | game_outcome_money | bigint | 游戏输赢（不包括服务费，统一字段） | 600 |
@@ -62,20 +62,23 @@
 | magnification_stacked | int | 个人加倍：1=不加倍，2=加倍，4=超级加倍 | 2 |
 | channel_id | int | 渠道号 | 1001 |
 | group_id | int | 分端 ID | 6 |
-| app_id | int | 应用 ID | 1880053 |
+| app_id | int | 应用ID | 1880053 |
 | app_code | varchar(32) | 应用code | zgda |
 | afk_turn_cnt | int | 托管出牌次数 | 0 |
-| magnification_subdivision | varchar(512) | 倍数细分（公共倍数 + 行为倍数） | {"behavior_bet":{...},"public_bet":{...}} |
-| extend_content | varchar(512) | 扩展信息（新格式：牌信息 + 牌力值 + 用户属性 + AI等级） | {"card_info":{...},"card_power":{...},"user_attr":{...},"ai_level":{...}} |
 
-> **注意**：`extend_content` 存在新旧两种格式，详见后文「更新SQL」章节对应的 SQL 示例。
-| initial_bet | tinyint | 初始倍数: 1 | 1 |
+## 扩展字段
+
+> **注意**：`extend_content` 存在新旧两种格式，更新 SQL 已通过 `get_json_*` 与正则混合提取统一覆盖，无需按格式分支。
+
+| 字段名 | 类型 | 说明 | 示例值 |
+| ------ | ---- | ---- | ------ |
+| initial_bet | tinyint | 初始倍数 | 1 |
 | grab_landlord_bet | tinyint | 抢地主倍数：3=无人抢，6=1人抢，12=2人抢，24=3人抢 | 6 |
 | complete_victory_bet | tinyint | 春天/反春标记：1=无，2=春天或反春 | 1 |
 | bomb_bet | int | 炸弹个数：1=无炸弹，否则 bomb_bet/2 为炸弹个数（打出炸弹数，非持有炸弹数） | 4 |
 | landlord_double_bet | tinyint | 地主加倍倍数：1=不加倍，2=加倍，4=超级加倍 | 1 |
 | total_farmer_double_bet | tinyint | 所有农民加倍倍数 | 2 |
-| real_magnification | double | 本局实际输赢倍数（绝对值，始终为正数） | 5.0 |
+| real_magnification | double | 游戏输赢实际倍数 | 5.0 |
 | hand_cards | varchar(32) | 手牌 | "3455677888999JJJQQQKKKAAA222" |
 | bottom_cards | varchar(16) | 底牌 | "345" |
 | shuffle_type | int | 配牌类型: 0=随机发牌，201=新手保护机器人，202=充值保护机器人匹配，203=老用户每日前N，204=房间前N次触发机器人保护，205=低保次数触发机器人保护，206=连输保护机器人匹配，207=连输银两触发机器人匹配，默认为0 | 0 |
@@ -161,8 +164,6 @@ CREATE TABLE tcy_temp.dws_ddz_daily_game (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `app_code` varchar(32) NULL COMMENT "应用code",
   `afk_turn_cnt` int(11) NULL COMMENT "托管出牌次数",
-  `magnification_subdivision` varchar(512) NULL COMMENT "倍数细分（公共倍数 + 行为倍数）",
-  `extend_content` varchar(512) NULL COMMENT "扩展信息（牌信息 + 牌力值 + 用户属性 + AI等级）",
   `initial_bet` tinyint(4) NULL COMMENT "初始倍数",
   `grab_landlord_bet` tinyint(4) NULL COMMENT "抢地主倍数：3=无人抢，6=1人抢，12=2人抢，24=3人抢",
   `complete_victory_bet` tinyint(4) NULL COMMENT "春天/反春标记：1=无，2=春天或反春",
@@ -205,9 +206,30 @@ PROPERTIES (
 
 ```
 
-## 更新SQL（新格式）
+## 更新SQL
 
-上游 `ddz_daily_game_raw` 中 `extend_content` 为新格式（4 个顶级分类：card_info / card_power / user_attr / ai_level），使用 `get_json_int` / `get_json_string` 提取。
+`extend_content` 字段兼容新旧两种 JSON 格式，以下 SQL 通过 `get_json_*` 与正则混合提取，同时覆盖两种格式。
+
+**新格式**（4 个顶级分类，标准 JSON）：
+
+```json
+{
+  "card_info": {"hand_cards": "...", "bottom_cards": "...", "shuffle_type": 0, "card_id": 0},
+  "card_power": {"card_power": 15, "card_power_final": 22, "cost_time": 0, "is_pass": "false", "shuffle_times": 0},
+  "user_attr": {"bout": 2},
+  "ai_level": {"type": 1, "callflag": 1, "robflag": 1, "doubleflag": 2, "throwtileflag": 1}
+}
+```
+
+**旧格式**（2 个顶级分类，`ai_level` 值为残缺 JSON 字符串，无引号包裹 key，无法用 `get_json_*` 解析）：
+
+```json
+{
+  "card_power": {"card_power": 15, "card_power_final": 22, "cost_time": 0, "is_pass": "false", "shuffle_times": 0},
+  "new_user_protect": {"protect_type": 0, "card_id": 0, "bout": 2},
+  "ai_level": "{type:1, callflag:1, robflag:1, doubleflag:2, throwtileflag:1}"
+}
+```
 
 ```sql
 INSERT INTO tcy_temp.dws_ddz_daily_game
@@ -234,7 +256,7 @@ SELECT
     END AS game_outcome_money,
     cut, safebox_deposit, magnification, magnification_stacked,
     channel_id, group_id, app_id, app_code,
-    afk_turn_cnt, magnification_subdivision, extend_content,
+    afk_turn_cnt,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.initial_bet'), 1) AS initial_bet,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet'), 3) AS grab_landlord_bet,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet'), 1) AS complete_victory_bet,
@@ -249,79 +271,15 @@ SELECT
     END AS real_magnification,
     IFNULL(get_json_string(extend_content, '$.card_info.hand_cards'), '') AS hand_cards,
     IFNULL(get_json_string(extend_content, '$.card_info.bottom_cards'), '') AS bottom_cards,
-    IFNULL(get_json_int(extend_content, '$.card_info.shuffle_type'), 0) AS shuffle_type,
-    IFNULL(get_json_int(extend_content, '$.card_info.card_id'), 0) AS card_id,
+    IFNULL(CAST(regexp_extract(extend_content, '(?:shuffle_type|protect_type)[^0-9]*([0-9]+)', 1) AS INT), 0) AS shuffle_type,
+    IFNULL(CAST(regexp_extract(extend_content, 'card_id[^0-9]*([0-9]+)', 1) AS INT), 0) AS card_id,
     IFNULL(get_json_int(extend_content, '$.card_power.card_power'), 0) AS card_power,
     IFNULL(get_json_int(extend_content, '$.card_power.card_power_final'), 0) AS card_power_final,
     IFNULL(get_json_int(extend_content, '$.card_power.cost_time'), 0) AS cost_time,
     IFNULL(get_json_string(extend_content, '$.card_power.is_pass'), 'false') AS is_pass,
     IFNULL(get_json_int(extend_content, '$.card_power.shuffle_times'), 0) AS shuffle_times,
-    IFNULL(get_json_int(extend_content, '$.user_attr.bout'), 0) AS user_attr_bout,
-    IFNULL(get_json_int(extend_content, '$.ai_level.type'), 0) AS ai_level_type,
-    IFNULL(get_json_int(extend_content, '$.ai_level.callflag'), 0) AS ai_level_callflag,
-    IFNULL(get_json_int(extend_content, '$.ai_level.robflag'), 0) AS ai_level_robflag,
-    IFNULL(get_json_int(extend_content, '$.ai_level.doubleflag'), 0) AS ai_level_doubleflag,
-    IFNULL(get_json_int(extend_content, '$.ai_level.throwtileflag'), 0) AS ai_level_throwtileflag
-FROM tcy_temp.ddz_daily_game_raw
-WHERE game_id = 53
-  AND dt BETWEEN '2026-05-15' AND '2026-05-18';
-```
-
-> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
-
-## 更新SQL（旧格式）
-
-上游 `ddz_daily_game_raw` 中 `extend_content` 为旧格式（2 个顶级分类：card_power / new_user_protect），部分字段 JSON 路径不同，且 `ai_level` 为残缺 JSON 字符串需正则提取。
-
-```sql
-INSERT INTO tcy_temp.dws_ddz_daily_game
-SELECT
-    game_id, dt, uid, game_datetime, resultguid, timecost,
-    room_id, room_currency_lower, room_currency_upper,
-    robot, role, chairno, result_id,
-    CASE
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
-        WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
-        WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
-        WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
-        WHEN room_id IN (11534,14238,15458) THEN 4 -- 积分
-        WHEN room_id IN (158,159) THEN 6 -- 好友房
-        ELSE 0
-    END AS play_mode,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN basescore ELSE basedeposit END AS room_base,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN score_fee ELSE fee END AS room_fee,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN oldscore ELSE olddeposit END AS start_money,
-    CASE WHEN room_id IN (11534,14238,15458,158,159) THEN end_score ELSE end_deposit END AS end_money,
-    CASE
-        WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee
-        ELSE depositdiff + fee
-    END AS game_outcome_money,
-    cut, safebox_deposit, magnification, magnification_stacked,
-    channel_id, group_id, app_id, app_code,
-    afk_turn_cnt, magnification_subdivision, extend_content,
-    IFNULL(get_json_int(magnification_subdivision, '$.public_bet.initial_bet'), 1) AS initial_bet,
-    IFNULL(get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet'), 3) AS grab_landlord_bet,
-    IFNULL(get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet'), 1) AS complete_victory_bet,
-    IFNULL(get_json_int(magnification_subdivision, '$.public_bet.bomb_bet'), 1) AS bomb_bet,
-    IFNULL(get_json_int(magnification_subdivision, '$.behavior_bet.landlord'), 1) AS landlord_double_bet,
-    IFNULL(get_json_int(magnification_subdivision, '$.behavior_bet.farmer1'), 1)
-        + IFNULL(get_json_int(magnification_subdivision, '$.behavior_bet.farmer2'), 1) AS total_farmer_double_bet,
-    CASE
-        WHEN room_id IN (11534,14238,15458,158,159)
-        THEN ROUND(ABS(scorediff + score_fee) / NULLIF(basescore, 0), 2)
-        ELSE ROUND(ABS(depositdiff + fee) / NULLIF(basedeposit, 0), 2)
-    END AS real_magnification,
-    IFNULL(get_json_string(extend_content, '$.card_info.hand_cards'), '') AS hand_cards,
-    IFNULL(get_json_string(extend_content, '$.card_info.bottom_cards'), '') AS bottom_cards,
-    IFNULL(get_json_int(extend_content, '$.new_user_protect.protect_type'), 0) AS shuffle_type,
-    IFNULL(get_json_int(extend_content, '$.new_user_protect.card_id'), 0) AS card_id,
-    IFNULL(get_json_int(extend_content, '$.card_power.card_power'), 0) AS card_power,
-    IFNULL(get_json_int(extend_content, '$.card_power.card_power_final'), 0) AS card_power_final,
-    IFNULL(get_json_int(extend_content, '$.card_power.cost_time'), 0) AS cost_time,
-    IFNULL(get_json_string(extend_content, '$.card_power.is_pass'), 'false') AS is_pass,
-    IFNULL(get_json_int(extend_content, '$.card_power.shuffle_times'), 0) AS shuffle_times,
-    IFNULL(get_json_int(extend_content, '$.new_user_protect.bout'), 0) AS user_attr_bout,
-    IFNULL(get_json_int(extend_content, '$.ai_level.type'), 0) AS ai_level_type,
+    IFNULL(CAST(regexp_extract(extend_content, 'bout[^0-9]*([0-9]+)', 1) AS INT), 0) AS user_attr_bout,
+    IFNULL(CAST(regexp_extract(extend_content, 'ai_level[^0-9]*type[^0-9]*([0-9]+)', 1) AS INT), 0) AS ai_level_type,
     IFNULL(CAST(regexp_extract(extend_content, 'callflag[^0-9]*([0-9]+)', 1) AS INT), 0) AS ai_level_callflag,
     IFNULL(CAST(regexp_extract(extend_content, 'robflag[^0-9]*([0-9]+)', 1) AS INT), 0) AS ai_level_robflag,
     IFNULL(CAST(regexp_extract(extend_content, 'doubleflag[^0-9]*([0-9]+)', 1) AS INT), 0) AS ai_level_doubleflag,
@@ -331,17 +289,20 @@ WHERE game_id = 53
   AND dt BETWEEN '2026-05-15' AND '2026-05-18';
 ```
 
-新旧格式 SQL 差异对照：
+> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
 
-| 字段 | 新格式路径 | 旧格式路径 | 备注 |
+新旧格式中提取方式不同的字段对照：
+
+| 字段 | 新格式路径 | 旧格式路径 | 统一方案 |
 | ---- | ---- | ---- | ---- |
-| `shuffle_type` | `$.card_info.shuffle_type` | `$.new_user_protect.protect_type` | JSON 路径不同 |
-| `card_id` | `$.card_info.card_id` | `$.new_user_protect.card_id` | JSON 路径不同 |
-| `user_attr_bout` | `$.user_attr.bout` | `$.new_user_protect.bout` | JSON 路径不同 |
-| `ai_level_callflag` | `$.ai_level.callflag` | `regexp_extract(..., 'callflag[^0-9]*([0-9]+)', 1)` | 旧格式为残缺 JSON，需正则提取 |
-| `ai_level_robflag` | `$.ai_level.robflag` | `regexp_extract(..., 'robflag[^0-9]*([0-9]+)', 1)` | 同上 |
-| `ai_level_doubleflag` | `$.ai_level.doubleflag` | `regexp_extract(..., 'doubleflag[^0-9]*([0-9]+)', 1)` | 同上 |
-| `ai_level_throwtileflag` | `$.ai_level.throwtileflag` | `regexp_extract(..., 'throwtileflag[^0-9]*([0-9]+)', 1)` | 同上 |
+| `shuffle_type` | `$.card_info.shuffle_type` | `$.new_user_protect.protect_type` | `regexp_extract(..., '(?:shuffle_type\|protect_type)[^0-9]*([0-9]+)', 1)` |
+| `card_id` | `$.card_info.card_id` | `$.new_user_protect.card_id` | `regexp_extract(..., 'card_id[^0-9]*([0-9]+)', 1)` |
+| `user_attr_bout` | `$.user_attr.bout` | `$.new_user_protect.bout` | `regexp_extract(..., 'bout[^0-9]*([0-9]+)', 1)` |
+| `ai_level_type` | `$.ai_level.type` | 残缺 JSON | `regexp_extract(..., 'ai_level[^0-9]*type[^0-9]*([0-9]+)', 1)` |
+| `ai_level_callflag` | `$.ai_level.callflag` | 残缺 JSON | `regexp_extract(..., 'callflag[^0-9]*([0-9]+)', 1)` |
+| `ai_level_robflag` | `$.ai_level.robflag` | 残缺 JSON | `regexp_extract(..., 'robflag[^0-9]*([0-9]+)', 1)` |
+| `ai_level_doubleflag` | `$.ai_level.doubleflag` | 残缺 JSON | `regexp_extract(..., 'doubleflag[^0-9]*([0-9]+)', 1)` |
+| `ai_level_throwtileflag` | `$.ai_level.throwtileflag` | 残缺 JSON | `regexp_extract(..., 'throwtileflag[^0-9]*([0-9]+)', 1)` |
 
 ## 使用示例
 
@@ -446,9 +407,9 @@ GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END
    - 使用 `ABS` 取绝对值，始终为正数，反映本局实际输赢倍数大小
    - 如需区分输赢方向，配合 `result_id` 使用
 
-4. **JSON 倍数提取**：
-   - 使用 `get_json_int` 函数从 `magnification_subdivision` 提取
-   - 如果 JSON 无对应字段，返回 NULL（建议用 `COALESCE` 处理）
+4. **JSON 提取**：
+   - 倍数和扩展信息字段已从上游 `ddz_daily_game_raw` 的 JSON 列（`magnification_subdivision`、`extend_content`）提取为独立字段
+   - 倍数子字段使用 `get_json_int` 提取，扩展信息中路径不一致的字段（shuffle_type / card_id / user_attr_bout / ai_level.*）使用 `regexp_extract` 统一提取
 
 5. **时间范围**：
    - 默认覆盖 `20260210` 至 `20260508`（注册期 + Day30 观测期）
@@ -479,11 +440,13 @@ tcy_temp.dws_ddz_daily_game       （扩展字段对局表）
 tcy_temp.dws_ddz_firstday_game    （首日对局战绩表）
 ```
 
-> **文档版本**：v1.3
+> **文档版本**：v1.4
 > **创建时间**：2026-04-09
 > **更新说明**：
 >
+> - v1.4：合并新旧格式 SQL 为一套，extend_content 差异字段统一用正则提取（兼容两种格式）
 > - v1.3：合并旧格式文档，更新 SQL 分新旧格式，新增差异对照表
 > - v1.2：明确表定位（基于 raw 表的扩展字段表）、增加上下游依赖字段、优化设计背景和数据流向
 > - v1.1：补充 extend_content 解析字段说明、修正更新 SQL 从 ddz_daily_game_raw 读取、修正字段名引用（diff_money_pre_tax → game_outcome_money）
 > - v1.0：初始版本，统一货币字段、添加玩法分类、提取 JSON 倍数字段
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                 

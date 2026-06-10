@@ -148,7 +148,13 @@ SELECT
     COUNT(1) AS login_count
 FROM (
     SELECT
-        *,
+        app_id,
+        dt,
+        uid,
+        time_unix,
+        channel_id,
+        group_id,
+        app_code,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), channel_id) AS cnt_channel,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), group_id) AS cnt_group,
         COUNT(*) OVER(PARTITION BY uid, DATE(dt), app_code) AS cnt_app_code
@@ -158,8 +164,6 @@ FROM (
       AND dt <= '2026-04-20 23:59:59'
 ) t
 GROUP BY app_id, DATE(dt), uid;
-
-ALTER TABLE tcy_temp.dws_dq_daily_reg SET ("colocate_with" = "group_daily_data");
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
@@ -266,4 +270,4 @@ tcy_temp.dws_dq_app_daily_reg          （APP 端注册用户宽表）
 > **创建时间**：2026-04-09
 > **更新说明**：
 >
-> - v1.0：初始版本，包含首次/最后/最频繁登录维度，以及统计维度
+> - v1.0：初始版本，包含首次/最后/最频繁登录维

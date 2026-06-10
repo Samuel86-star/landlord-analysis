@@ -7,7 +7,7 @@
 | 库名 | `tcy_dwd` |
 | 表名 | `dwd_silver_si` |
 | 全名 | `tcy_dwd.dwd_silver_si` |
-| 类型 | 原始数据表 |
+| 类型 | DWD 层明细表 |
 | 描述 | 玩家银子变动日志表，记录用户银子收支明细 |
 
 ## 字段说明
@@ -55,7 +55,7 @@
 **渠道分类说明：**
 
 - 本表仅记录 `channel_id`（渠道号），不包含渠道分类信息
-- 需关联 `tcy_temp.dws_channel_category_map` 表获取渠道分类
+- 需关联 `tcy_temp.dq_channel_category_map` 表获取渠道分类
 - 渠道分类标签：`1`=官方，`2`=渠道，`3`=小游戏
 
 ## 字段详解

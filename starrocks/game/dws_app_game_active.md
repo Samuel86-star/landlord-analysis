@@ -22,14 +22,16 @@
 
 > **活跃口径**：只要在经典斗地主（`dws_ddz_daily_game`）或疯狂斗地主（`dws_crazyddz_daily_game`）任一存在对局，即算当日游戏活跃。
 
-## 与 `dws_app_silvergame_stat` 的区别
+## 与统计类姊妹表的定位区别
 
-| 表 | 用途 | 列数 |
-| ---- | ------ | ------ |
-| `dws_app_game_active` | 留存 flag 计算（当日是否有对局） | 3 列 |
-| `dws_app_silvergame_stat` | 银子玩法金流 + 参与度统计（对局数、胜率、经济等，不含倍数） | 19 列 |
+| 表 | 用途 | 粒度 | 列数 |
+| ---- | ------ | ------ | ------ |
+| `dws_app_game_active` | 留存 flag 计算（当日是否有对局） | uid × dt × app_id | 3 列 |
+| `dws_app_silvergame_stat` | 银子玩法金流 + 参与度统计 | uid × dt | 19 列 |
+| `dws_app_scoregame_stat` | 积分玩法参与度 + 胜负统计（无金流） | uid × dt | 14 列 |
+| `dws_app_allgame_stat` | 全玩法体验分析（倍数/炸弹/胜率等） | uid × dt × play_mode | 40 列 |
 
-留存计算需对**注册期 + 30 天**全量数据做高频 LEFT JOIN，`dws_app_game_active` 以极少列数保证 JOIN 性能。
+留存计算需对**注册期 + 30 天**全量数据做高频 LEFT JOIN，`dws_app_game_active` 以极少列数保证 JOIN 性能。三张统计类姊妹表各有定位——银子表专注金流归因、积分表专注参与度与胜负、全玩法表控制玩法变量做体验分析——均不适合承担高频留存 flag JOIN 的职责。
 
 ## 时间范围说明
 
@@ -120,14 +122,12 @@ GROUP BY r.uid, r.reg_date;
 ```
 
 > **留存日期口径**（Day 0 = 注册日）：
-
 >
 > - 次留：Day 0 注册的用户在次日（+1）登录的占比 → `reg_date + 1`
 > - 7 留："第 7 天留存"，把注册日记为第 1 天 → `reg_date + 6`
 > - 30 留：同理，第 30 天 → `reg_date + 29`
 >
-> **StarRocks 日期转换说明**：`dt` 为 int 类型，可直接做整数加法（`r.reg_date + 1`）比较，
-> 也可使用 `str_to_date(CAST(dt AS VARCHAR), '%Y%m%d')` 转为 DATE 类型后再做 `datediff`。
+> **StarRocks 日期运算说明**：`dt` 为 DATE 类型，可使用 `DATE_ADD(dt, INTERVAL 1 DAY)` 等日期函数计算留存偏移天数，也可使用 `dt = r.reg_date + INTERVAL 1 DAY` 进行比较。
 
 ## 表依赖关系
 
@@ -142,9 +142,9 @@ tcy_temp.dws_dq_app_daily_reg         （APP 端注册用户宽表）
 
 > **文档版本**：v2.1
 > **更新说明**：
-
 >
 > - v1.0：初始版本（原名 `dws_ddz_daily_play`）
 > - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid`）
 > - v2.0：重命名为 `dws_app_game_active`；新增 `app_id` 字段；补充与 `dws_app_silvergame_stat` 的对比说明
 > - **v2.1**：活跃口径扩展为 `dws_ddz_daily_game` ∪ `dws_crazyddz_daily_game`（任一存在对局即算活跃）
+> - **v2.2**：补充与 `dws_app_scoregame_stat` 和 `dws_app_allgame_stat` 的定位区别

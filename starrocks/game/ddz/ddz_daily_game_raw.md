@@ -40,7 +40,7 @@
 | room_currency_lower | bigint | 进入房间所需最少携带货币 | 1000 |
 | room_currency_upper | bigint | 进入房间最大携带货币 | 10000 |
 | robot | tinyint | 机器人标记：1=机器人，其他=真人 | 0 |
-| `role` | tinyint | 角色：1=地主，2=农民 | 1 |
+| role | tinyint | 角色：1=地主，2=农民 | 1 |
 | chairno | tinyint | 座位号（0/1/2） | 0 |
 | result_id | tinyint | 结果：1=获胜，2=失败 | 1 |
 | basedeposit | int | 银子玩法房间底分(银子) | 100 |
@@ -496,3 +496,4 @@ tcy_temp.dws_ddz_firstday_game    （首日对局战绩表）
 > - v1.2：补充 magnification 与各 JSON 倍数字段的一致性校验示例及计算逻辑说明
 > - v1.1：根据字段说明更新建表 SQL COMMENT、修正使用示例中不存在的字段引用、补充 JSON 提取示例
 > - v1.0：初始版本，从hive抽取到starrocks中，保留原始货币字段
+  
