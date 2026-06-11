@@ -496,4 +496,3 @@ tcy_temp.dws_ddz_firstday_game    （首日对局战绩表）
 > - v1.2：补充 magnification 与各 JSON 倍数字段的一致性校验示例及计算逻辑说明
 > - v1.1：根据字段说明更新建表 SQL COMMENT、修正使用示例中不存在的字段引用、补充 JSON 提取示例
 > - v1.0：初始版本，从hive抽取到starrocks中，保留原始货币字段
-  

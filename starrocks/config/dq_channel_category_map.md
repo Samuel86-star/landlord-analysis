@@ -165,4 +165,73 @@ GROUP BY g.login_date, m.channel_category_name;
 1. 该表为维表，数据量较小，适合广播 join
 2. 渠道配置可能发生变化，建议每日更新
 3. 部分历史 `channel_id` 可能在维表中找不到映射，需处理 null 值
-4. 如有新增渠�
+4. 如有新增渠道类型，需及时更新维表
+
+## NULL 值诊断
+
+关联 `dws_dq_daily_login` 后 `channel_category_name` 为 NULL 有两种原因：`most_freq_channel_id` 本身为 NULL，或渠道号在配置表中无映射。以下 SQL 逐层追查。
+
+### 1. 整体 NULL 占比
+
+```sql
+SELECT
+    login_date,
+    COUNT(DISTINCT uid) AS total_users,
+    COUNT(DISTINCT CASE WHEN m.channel_category_name IS NULL THEN g.uid END) AS null_category_users,
+    COUNT(DISTINCT CASE WHEN g.most_freq_channel_id IS NULL THEN g.uid END) AS null_channel_users,
+    COUNT(DISTINCT CASE WHEN g.most_freq_channel_id IS NOT NULL AND m.channel_category_name IS NULL THEN g.uid END) AS unmapped_users
+FROM tcy_temp.dws_dq_daily_login g
+LEFT JOIN tcy_temp.dq_channel_category_map m
+    ON g.most_freq_channel_id = m.channel_id
+WHERE g.app_id = 1880053
+  AND g.login_date BETWEEN '2026-01-01' AND '2026-04-08'
+GROUP BY g.login_date
+ORDER BY g.login_date;
+```
+
+### 2. 未映射的具体渠道号
+
+```sql
+SELECT
+    g.most_freq_channel_id,
+    COUNT(DISTINCT g.uid) AS user_count
+FROM tcy_temp.dws_dq_daily_login g
+LEFT JOIN tcy_temp.dq_channel_category_map m
+    ON g.most_freq_channel_id = m.channel_id
+WHERE g.app_id = 1880053
+  AND g.login_date BETWEEN '2026-01-01' AND '2026-04-08'
+  AND m.channel_category_name IS NULL
+  AND g.most_freq_channel_id IS NOT NULL
+GROUP BY g.most_freq_channel_id
+ORDER BY user_count DESC;
+```
+
+### 3. 未映射渠道号在上游日志中的分布
+
+```sql
+SELECT
+    channel_id,
+    COUNT(DISTINCT uid) AS user_count,
+    COUNT(1) AS log_count
+FROM tcy_dwd.dwd_tcy_userlogin_si
+WHERE app_id = 1880053
+  AND dt >= '2026-01-01 00:00:00'
+  AND dt <= '2026-04-08 23:59:59'
+  AND channel_id NOT IN (
+      SELECT channel_id FROM tcy_temp.dq_channel_category_map
+  )
+GROUP BY channel_id
+ORDER BY user_count DESC
+LIMIT 50;
+```
+
+### 4. 配置表覆盖度
+
+```sql
+SELECT
+    (SELECT COUNT(DISTINCT channel_id) FROM tcy_temp.dq_channel_category_map) AS config_channel_count,
+    (SELECT COUNT(DISTINCT most_freq_channel_id) FROM tcy_temp.dws_dq_daily_login
+     WHERE app_id = 1880053
+       AND login_date BETWEEN '2026-01-01' AND '2026-04-08'
+       AND most_freq_channel_id IS NOT NULL) AS login_distinct_channel_count;
+```

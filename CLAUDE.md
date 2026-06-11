@@ -80,4 +80,8 @@ starrocks/           # StarRocks 数仓能力
   currency/          # 货币域（银子、积分等）
   config/            # 配置表（道具、渠道、货币配置等）
 ops/                 # 运维操作手册
-requ
+requirements/        # 研发需求文档
+tech/                # 技术参考文档
+```
+
+---
