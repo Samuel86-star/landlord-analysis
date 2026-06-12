@@ -56,7 +56,7 @@
 | start_money | bigint | 对局前货币数量（统一字段） | 5000 |
 | end_money | bigint | 对局后货币数量（统一字段） | 5500 |
 | game_outcome_money | bigint | 游戏输赢（不包括服务费，统一字段） | 600 |
-| cut | int | 逃跑罚没货币（<0 代表存在逃跑行为） | 0 |
+| cut | int | 逃跑罚没货币（!=0 代表存在逃跑行为） | 0 |
 | safebox_deposit | int | 保险箱存银 | 1000 |
 | magnification | int | 个人理论总倍数 | 12 |
 | magnification_stacked | int | 个人加倍：1=不加倍，2=加倍，4=超级加倍 | 2 |
@@ -65,6 +65,8 @@
 | app_id | int | 应用ID | 1880053 |
 | app_code | varchar(32) | 应用code | zgda |
 | afk_turn_cnt | int | 托管出牌次数 | 0 |
+| magnification_subdivision | varchar(512) | 倍数细分（公共倍数 + 行为倍数） | {"behavior_bet":{...},"public_bet":{...}} |
+| extend_content | varchar(512) | 扩展信息（牌信息 + 牌力值 + 用户属性 + AI等级） | {"card_info":{...},"card_power":{...},"user_attr":{...},"ai_level":{...}} |
 
 ## 扩展字段
 
@@ -155,7 +157,7 @@ CREATE TABLE tcy_temp.dws_ddz_daily_game (
   `start_money` bigint(20) NULL COMMENT "对局前货币数量（统一字段）",
   `end_money` bigint(20) NULL COMMENT "对局后货币数量（统一字段）",
   `game_outcome_money` bigint(20) NULL COMMENT "游戏输赢（不包括服务费，统一字段）",
-  `cut` int(11) NULL COMMENT "逃跑罚没货币（<0 代表存在逃跑行为）",
+  `cut` int(11) NULL COMMENT "逃跑罚没货币（!=0 代表存在逃跑行为）",
   `safebox_deposit` int(11) NULL COMMENT "保险箱存银",
   `magnification` int(11) NULL COMMENT "个人理论总倍数",
   `magnification_stacked` int(11) NULL COMMENT "个人加倍：1=不加倍，2=加倍，4=超级加倍",
@@ -164,6 +166,8 @@ CREATE TABLE tcy_temp.dws_ddz_daily_game (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `app_code` varchar(32) NULL COMMENT "应用code",
   `afk_turn_cnt` int(11) NULL COMMENT "托管出牌次数",
+  `magnification_subdivision` varchar(512) NULL COMMENT "倍数细分（公共倍数 + 行为倍数）",
+  `extend_content` varchar(512) NULL COMMENT "扩展信息（牌信息 + 牌力值 + 用户属性 + AI等级）",
   `initial_bet` tinyint(4) NULL COMMENT "初始倍数",
   `grab_landlord_bet` tinyint(4) NULL COMMENT "抢地主倍数：3=无人抢，6=1人抢，12=2人抢，24=3人抢",
   `complete_victory_bet` tinyint(4) NULL COMMENT "春天/反春标记：1=无，2=春天或反春",
@@ -256,7 +260,7 @@ SELECT
     END AS game_outcome_money,
     cut, safebox_deposit, magnification, magnification_stacked,
     channel_id, group_id, app_id, app_code,
-    afk_turn_cnt,
+    afk_turn_cnt, magnification_subdivision, extend_content,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.initial_bet'), 1) AS initial_bet,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.grab_landlord_bet'), 3) AS grab_landlord_bet,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.complete_victory_bet'), 1) AS complete_victory_bet,
@@ -408,8 +412,9 @@ GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END
    - 如需区分输赢方向，配合 `result_id` 使用
 
 4. **JSON 提取**：
-   - 倍数和扩展信息字段已从上游 `ddz_daily_game_raw` 的 JSON 列（`magnification_subdivision`、`extend_content`）提取为独立字段
-   - 倍数子字段使用 `get_json_int` 提取，扩展信息中路径不一致的字段（shuffle_type / card_id / user_attr_bout / ai_level.*）使用 `regexp_extract` 统一提取
+   - `magnification_subdivision` 为标准 JSON，使用 `get_json_int` 提取
+   - `extend_content` 兼容新旧两种格式，路径不一致的字段（shuffle_type / card_id / user_attr_bout / ai_level.*）使用 `regexp_extract` 统一提取
+   - 如果 JSON 无对应字段，返回 NULL（建议用 `COALESCE` 处理）
 
 5. **时间范围**：
    - 默认覆盖 `20260210` 至 `20260508`（注册期 + Day30 观测期）
@@ -440,12 +445,8 @@ tcy_temp.dws_ddz_daily_game       （扩展字段对局表）
 tcy_temp.dws_ddz_firstday_game    （首日对局战绩表）
 ```
 
-> **文档版本**：v1.4
-> **创建时间**：2026-04-09
+> **文档版本**：v1.0
+> **创建时间**：2026-06-11
 > **更新说明**：
 >
-> - v1.4：合并新旧格式 SQL 为一套，extend_content 差异字段统一用正则提取（兼容两种格式）
-> - v1.3：合并旧格式文档，更新 SQL 分新旧格式，新增差异对照表
-> - v1.2：明确表定位（基于 raw 表的扩展字段表）、增加上下游依赖字段、优化设计背景和数据流向
-> - v1.1：补充 extend_content 解析字段说明、修正更新 SQL 从 ddz_daily_game_raw 读取、修正字段名引用（diff_money_pre_tax → game_outcome_money）
-> - v1.0：初始版本，统一货币字段、添加玩法分类、提取 JSON 倍数字段
+> - v1.0：初始版本

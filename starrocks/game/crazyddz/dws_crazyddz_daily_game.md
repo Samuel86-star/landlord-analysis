@@ -7,24 +7,24 @@
 | 库名 | `tcy_temp` |
 | 表名 | `dws_crazyddz_daily_game` |
 | 全名 | `tcy_temp.dws_crazyddz_daily_game` |
-| 类型 | DWS 层中间表（每日增量，**T-2 可用**） |
+| 类型 | DWS 层中间表（每日增量，**T-1 可用**） |
 | 描述 | 疯狂斗地主对局战绩表，从原始战绩表中提取并聚合疯狂斗地主玩法数据 |
 | 粒度 | resultguid + uid（一个对局的单个玩家一行） |
-| 数据延迟 | **T-2**：因存在跨天对局（如 T 日开局、T+1 日结束），需等待 T+1 日日志才能聚合出 T 日完整对局，因此 T 日数据在 T+2 日才可产出 |
+| 数据延迟 | **T-1**：上游 raw 层已通过 min_dt 机制回补跨天对局，T 日数据在 T+1 日可产出 |
 
 ## 设计背景
 
 疯狂斗地主（game_id = 521）的对局日志存储在原始 `dwd_game_combat_si` 战绩表中，但其数据结构与传统斗地主不同：
 
 1. **多轮结算**：疯狂斗地主一局游戏内可能包含多轮结算，每轮结算产生一条记录
-2. **跨天对局**：部分对局可能跨越两天，如 27 号开局、28 号结束，需要跨天查询获取完整数据
+2. **跨天对局**：部分对局可能跨越两天（如 T 日开局、T+1 日结束），上游 `crazyddz_daily_game_raw` 已通过 min_dt 机制回补跨天记录，本表直接读取即可
 3. **累计统计**：需要通过 `row_start` 和 `row_end` 识别开局和结束记录，聚合计算整局数据
 4. **路径追踪**：记录每轮的输赢金额和倍数变化路径
 
 **解决方案**：
 
 1. 先通过 `target_resultguids` 找出指定日期有服务费记录（`fee != 0`）的对局 GUID
-2. 通过 `INNER JOIN` 关联这些 resultguid，扩大日期范围获取跨天对局的完整数据
+2. 通过 `INNER JOIN` 关联这些 resultguid，上游 raw 层已通过 min_dt 覆盖 dt，直接 `WHERE dt = T` 即可
 3. 使用 `ROW_NUMBER()` 窗口函数识别开局（row_start = 1）和结束（row_end = 1）记录
 4. 聚合计算整局的累计统计数据
 5. 使用 `GROUP_CONCAT` 记录输赢金额和倍数的变化路径
@@ -47,14 +47,14 @@
 | role | tinyint | 角色：1=地主，2=农民 | 1 |
 | chairno | int | 座位号 | 0 |
 | result_id | tinyint | 最终结果：1=获胜，2=失败，3=平局（row_end 的 result_id 为 NULL 时根据 game_deposit_diff 兜底推断） | 1 |
-| play_mode | tinyint | 玩法分类：7=五十K | 1 |
+| play_mode | tinyint | 玩法分类：7=五十K | 7 |
 | room_base | int | 房间底分 | 100 |
 | room_fee | int | 房间服务费 | 10 |
 | start_money | bigint | 开局时货币数量 | 5000 |
 | end_money | bigint | 结束时货币数量 | 5500 |
 | game_outcome_money | bigint | 游戏输赢（不包括服务费，统一字段） | 600 |
 | game_outcome_gdp | bigint | 游戏内货币变化绝对值累计 | 1500 |
-| is_escape | int | 逃跑标记（<0 代表存在逃跑行为） | 0 |
+| is_escape | int | 逃跑标记（!=0 代表存在逃跑行为） | 0 |
 | total_magnification | bigint | 累计倍数 | 36 |
 | app_id | int | 应用 ID | 1880053 |
 | app_code | varchar(32) | 应用 code（配合 group_id 区分客户端开发语言） | zgda |
@@ -92,7 +92,7 @@ CREATE TABLE tcy_temp.dws_crazyddz_daily_game (
   `end_money` bigint(20) NULL COMMENT "结束时货币数量",
   `game_outcome_money` bigint(20) NULL COMMENT "游戏输赢（不包括服务费）",
   `game_outcome_gdp` bigint(20) NULL COMMENT "游戏内货币变化绝对值累计",
-  `is_escape` int(11) NULL COMMENT "逃跑标记（<0代表存在逃跑行为）",
+  `is_escape` int(11) NULL COMMENT "逃跑标记（!=0代表存在逃跑行为）",
   `total_magnification` bigint(20) NULL COMMENT "累计倍数",
   `app_id` int(11) NULL COMMENT "应用ID",
   `app_code` varchar(32) NULL COMMENT "应用code",
@@ -121,14 +121,14 @@ PROPERTIES (
 );
 ```
 
-### 初始化 SQL
+### 数据初始化SQL
 
 ```sql
 -- 初始化指定时间段内的对局数据
 -- 参数说明：
 --   ${START_DATE}：起始日期（date 格式，如 '2026-04-01'）
 --   ${END_DATE}：结束日期（date 格式，如 '2026-04-27'）
--- 注意：ranked_combat 查询范围延伸到 ${END_DATE} + 1，以获取 END_DATE 当天开局、次日结束的跨天对局完整数据
+-- 上游 raw 层已通过 min_dt 覆盖 dt，无需扩展日期范围处理跨天对局
 INSERT INTO tcy_temp.dws_crazyddz_daily_game
 WITH target_resultguids AS (
     SELECT DISTINCT resultguid
@@ -146,11 +146,11 @@ ranked_combat AS (
     FROM tcy_temp.crazyddz_daily_game_raw raw
     INNER JOIN target_resultguids tr ON raw.resultguid = tr.resultguid
     WHERE raw.game_id = 521
-       AND raw.dt BETWEEN '2026-03-01' AND '2026-06-02'
+       AND raw.dt BETWEEN '2026-03-01' AND '2026-06-01'
 )
 SELECT
     game_id,
-    MAX(CASE WHEN row_start = 1 THEN DATE(game_datetime) END) AS dt,
+    MAX(CASE WHEN row_start = 1 THEN dt END) AS dt,
     uid,
     resultguid,
     MAX(CASE WHEN row_start = 1 THEN game_datetime END) AS start_datetime,
@@ -162,93 +162,21 @@ SELECT
     MAX(CASE WHEN row_start = 1 THEN robot END) AS robot,
     MAX(CASE WHEN row_start = 1 THEN `role` END) AS role,
     MAX(CASE WHEN row_start = 1 THEN chairno END) AS chairno,
-    MAX(
-        CASE WHEN row_end = 1 THEN
-            CASE
-                WHEN result_id IS NOT NULL THEN result_id
-                WHEN game_win_loss > 0 THEN 1
-                WHEN game_win_loss < 0 THEN 2
-                ELSE 3
-            END
+    COALESCE(
+        MAX(result_id),
+        CASE WHEN MAX(game_win_loss) > 0 THEN 1
+             WHEN MAX(game_win_loss) < 0 THEN 2
+             ELSE 3
         END
     ) AS result_id,
     7 AS play_mode,
-    MAX(CASE WHEN row_start = 1 THEN basedeposit END) AS room_base,
-    MAX(CASE WHEN row_start = 1 THEN fee END) AS room_fee,
+    MAX(basedeposit) AS room_base,
+    MAX(fee) AS room_fee,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) AS start_money,
     MAX(CASE WHEN row_start = 1 THEN olddeposit END) + SUM(depositdiff) AS end_money,
     IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END), 0) AS game_outcome_money,
     IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN ABS(depositdiff) END), 0) AS game_outcome_gdp,
-    MAX(CASE WHEN row_end = 1 THEN cut END) AS is_escape,
-    SUM(ABS(magnification)) AS total_magnification,
-    MAX(CASE WHEN row_start = 1 THEN app_id END) AS app_id,
-    COALESCE(MAX(CASE WHEN row_start = 1 THEN app_code END), CASE WHEN MAX(CASE WHEN row_start = 1 THEN app_id END) = 1880521 THEN 'gfso' ELSE 'zgda' END) AS app_code,
-    MAX(CASE WHEN row_start = 1 THEN group_id END) AS group_id,
-    MAX(CASE WHEN row_start = 1 THEN channel_id END) AS channel_id,
-    MAX(CASE WHEN row_start = 1 THEN afk_turn_cnt END) AS afk_turn_cnt,
-    COUNT(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN 1 END) AS settle_count,
-    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(depositdiff AS STRING) END ORDER BY game_datetime ASC SEPARATOR '#') AS deposit_diff_path,
-    GROUP_CONCAT(CASE WHEN fee = 0 AND result_id IS NULL THEN CAST(magnification AS STRING) END ORDER BY game_datetime ASC SEPARATOR '#') AS deposit_magnification_path
-FROM ranked_combat
-GROUP BY game_id, uid, resultguid;
-```
-
-### 增量更新 SQL
-
-```sql
--- 参数：将 ${DATE_BEGIN} 替换为实际日期（date 格式，如 '2026-04-28'）
--- 注意：查询范围包含 ${DATE_BEGIN} 和 ${DATE_END+1}，以获取跨天对局的完整数据
-INSERT INTO tcy_temp.dws_crazyddz_daily_game
-WITH target_resultguids AS (
-    SELECT DISTINCT resultguid
-    FROM tcy_temp.crazyddz_daily_game_raw
-    WHERE game_id = 521 
-      AND dt BETWEEN '2026-03-01' AND '2026-06-01'
-      AND fee != 0
-),
-ranked_combat AS (
-    SELECT
-        raw.*,
-        SUM(CASE WHEN raw.fee = 0 AND raw.cut = 0 AND raw.result_id IS NULL THEN raw.depositdiff ELSE 0 END) OVER(PARTITION BY raw.resultguid, raw.uid) AS game_win_loss,
-        ROW_NUMBER() OVER(PARTITION BY raw.resultguid, raw.uid ORDER BY raw.result_id, raw.game_datetime) as row_start,
-        ROW_NUMBER() OVER(PARTITION BY raw.resultguid, raw.uid ORDER BY raw.result_id desc, raw.game_datetime desc) as row_end
-    FROM tcy_temp.crazyddz_daily_game_raw raw
-    INNER JOIN target_resultguids tr ON raw.resultguid = tr.resultguid
-    WHERE raw.game_id = 521
-       AND raw.dt BETWEEN '2026-03-01' AND '2026-06-02'
-)
-SELECT
-    game_id,
-    MAX(CASE WHEN row_start = 1 THEN DATE(game_datetime) END) AS dt,
-    uid,
-    resultguid,
-    MAX(CASE WHEN row_start = 1 THEN game_datetime END) AS start_datetime,
-    MAX(CASE WHEN row_end = 1 THEN game_datetime END) AS end_datetime,
-    SUM(timecost) AS time_cost,
-    MAX(CASE WHEN row_start = 1 THEN room_id END) AS room_id,
-    MAX(CASE WHEN row_start = 1 THEN room_currency_lower END) AS room_currency_lower,
-    MAX(CASE WHEN row_start = 1 THEN room_currency_upper END) AS room_currency_upper,
-    MAX(CASE WHEN row_start = 1 THEN robot END) AS robot,
-    MAX(CASE WHEN row_start = 1 THEN `role` END) AS role,
-    MAX(CASE WHEN row_start = 1 THEN chairno END) AS chairno,
-    MAX(
-        CASE WHEN row_end = 1 THEN
-            CASE
-                WHEN result_id IS NOT NULL THEN result_id
-                WHEN game_win_loss > 0 THEN 1
-                WHEN game_win_loss < 0 THEN 2
-                ELSE 3
-            END
-        END
-    ) AS result_id,
-    7 AS play_mode,
-    MAX(CASE WHEN row_start = 1 THEN basedeposit END) AS room_base,
-    MAX(CASE WHEN row_start = 1 THEN fee END) AS room_fee,
-    MAX(CASE WHEN row_start = 1 THEN olddeposit END) AS start_money,
-    MAX(CASE WHEN row_start = 1 THEN olddeposit END) + SUM(depositdiff) AS end_money,
-    IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN depositdiff END), 0) AS game_outcome_money,
-    IFNULL(SUM(CASE WHEN fee = 0 AND cut = 0 AND result_id IS NULL THEN ABS(depositdiff) END), 0) AS game_outcome_gdp,
-    MAX(CASE WHEN row_end = 1 THEN cut END) AS is_escape,
+    IFNULL(MAX(CASE WHEN cut != 0 THEN cut END), 0) AS is_escape,
     SUM(ABS(magnification)) AS total_magnification,
     MAX(CASE WHEN row_start = 1 THEN app_id END) AS app_id,
     COALESCE(MAX(CASE WHEN row_start = 1 THEN app_code END), CASE WHEN MAX(CASE WHEN row_start = 1 THEN app_id END) = 1880521 THEN 'gfso' ELSE 'zgda' END) AS app_code,
@@ -327,10 +255,7 @@ ORDER BY settle_count;
 ## 字段使用注意
 
 1. **查询必须包含 game_id = 521**：`game_id` 为 DUPLICATE KEY 的首列，所有查询必须包含 `game_id = 521` 条件以确保查询性能
-2. **跨天对局**：
-   - 部分对局可能跨天（如 27 号开局、28 号结束）
-   - `dt` 取开局日期（row_start = 1 时的日期）
-   - 增量更新时查询范围包含 `${DATE}` 和 `${DATE} + 1 DAY`
+2. **跨天对局**：上游 raw 层已通过 min_dt 覆盖 dt，下游查询无需扩展日期范围，直接 `WHERE dt = T` 即可
 3. **多轮结算**：`settle_count` 表示一局内的结算轮数，大于 1 表示多轮结算
 4. **路径字段**：
    - `deposit_diff_path`：每轮输赢金额变化路径，用 `#` 分隔
@@ -488,7 +413,7 @@ GROUP BY dt;
 ## 表数据流向
 
 ```text
-tcy_dwd.crazyddz_daily_game_raw      （原始战绩日志，全游戏混合）
+tcy_temp.crazyddz_daily_game_raw      （原始战绩日志，全游戏混合）
             ↓  过滤疯狂斗地主 + 多轮聚合
 tcy_temp.dws_crazyddz_daily_game     （疯狂斗地主对局战绩表）
             ↓  关联分析
@@ -496,4 +421,7 @@ tcy_temp.dws_dq_app_daily_reg        （APP 端注册用户宽表）
 ```
 
 > **文档版本**：v1.0
-> **创建时间**：2026-04-30
+> **创建时间**：2026-06-11
+> **更新说明**：
+>
+> - v1.0：初始版本

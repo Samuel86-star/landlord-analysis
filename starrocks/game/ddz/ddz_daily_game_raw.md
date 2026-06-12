@@ -53,7 +53,7 @@
 | end_score | bigint | 积分玩法对局后积分数量 | 500 |
 | score_fee | int | 积分玩法对局服务费(积分) | 500 |
 | scorediff | bigint | 积分玩法积分变动数量(含服务费) | 5000 |
-| cut | int | 逃跑罚没货币（<0 代表存在逃跑行为） | 0 |
+| cut | int | 逃跑罚没货币（!=0 代表存在逃跑行为） | 0 |
 | safebox_deposit | int | 保险箱存银 | 1000 |
 | magnification | int | 个人理论总倍数 | 12 |
 | magnification_stacked | int | 个人加倍：1=不加倍，2=加倍，4=超级加倍 | 2 |
@@ -264,7 +264,7 @@ CREATE TABLE tcy_temp.ddz_daily_game_raw (
   `end_score` bigint(20) NULL COMMENT "积分玩法对局后积分数量",
   `score_fee` int(11) NULL COMMENT "积分玩法对局服务费(积分)",
   `scorediff` bigint(20) NULL COMMENT "积分玩法积分变动数量(含服务费)",
-  `cut` int(11) NULL COMMENT "逃跑罚没货币（<0代表存在逃跑行为）",
+  `cut` int(11) NULL COMMENT "逃跑罚没货币（!=0代表存在逃跑行为）",
   `safebox_deposit` int(11) NULL COMMENT "保险箱存银",
   `magnification` int(11) NULL COMMENT "个人理论总倍数",
   `magnification_stacked` int(11) NULL COMMENT "个人加倍：1=不加倍，2=加倍，4=超级加倍",
@@ -487,12 +487,8 @@ tcy_temp.dws_ddz_daily_game       （扩展字段对局表）
 tcy_temp.dws_ddz_firstday_game    （首日对局战绩表）
 ```
 
-> **文档版本**：v1.4
-> **创建时间**：2026-05-28
+> **文档版本**：v1.0
+> **创建时间**：2026-06-11
 > **更新说明**：
 >
-> - v1.4：合并旧格式文档，`extend_content` 字段结构分新旧版本说明
-> - v1.3：修正表定位（ODS 层迁移表）、增加上下游依赖字段、优化设计背景和数据流向
-> - v1.2：补充 magnification 与各 JSON 倍数字段的一致性校验示例及计算逻辑说明
-> - v1.1：根据字段说明更新建表 SQL COMMENT、修正使用示例中不存在的字段引用、补充 JSON 提取示例
-> - v1.0：初始版本，从hive抽取到starrocks中，保留原始货币字段
+> - v1.0：初始版本

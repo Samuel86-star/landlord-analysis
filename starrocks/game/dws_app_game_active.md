@@ -7,10 +7,10 @@
 | 库名 | `tcy_temp` |
 | 表名 | `dws_app_game_active` |
 | 全名 | `tcy_temp.dws_app_game_active` |
-| 类型 | DWS 层聚合表（一次性创建，**T-2 可用**） |
+| 类型 | DWS 层聚合表（一次性创建，**T-1 可用**） |
 | 描述 | APP 端每日有对局的用户去重清单，**专用于留存 flag 计算** |
 | 粒度 | uid × dt × app_id（一个用户一天一个应用一行） |
-| 数据延迟 | **T-2**：依赖 `dws_crazyddz_daily_game`（跨天对局需 T+1 日日志才可聚合），T 日活跃数据在 T+2 日才可产出 |
+| 数据延迟 | **T-1**：依赖 `dws_crazyddz_daily_game`，上游 raw 层已通过 min_dt 机制处理跨天对局，T 日活跃数据在 T+1 日可产出 |
 
 ## 设计背景
 
@@ -140,11 +140,8 @@ tcy_temp.dws_app_game_active          （每日游戏活跃用户表，留存 fl
 tcy_temp.dws_dq_app_daily_reg         （APP 端注册用户宽表）
 ```
 
-> **文档版本**：v2.1
+> **文档版本**：v1.0
+> **创建时间**：2026-06-11
 > **更新说明**：
 >
-> - v1.0：初始版本（原名 `dws_ddz_daily_play`）
-> - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid`）
-> - v2.0：重命名为 `dws_app_game_active`；新增 `app_id` 字段；补充与 `dws_app_silvergame_stat` 的对比说明
-> - **v2.1**：活跃口径扩展为 `dws_ddz_daily_game` ∪ `dws_crazyddz_daily_game`（任一存在对局即算活跃）
-> - **v2.2**：补充与 `dws_app_scoregame_stat` 和 `dws_app_allgame_stat` 的定位区别
+> - v1.0：初始版本

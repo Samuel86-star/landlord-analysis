@@ -121,7 +121,7 @@
 | total_diff_money | bigint | 该玩法总输赢（含服务费还原） | 2000 |
 | total_fee_paid | int | 该玩法总服务费 | 800 |
 | escape_count | int | 该玩法逃跑次数 | 0 |
-| distinct_rooms | int | 该玩法游玩房间数 | 2 |
+| distinct_rooms | tinyint | 该玩法游玩房间数 | 2 |
 | total_settle_rounds | int | 总结算轮数（非 510K 玩法默认 1，510K 多轮累计） | 25 |
 | avg_settle_rounds | double | 平均每局轮数（非 510K 玩法默认 1.0，510K 多轮平均） | 5.2 |
 | outcome_gdp | bigint | 510K 货币流转绝对值累计（仅 play_mode=7 有值，其他玩法为 0） | 150000 |
@@ -203,7 +203,10 @@ PROPERTIES (
 > **说明**：经典系 / 积分玩法（`dws_ddz_daily_game`，单轮，play_mode 1~6）与 510K（`dws_crazyddz_daily_game`，多轮，play_mode=7）通过 UNION ALL 拼接，各自独立聚合后合并写入。
 
 ```sql
--- 参数：将 '2026-06-08' 替换为目标日期
+-- 批量初始化指定时间段内的数据
+-- 参数说明：
+--   ${START_DATE}：起始日期（date 格式，如 '2026-06-01'）
+--   ${END_DATE}：结束日期（date 格式，如 '2026-06-08'）
 INSERT INTO tcy_temp.dws_app_allgame_stat
 WITH ddz_modes AS (
     -- 经典/不洗牌/癞子/比赛/积分/好友房（从 dws_ddz_daily_game 统一聚合）
@@ -212,7 +215,8 @@ WITH ddz_modes AS (
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime ASC) AS game_seq,
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt = '2026-06-08'
+    WHERE game_id = 53
+      AND dt BETWEEN '2026-06-01' AND '2026-06-08'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 ),
@@ -223,20 +227,20 @@ ddz_modes_qt AS (
 ),
 ddz_streaks AS (
     SELECT
-        uid, play_mode,
+        uid, play_mode, dt,
         MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS max_win_streak,
         MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS max_lose_streak
     FROM (
-        SELECT uid, play_mode, result_id, grp, COUNT(*) AS streak_len
+        SELECT uid, play_mode, dt, result_id, grp, COUNT(*) AS streak_len
         FROM (
-            SELECT uid, play_mode, result_id,
-                game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, result_id ORDER BY game_seq) AS grp
+            SELECT uid, play_mode, dt, result_id,
+                game_seq - ROW_NUMBER() OVER (PARTITION BY uid, play_mode, dt, result_id ORDER BY game_seq) AS grp
             FROM ddz_modes_qt
             WHERE result_id IN (1, 2)
         ) g
-        GROUP BY uid, play_mode, result_id, grp
+        GROUP BY uid, play_mode, dt, result_id, grp
     ) s
-    GROUP BY uid, play_mode
+    GROUP BY uid, play_mode, dt
 ),
 ddz_agg AS (
     SELECT
@@ -272,34 +276,34 @@ ddz_agg AS (
         MIN(g.end_money) AS money_valley,
         SUM(g.game_outcome_money) AS total_diff_money,
         SUM(g.room_fee) AS total_fee_paid,
-        COUNT(CASE WHEN g.cut < 0 THEN 1 END) AS escape_count,
+        COUNT(CASE WHEN g.cut != 0 THEN 1 END) AS escape_count,
         1 AS total_settle_rounds,
         1.0 AS avg_settle_rounds,
         0 AS outcome_gdp,
         1 AS max_settle_round_single
     FROM ddz_modes_qt g
-    LEFT JOIN ddz_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode
+    LEFT JOIN ddz_streaks s ON g.uid = s.uid AND g.play_mode = s.play_mode AND g.dt = s.dt
     GROUP BY g.app_id, g.play_mode, g.uid, g.dt
 ),
 crazyddz_agg AS (
     -- 510K（从 dws_crazyddz_daily_game 聚合，倍数用 total_magnification）
     SELECT
-        app_id,
+        g.app_id,
         7 AS play_mode,
-        uid, dt,
+        g.uid, g.dt,
         COUNT(*) AS game_count,
-        SUM(time_cost) AS total_play_seconds,
-        ROUND(AVG(time_cost), 1) AS avg_game_seconds,
-        COUNT(DISTINCT room_id) AS distinct_rooms,
-        COUNT(CASE WHEN result_id = 1 THEN 1 END) AS win_count,
-        COUNT(CASE WHEN result_id = 2 THEN 1 END) AS lose_count,
-        ROUND(COUNT(CASE WHEN result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
-        ROUND(COUNT(CASE WHEN result_id = 2 THEN 1 END) * 100.0 / COUNT(*), 2) AS lose_rate,
-        MAX(CASE WHEN result_id = 1 THEN win_streak ELSE 0 END) AS max_win_streak,
-        MAX(CASE WHEN result_id = 2 THEN lose_streak ELSE 0 END) AS max_lose_streak,
-        ROUND(AVG(total_magnification), 2) AS avg_magnification,
-        MAX(total_magnification) AS max_magnification,
-        ROUND(AVG(ABS(game_outcome_money) / NULLIF(room_base, 0)), 2) AS avg_real_magnification,
+        SUM(g.time_cost) AS total_play_seconds,
+        ROUND(AVG(g.time_cost), 1) AS avg_game_seconds,
+        COUNT(DISTINCT g.room_id) AS distinct_rooms,
+        COUNT(CASE WHEN g.result_id = 1 THEN 1 END) AS win_count,
+        COUNT(CASE WHEN g.result_id = 2 THEN 1 END) AS lose_count,
+        ROUND(COUNT(CASE WHEN g.result_id = 1 THEN 1 END) * 100.0 / COUNT(*), 2) AS win_rate,
+        ROUND(COUNT(CASE WHEN g.result_id = 2 THEN 1 END) * 100.0 / COUNT(*), 2) AS lose_rate,
+        ANY_VALUE(str.win_streak),
+        ANY_VALUE(str.lose_streak),
+        ROUND(AVG(g.total_magnification), 2) AS avg_magnification,
+        MAX(g.total_magnification) AS max_magnification,
+        ROUND(AVG(ABS(g.game_outcome_money) / NULLIF(g.room_base, 0)), 2) AS avg_real_magnification,
         COUNT(CASE WHEN g.multi_quartile = 1 THEN 1 END) AS multi_q1_games,
         COUNT(CASE WHEN g.multi_quartile = 2 THEN 1 END) AS multi_q2_games,
         COUNT(CASE WHEN g.multi_quartile = 3 THEN 1 END) AS multi_q3_games,
@@ -312,53 +316,55 @@ crazyddz_agg AS (
         0 AS bomb_3plus_games,
         0 AS games_with_grab,
         0 AS games_player_doubled,
-        MAX(CASE WHEN seq_asc = 1 THEN start_money END) AS start_money,
-        MAX(CASE WHEN seq_desc = 1 THEN end_money END) AS end_money,
-        MAX(end_money) AS money_peak,
-        MIN(end_money) AS money_valley,
-        SUM(game_outcome_money) AS total_diff_money,
-        SUM(room_fee) AS total_fee_paid,
-        COUNT(CASE WHEN is_escape < 0 THEN 1 END) AS escape_count,
+        MAX(CASE WHEN g.seq_asc = 1 THEN g.start_money END) AS start_money,
+        MAX(CASE WHEN g.seq_desc = 1 THEN g.end_money END) AS end_money,
+        MAX(g.end_money) AS money_peak,
+        MIN(g.end_money) AS money_valley,
+        SUM(g.game_outcome_money) AS total_diff_money,
+        SUM(g.room_fee) AS total_fee_paid,
+        COUNT(CASE WHEN g.is_escape != 0 THEN 1 END) AS escape_count,
         SUM(g.settle_count) AS total_settle_rounds,
         ROUND(AVG(g.settle_count), 2) AS avg_settle_rounds,
         SUM(g.game_outcome_gdp) AS outcome_gdp,
         MAX(g.settle_count) AS max_settle_round_single
     FROM (
         SELECT *,
-            ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime ASC) AS seq_asc,
-            ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime DESC) AS seq_desc,
-            NTILE(4) OVER (ORDER BY total_magnification) AS multi_quartile
+            ROW_NUMBER() OVER (PARTITION BY app_id, uid ORDER BY start_datetime ASC) AS seq_asc,
+            ROW_NUMBER() OVER (PARTITION BY app_id, uid ORDER BY start_datetime DESC) AS seq_desc,
+            NTILE(4) OVER (PARTITION BY app_id ORDER BY total_magnification) AS multi_quartile
         FROM tcy_temp.dws_crazyddz_daily_game
         WHERE game_id = 521
-          AND dt = '2026-06-08'
+          AND app_id = 1880053
+          AND dt BETWEEN '2026-06-01' AND '2026-06-08'
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
     ) g
     LEFT JOIN (
-        SELECT uid,
+        SELECT app_id, uid, dt,
             MAX(CASE WHEN result_id = 1 THEN streak_len ELSE 0 END) AS win_streak,
             MAX(CASE WHEN result_id = 2 THEN streak_len ELSE 0 END) AS lose_streak
         FROM (
-            SELECT uid, result_id, grp, COUNT(*) AS streak_len
+            SELECT app_id, uid, dt, result_id, grp, COUNT(*) AS streak_len
             FROM (
-                SELECT uid, result_id,
-                    seq_asc - ROW_NUMBER() OVER (PARTITION BY uid, result_id ORDER BY seq_asc) AS grp
+                SELECT app_id, uid, dt, result_id,
+                    seq_asc - ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt, result_id ORDER BY seq_asc) AS grp
                 FROM (
-                    SELECT uid, result_id,
-                        ROW_NUMBER() OVER (PARTITION BY uid ORDER BY start_datetime ASC) AS seq_asc
+                    SELECT app_id, uid, dt, result_id,
+                        ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt ORDER BY start_datetime ASC) AS seq_asc
                     FROM tcy_temp.dws_crazyddz_daily_game
                     WHERE game_id = 521
-                      AND dt = '2026-06-08'
+                      AND app_id = 1880053
+                      AND dt BETWEEN '2026-06-01' AND '2026-06-08'
                       AND robot != 1
                       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
                       AND result_id IN (1, 2)
                 ) r
             ) g
-            GROUP BY uid, result_id, grp
+            GROUP BY app_id, uid, dt, result_id, grp
         ) s
-        GROUP BY uid
-    ) str ON g.uid = str.uid
-    GROUP BY app_id, uid, dt
+        GROUP BY app_id, uid, dt
+    ) str ON g.app_id = str.app_id AND g.uid = str.uid AND g.dt = str.dt
+    GROUP BY g.app_id, g.uid, g.dt
 )
 SELECT * FROM ddz_agg
 UNION ALL
@@ -415,7 +421,8 @@ SELECT
     ROUND(AVG(g.win_rate), 2) AS avg_win_rate,
     ROUND(AVG(g.total_diff_money), 0) AS avg_outcome
 FROM tcy_temp.dws_app_allgame_stat g
-WHERE g.dt = '2026-06-01'
+WHERE g.app_id = 1880053
+  AND g.dt = '2026-06-01'
   AND g.game_count > 0
 GROUP BY g.play_mode, has_q4
 ORDER BY g.play_mode, has_q4;
@@ -435,7 +442,8 @@ SELECT
     ROUND(AVG(g.outcome_gdp), 0) AS avg_gdp,
     ROUND(AVG(g.win_rate), 2) AS avg_win_rate
 FROM tcy_temp.dws_app_allgame_stat g
-WHERE g.dt = '2026-06-01'
+WHERE g.app_id = 1880053
+  AND g.dt = '2026-06-01'
   AND g.play_mode = 7
   AND g.game_count > 0
 GROUP BY round_group
@@ -459,7 +467,8 @@ SELECT
 FROM tcy_temp.dws_app_silvergame_stat s
 JOIN tcy_temp.dws_app_allgame_stat g
   ON s.app_id = g.app_id AND s.uid = g.uid AND s.dt = g.dt
-WHERE s.dt = '2026-06-01'
+WHERE s.app_id = 1880053
+  AND s.dt = '2026-06-01'
   AND g.game_count > 0
 GROUP BY g.play_mode, bottom_group
 ORDER BY g.play_mode, bottom_group;
@@ -478,7 +487,8 @@ SELECT 'classic' AS source,
        SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) AS mismatch_rows,
        ROUND(SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
 FROM tcy_temp.dws_ddz_daily_game
-WHERE dt = '2026-06-08'
+WHERE game_id = 53
+  AND dt = '2026-06-08'
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 GROUP BY dt
@@ -491,6 +501,7 @@ SELECT '510k' AS source,
        ROUND(SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
+  AND app_id = 1880053
   AND dt = '2026-06-08'
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
@@ -506,7 +517,8 @@ WITH detail_users AS (
     FROM (
         SELECT app_id, uid, dt
         FROM tcy_temp.dws_ddz_daily_game
-        WHERE dt = '2026-06-08'
+        WHERE game_id = 53
+          AND dt = '2026-06-08'
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
         UNION ALL
@@ -524,7 +536,8 @@ SELECT g.dt,
 FROM tcy_temp.dws_app_allgame_stat g
 FULL OUTER JOIN detail_users d
   ON g.uid = d.uid AND g.dt = d.dt AND g.app_id = d.app_id
-WHERE g.dt = '2026-06-08'
+WHERE g.app_id = 1880053
+  AND g.dt = '2026-06-08'
 GROUP BY g.dt;
 
 -- 3. 总局数一致性：allgame_stat 总局数 = 上游明细总行数
@@ -533,7 +546,8 @@ WITH detail_agg AS (
     FROM (
         SELECT app_id, uid, dt
         FROM tcy_temp.dws_ddz_daily_game
-        WHERE dt = '2026-06-08'
+        WHERE game_id = 53
+          AND dt = '2026-06-08'
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
         UNION ALL
@@ -551,7 +565,8 @@ SELECT SUM(g.game_count) AS stat_total_games,
 FROM tcy_temp.dws_app_allgame_stat g
 FULL OUTER JOIN detail_agg d
   ON g.uid = d.uid AND g.dt = d.dt AND g.app_id = d.app_id
-WHERE COALESCE(g.dt, d.dt) = '2026-06-08';
+WHERE g.app_id = 1880053
+  AND COALESCE(g.dt, d.dt) = '2026-06-08';
 
 -- 4. 510K 专属：allgame_stat 中 play_mode=7 的倍数分布
 SELECT
@@ -560,19 +575,14 @@ SELECT
     PERCENTILE_APPROX(avg_magnification, 0.75) AS p75,
     PERCENTILE_APPROX(avg_magnification, 0.90) AS p90
 FROM tcy_temp.dws_app_allgame_stat
-WHERE play_mode = 7 AND dt BETWEEN '2026-06-01' AND '2026-06-07';
+WHERE app_id = 1880053
+  AND play_mode = 7 AND dt BETWEEN '2026-06-01' AND '2026-06-07';
 ```
 
 ## 版本历史
 
-> **文档版本**：v3.1
-> **创建时间**：2026-04-13
+> **文档版本**：v1.0
+> **创建时间**：2026-06-11
 > **更新说明**：
 >
-> - **v3.1**：新增 `lose_rate` 字段（510K 平局导致 win_rate + lose_rate 不互补）；炸弹字段从汇总 `total_bomb_count` 改为分布 `bomb_0_games` / `bomb_1_games` / `bomb_2_games` / `bomb_3plus_games`；非 510K 玩法的 settle_rounds 默认值从 0/NULL 改为 1/1.0；保留 `outcome_gdp`（资金进出强度有独立分析价值）；新增平局说明（注意事项第5条）
-> - **v3.0**：表名从 `dws_app_gamemode_stat` 改为 `dws_app_allgame_stat`，与姊妹表 `silvergame`/`scoregame` 命名体系统一；文档结构参照 silvergame_stat 重构，补充留存分析示例和数据校验 SQL；`dws_app_silvergame_stat_design.md` 设计文档完成使命后废弃
-> - **v2.2**：倍数分桶从硬编码阈值（≤6 / 6~24 / >24）改为分位分桶（multi_q1~q4），使用 NTILE(4) 按当天该玩法倍数分布动态计算，解决不洗牌/癞子/510K 阈值不适用的问题
-> - **v2.1**：新增 510K 体验字段（total_settle_rounds / avg_settle_rounds / outcome_gdp / max_settle_round_single），从 silvergame_stat 迁移至本表，保持两表边界清晰
-> - **v2.0**：修正比赛(play_mode=5)币种为积分（原误标为银子）；新增 pay_mode=4/6 积分玩法和 play_mode=7 510K；移除 `app_code` 维度；新增 510K 增量 SQL；币种差异和倍数阈值差异写入使用注意
-> - v1.1：表名去掉 ddz 前缀，去掉 app_code 维度，粒度调整为 uid × dt × play_mode
-> - v1.0：初始版本，从 `dws_ddz_app_game_stat` 拆分出按玩法维度的聚合表
+> - v1.0：初始版本

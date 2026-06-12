@@ -20,7 +20,7 @@
 | 表名 | 币种 | play_mode | 状态 |
 | ---- | ---- | --------- | ---- |
 | `dws_app_silvergame_stat` | 银子 | 1=经典, 2=不洗牌, 3=癞子, 7=510K | ✅ 已建 |
-| `dws_app_scoregame_stat`（本表） | 积分 | 4=积分(PC), 5=比赛, 6=好友房 | 🔜 待建 |
+| `dws_app_scoregame_stat`（本表） | 积分 | 4=积分(PC), 5=比赛, 6=好友房 | ✅ 已建 |
 
 > **边界约定**：两表 play_mode 互不重叠，并集即全部玩法。`dws_app_scoregame_stat` 因积分玩法免费，去掉了银子表中的全部金流字段（`start_money`、`end_money`、`money_peak`、`money_valley`、`total_diff_money`、`total_fee_paid`），仅保留参与度与胜负指标。需要跨币种的玩法体验对比走 `dws_app_allgame_stat`（全玩法、按 play_mode 拆分）。
 
@@ -139,7 +139,10 @@ PROPERTIES (
 > **说明**：积分玩法数据仅来自 `dws_ddz_daily_game`（经典斗地主明细表），无需 UNION ALL `dws_crazyddz_daily_game`（510K 为银子玩法，无积分版本）。积分玩法不存在平局，`win_rate + lose_rate = 100`。
 
 ```sql
--- 参数：将 '2026-06-08' 替换为目标日期
+-- 批量初始化指定时间段内的数据
+-- 参数说明：
+--   ${START_DATE}：起始日期（date 格式，如 '2026-03-01'）
+--   ${END_DATE}：结束日期（date 格式，如 '2026-06-10'）
 INSERT INTO tcy_temp.dws_app_scoregame_stat
 WITH ranked AS (
     SELECT *,
@@ -147,7 +150,7 @@ WITH ranked AS (
         ROW_NUMBER() OVER (PARTITION BY app_id, uid, dt ORDER BY game_datetime DESC) AS seq_desc
     FROM tcy_temp.dws_ddz_daily_game
     WHERE game_id = 53
-      AND dt between '2026-03-01' and '2026-06-08'
+      AND dt between '${START_DATE}' and '${END_DATE}'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND play_mode IN (4, 5, 6)
@@ -183,7 +186,7 @@ SELECT
     ROUND(COUNT(CASE WHEN r.result_id = 2 THEN 1 END) * 100.0 / COUNT(*), 2) AS lose_rate,
     ANY_VALUE(st.max_win_streak) AS max_win_streak,
     ANY_VALUE(st.max_lose_streak) AS max_lose_streak,
-    SUM(CASE WHEN r.cut < 0 THEN 1 ELSE 0 END) AS escape_count
+    SUM(CASE WHEN r.cut != 0 THEN 1 ELSE 0 END) AS escape_count
 FROM ranked r
 LEFT JOIN streaks st ON r.app_id = st.app_id AND r.uid = st.uid AND r.dt = st.dt
 GROUP BY r.app_id, r.uid, r.dt;
@@ -286,7 +289,7 @@ ORDER BY player_type;
 WITH detail_users AS (
     SELECT DISTINCT app_id, uid, dt
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt = '2026-06-08'
+    WHERE dt BETWEEN '${START_DATE}' AND '${END_DATE}'
       AND game_id = 53
       AND play_mode IN (4, 5, 6)
       AND robot != 1
@@ -298,14 +301,14 @@ SELECT g.dt,
 FROM tcy_temp.dws_app_scoregame_stat g
 FULL OUTER JOIN detail_users d
   ON g.uid = d.uid AND g.dt = d.dt AND g.app_id = d.app_id
-WHERE g.dt = '2026-06-08'
+WHERE g.dt BETWEEN '${START_DATE}' AND '${END_DATE}'
 GROUP BY g.dt;
 
 -- 2. 总局数一致性：scoregame_stat 总局数 = 上游明细总行数
 WITH detail_agg AS (
     SELECT app_id, uid, dt, COUNT(*) AS detail_games
     FROM tcy_temp.dws_ddz_daily_game
-    WHERE dt = '2026-06-08'
+    WHERE dt BETWEEN '${START_DATE}' AND '${END_DATE}'
       AND game_id = 53
       AND play_mode IN (4, 5, 6)
       AND robot != 1
@@ -317,7 +320,7 @@ SELECT SUM(g.game_count) AS stat_total_games,
 FROM tcy_temp.dws_app_scoregame_stat g
 FULL OUTER JOIN detail_agg d
   ON g.uid = d.uid AND g.dt = d.dt AND g.app_id = d.app_id
-WHERE COALESCE(g.dt, d.dt) = '2026-06-08';
+WHERE COALESCE(g.dt, d.dt) BETWEEN '${START_DATE}' AND '${END_DATE}';
 ```
 
 ### 跨表边界校验（silvergame_stat ↔ scoregame_stat）
@@ -330,18 +333,14 @@ SELECT COUNT(DISTINCT s.uid) AS silver_users,
 FROM tcy_temp.dws_app_silvergame_stat s
 FULL OUTER JOIN tcy_temp.dws_app_scoregame_stat g
   ON s.uid = g.uid AND s.app_id = g.app_id AND s.dt = g.dt
-WHERE COALESCE(s.dt, g.dt) = '2026-06-08'
+WHERE COALESCE(s.dt, g.dt) BETWEEN '${START_DATE}' AND '${END_DATE}'
   AND COALESCE(s.app_id, g.app_id) = 1880053;
 ```
 
 ## 版本历史
 
 > **文档版本**：v1.0
-> **创建时间**：2026-06-09
-> **设计目标**：积分玩法参与度与胜负分析，补充银子表未覆盖的积分玩法（4/5/6）统计
-> **核心决策**：
+> **创建时间**：2026-06-11
+> **更新说明**：
 >
-> - 本表 = 参与度 + 胜负，无金流字段（积分玩法免费）
-> - 单数据源：仅从 `dws_ddz_daily_game` 聚合，无需 UNION ALL
-> - 与 `dws_app_silvergame_stat` 互为姊妹表，play_mode 互不重叠，并集即全玩法
-> - 玩法体验维度走 `dws_app_allgame_stat`（uid × dt × play_mode）
+> - v1.0：初始版本

@@ -8,23 +8,22 @@
 | 表名 | `crazyddz_daily_game_raw` |
 | 全名 | `tcy_temp.crazyddz_daily_game_raw` |
 | 类型 | ODS 层迁移表（每日增量） |
-| 描述 | 将 Hive 原始对局日志迁移至 StarRocks，保持原始字段不变，不做字段统一转换 |
+| 描述 | 将 StarRocks 全量原始对局日志迁移至 StarRocks 510K日志表，保持原始字段不变，不做字段统一转换 |
 | 粒度 | resultguid + uid（一个对局的单个玩家一行） |
-| 上游表 | `hive_catalog_cdh5.dwd.fact_game_combatgains` |
+| 上游表 | `tcy_dwd.dwd_game_combatgains_si` |
 | 下游表 | `tcy_temp.dws_crazyddz_daily_game` |
 
 ## 设计背景
 
-本表的核心目的是将 Hive 中的原始对局日志 `hive_catalog_cdh5.dwd.fact_game_combatgains` 迁移到 StarRocks 数仓（`tcy_temp` 库），以利用 StarRocks 的 OLAP 查询性能支撑后续分析工作。
+本表的核心目的是将 StarRocks 中的全量原始对局日志 `tcy_dwd.dwd_game_combatgains_si` 中 510K（game_id = 521）的数据抽取到 `tcy_temp` 库，以利用 StarRocks 的 OLAP 查询性能支撑后续分析工作。
 
-原始表存储了所有玩法的对局日志，但不同玩法使用不同的货币字段：
+疯狂斗地主为纯银子玩法，仅使用银子相关字段：
 
-| 玩法 | 货币类型 | 底分字段 | 服务费字段 | 对局前货币 | 对局后货币 | 货币变动值(含服务费) |
-| ---- | ------- | ------- | --------- | --------- | --------- | ------- |
-| 经典/不洗牌/癞子 | 银子 | `basedeposit` | `fee` | `olddeposit` | `end_deposit` | `depositdiff` |
-| 积分/好友房/比赛 | 积分 | `basescore` | `score_fee` | `oldscore` | `end_score` | `scorediff` |
+| 货币类型 | 底分字段 | 服务费字段 | 对局前货币 | 对局后货币 | 货币变动值(含服务费) |
+| ------- | ------- | --------- | --------- | --------- | ------- |
+| 银子 | `basedeposit` | `fee` | `olddeposit` | `end_deposit` | `depositdiff` |
 
-迁移过程中保持原始字段不变，未做统一转换（统一转换由下游 `dws_crazyddz_daily_game` 表完成）。表中同时保留了 JSON 字段 `magnification_subdivision`（个人操作倍数）和 `extend_content`（手牌等扩展信息），供下游按需解析提取。
+迁移过程中保持原始字段不变，未做统一转换（统一转换由下游 `dws_crazyddz_daily_game` 表完成）。
 
 ### app_id 与 game_id 业务关系
 
@@ -35,30 +34,11 @@
 
 > **注意**：疯狂斗地主有独立 app（app_id = 1880521），同时也被内嵌在斗地主 app（app_id = 1880053）中。因此 game_id = 521 的战绩中，同一局的玩家 app_id 可能不同（1880053 或 1880521）。查询时需根据分析目的决定是否合并两个 app_id 的数据。
 
-### 已知数据质量问题：fee 重复上报
-
-同一 `resultguid + uid` 下存在多条 `fee > 0 AND result_id IS NOT NULL` 的记录，正常情况应仅有一条。这是研发端重复上报导致的，下游聚合时需注意此情况。
-
-排查 SQL：
-
-```sql
-SELECT resultguid, uid, COUNT(*) AS cnt
-FROM tcy_temp.crazyddz_daily_game_raw
-WHERE game_id = 521
-  AND fee != 0
-  AND result_id IS NOT NULL
-GROUP BY resultguid, uid
-HAVING COUNT(*) > 1
-LIMIT 20;
-```
-
-> **校验状态**：已与下游 `dws_crazyddz_daily_game` 对盘确认，数据整体无误。
-
 ## 字段说明
 
 | 字段名 | 类型 | 说明 | 示例值 |
 | ------ | ---- | ---- | ------ |
-| game_id | int | 游戏 ID | 53 |
+| game_id | int | 游戏 ID | 521 |
 | dt | date | 对局日期 | 2026-04-08 |
 | uid | int | 玩家 ID | 123456789 |
 | game_datetime | datetime | 对局时间 | 2026-04-08 10:30:00 |
@@ -70,13 +50,13 @@ LIMIT 20;
 | robot | tinyint | 机器人标记：1=机器人，其他=真人 | 0 |
 | role | tinyint | 角色：1=地主，2=农民 | 1 |
 | chairno | tinyint | 座位号（0/1/2） | 0 |
-| result_id | tinyint | 结果：1=获胜，2=失败 | 1 |
+| result_id | tinyint | 结果：1=获胜，2=失败，3=平局 | 1 |
 | basedeposit | int | 银子玩法房间底分(银子) | 100 |
 | olddeposit | bigint | 银子玩法对局前银子数量 | 5500 |
 | end_deposit | bigint | 银子玩法对局后银子数量 | 500 |
 | fee | int | 银子玩法对局服务费(银子) | 500 |
 | depositdiff | bigint | 银子玩法银子变动数量(含服务费) | 5000 |
-| cut | int | 逃跑罚没货币（<0 代表存在逃跑行为） | 0 |
+| cut | int | 逃跑罚没货币（!=0 代表存在逃跑行为） | 0 |
 | safebox_deposit | int | 保险箱存银 | 1000 |
 | magnification | int | 个人理论总倍数 | 12 |
 | magnification_stacked | int | 个人加倍：1=不加倍，2=加倍，4=超级加倍 | 2 |
@@ -102,13 +82,13 @@ CREATE TABLE tcy_temp.crazyddz_daily_game_raw (
   `robot` tinyint(4) NULL COMMENT "机器人标记：1=机器人，其他=真人",
   `role` tinyint(4) NULL COMMENT "角色：1=地主，2=农民",
   `chairno` tinyint(4) NULL COMMENT "座位号（0/1/2）",
-  `result_id` tinyint(4) NULL COMMENT "结果：1=获胜，2=失败",
+  `result_id` tinyint(4) NULL COMMENT "结果：1=获胜，2=失败，3=平局",
   `basedeposit` int(11) NULL COMMENT "银子玩法房间底分(银子)",
   `olddeposit` bigint(20) NULL COMMENT "银子玩法对局前银子数量",
   `end_deposit` bigint(20) NULL COMMENT "银子玩法对局后银子数量",
   `fee` int(11) NULL COMMENT "银子玩法对局服务费(银子)",
   `depositdiff` bigint(20) NULL COMMENT "银子玩法银子变动数量(含服务费)",
-  `cut` int(11) NULL COMMENT "逃跑罚没货币（<0代表存在逃跑行为）",
+  `cut` int(11) NULL COMMENT "逃跑罚没货币（!=0代表存在逃跑行为）",
   `safebox_deposit` int(11) NULL COMMENT "保险箱存银",
   `magnification` int(11) NULL COMMENT "个人理论总倍数",
   `magnification_stacked` int(11) NULL COMMENT "个人加倍：1=不加倍，2=加倍，4=超级加倍",
@@ -139,26 +119,53 @@ PROPERTIES (
 
 ## 更新SQL
 
+510K 存在跨天对局（同一 resultguid 的玩家记录可能分布在 T 日和 T+1 日），通过 `MIN(dt) OVER (PARTITION BY resultguid)` 确定每个对局的首次出现日期并覆盖 `dt` 字段，T 日初始化时一并回补 T+1 日属于该对局的记录。下游读取时无需关心跨天——直接 `WHERE dt = T` 即可。
+
 ```sql
+-- 批量初始化（以 ${START_DATE} = 20260601、${END_DATE} = 20260610 为例）
+-- dt 扫描范围扩展到 END_DATE + 1，确保最后一天跨天对局不丢记录
 INSERT INTO tcy_temp.crazyddz_daily_game_raw
 WITH base_data AS (
     SELECT 
-        game_id, dt, uid, time_unix, resultguid, timecost,
+        game_id, uid, time_unix, resultguid, timecost,
         room, room_currency_lower, room_currency_upper, robot, role, chairno, result_id,
         basedeposit, olddeposit, end_deposit, fee, depositdiff,
         cut, safebox_deposit, magnification, magnification_stacked, channel_id, group_id, app_id, app_code, afk_turn_cnt,
+        MIN(dt) OVER (PARTITION BY resultguid) AS min_dt,
         MAX(CASE WHEN app_id = 1880053 THEN 1 ELSE 0 END) OVER (PARTITION BY resultguid) AS has_target_app
-    FROM hive_catalog_cdh5.dwd.fact_game_combatgains
-    WHERE dt between 20260525 and 20260531
-      AND game_id = 521
+    FROM tcy_dwd.dwd_game_combatgains_si
+    WHERE game_id = 521
+      AND dt BETWEEN 20260601 AND 20260611
 )
 SELECT 
-    game_id, dt, uid, FROM_UNIXTIME(time_unix / 1000) AS game_datetime, resultguid, timecost,
+    game_id, min_dt AS dt, uid, FROM_UNIXTIME(time_unix / 1000) AS game_datetime, resultguid, timecost,
     room, room_currency_lower, room_currency_upper, robot, role, chairno, result_id,
     basedeposit, olddeposit, end_deposit, fee, depositdiff,
     cut, safebox_deposit, magnification, magnification_stacked, channel_id, group_id, IFNULL(app_id, 1880521) AS app_id, app_code, afk_turn_cnt
 FROM base_data
 WHERE has_target_app = 1
+  AND min_dt BETWEEN 20260601 AND 20260610;
+```
+
+> **跨天对局说明**：`dt` 字段被覆盖为 resultguid 在 StarRocks 中最早出现的日期（`min_dt`），原始日期可通过 `game_datetime` 获取。下游直接 `WHERE dt = T` 即可拿到完整数据，无需关心跨天。批量初始化时，`dt` 扫描范围扩展到 `END_DATE + 1`，`min_dt` 过滤范围为 `START_DATE ~ END_DATE`，确保最后一天的跨天对局也不丢记录。
+
+> **性能注意**：上游表 `tcy_dwd.dwd_game_combatgains_si` 为全量游戏日志，查询时必须同时指定 `game_id = 521` 和 `dt` 范围，避免全表扫描。
+
+### 跨天对局验证
+
+```sql
+-- 查 dt（min_dt 归属日期）与 game_datetime 不在同一天的记录
+SELECT
+    resultguid,
+    uid,
+    dt,
+    DATE(game_datetime) AS actual_date,
+    game_datetime
+FROM tcy_temp.crazyddz_daily_game_raw
+WHERE game_id = 521
+  AND dt BETWEEN '2026-06-01' AND '2026-06-10'
+  AND dt != DATE(game_datetime)
+ORDER BY dt, resultguid;
 ```
 
 > **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
@@ -166,13 +173,13 @@ WHERE has_target_app = 1
 ## 表数据流向
 
 ```text
-hive_catalog_cdh5.dwd.fact_game_combatgains        （Hive 原始对局日志，多货币字段）
+tcy_dwd.dwd_game_combatgains_si        （StarRocks 全量游戏原始对局日志）
             ↓  迁移至 StarRocks
 tcy_temp.crazyddz_daily_game_raw       （StarRocks 原始对局表，保持原始字段）
 ```
 
 > **文档版本**：v1.0
-> **创建时间**：2026-06-02
+> **创建时间**：2026-06-11
 > **更新说明**：
 >
-> - v1.0：初始版本，从hive抽取到starrocks中，保留原始货币字段
+> - v1.0：初始版本

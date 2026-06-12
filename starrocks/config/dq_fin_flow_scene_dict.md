@@ -51,15 +51,15 @@ SELECT scene_id, scene_name, scene_remark, fin_flow_type_id, fin_flow_type_name,
 FROM hive_catalog_cdh5.dwd.dim_fin_flow_scene_dict
 WHERE scene_id IN (
     SELECT DISTINCT fin_flow_scn_id
-    FROM tcy_dwd.dwd_silver_si
-    WHERE dt BETWEEN 20260210 AND 20260428
+    FROM tcy_temp.dws_dq_silver_logs
+    WHERE dt BETWEEN 20260301 AND 20260611
       AND app_id = 1880053
 );
 ```
 
 ## 使用说明
 
-该表为维表，用于关联 `dwd_silver_si` 表中的 `fin_flow_scn_id` 字段，获取场景的详细信息。
+该表为维表，用于关联 `dws_dq_silver_logs` 表中的 `fin_flow_scn_id` 字段，获取场景的详细信息。
 
 ### 关联查询示例
 
@@ -70,10 +70,10 @@ SELECT
     s.silver_diff,
     d.scene_name,
     d.fin_flow_type_name
-FROM tcy_dwd.dwd_silver_si s
+FROM tcy_temp.dws_dq_silver_logs s
 LEFT JOIN tcy_temp.dq_fin_flow_scene_dict d
     ON s.fin_flow_scn_id = d.scene_id
-WHERE s.dt = 20260429
+WHERE s.dt = '2026-06-11'
   AND s.app_id = 1880053;
 ```
 

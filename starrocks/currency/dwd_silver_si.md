@@ -23,6 +23,7 @@
 | op_name | varchar(65533) | 操作名称 | 对局输赢 | 是 |
 | op_type_id | int | 操作类型 ID | 1 | 是 |
 | op_type_name | varchar(65533) | 操作类型名称 | 游戏 | 是 |
+| fin_flow_scn_id | int | 金流场景 ID，关联 `dq_fin_flow_scene_dict.scene_id` | 1001 | 否 |
 | silver_diff | int | 对局银两变化（含服务费） | 500 | 是 |
 | silver_deposit | int | 银两变化或服务费 | 500 | 是 |
 | silver_amount | int | 银两变化（不含服务费） | 400 | 是 |

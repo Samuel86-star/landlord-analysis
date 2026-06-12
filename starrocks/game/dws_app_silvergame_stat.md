@@ -385,10 +385,10 @@ ORDER BY g.play_mode, bottom_group;
 SELECT 'classic' AS source,
        dt,
        COUNT(*) AS total_rows,
-       SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) AS mismatch_rows,
-       ROUND(SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
+       SUM(CASE WHEN ABS((game_outcome_money - room_fee + cut) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) AS mismatch_rows,
+       ROUND(SUM(CASE WHEN ABS((game_outcome_money - room_fee + cut) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
 FROM tcy_temp.dws_ddz_daily_game
-WHERE dt = '2026-06-08'
+WHERE dt BETWEEN '${START_DATE}' AND '${END_DATE}'
   AND play_mode IN (1, 2, 3)
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
@@ -398,11 +398,11 @@ UNION ALL
 SELECT '510k' AS source,
        dt,
        COUNT(*) AS total_rows,
-       SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) AS mismatch_rows,
-       ROUND(SUM(CASE WHEN ABS((game_outcome_money + room_fee) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
+       SUM(CASE WHEN ABS((game_outcome_money - room_fee + is_escape) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) AS mismatch_rows,
+       ROUND(SUM(CASE WHEN ABS((game_outcome_money - room_fee + is_escape) - (end_money - start_money)) > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS mismatch_pct
 FROM tcy_temp.dws_crazyddz_daily_game
 WHERE game_id = 521
-  AND dt = '2026-06-08'
+  AND dt BETWEEN '${START_DATE}' AND '${END_DATE}'
   AND robot != 1
   AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
 GROUP BY dt;
@@ -417,7 +417,7 @@ WITH detail_users AS (
     FROM (
         SELECT app_id, uid, dt
         FROM tcy_temp.dws_ddz_daily_game
-        WHERE dt = '2026-06-08'
+        WHERE dt BETWEEN '${START_DATE}' AND '${END_DATE}'
           AND play_mode IN (1, 2, 3)
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
@@ -425,7 +425,7 @@ WITH detail_users AS (
         SELECT app_id, uid, dt
         FROM tcy_temp.dws_crazyddz_daily_game
         WHERE game_id = 521
-          AND dt = '2026-06-08'
+          AND dt BETWEEN '${START_DATE}' AND '${END_DATE}'
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
     ) u
@@ -436,7 +436,7 @@ SELECT s.dt,
 FROM tcy_temp.dws_app_silvergame_stat s
 FULL OUTER JOIN detail_users d
   ON s.uid = d.uid AND s.dt = d.dt AND s.app_id = d.app_id
-WHERE s.dt = '2026-06-08'
+WHERE s.dt BETWEEN '${START_DATE}' AND '${END_DATE}'
 GROUP BY s.dt;
 
 -- 3. 总局数一致性：silvergame_stat 总局数 = 上游明细总行数
@@ -445,7 +445,7 @@ WITH detail_agg AS (
     FROM (
         SELECT app_id, uid, dt
         FROM tcy_temp.dws_ddz_daily_game
-        WHERE dt = '2026-06-08'
+        WHERE dt BETWEEN '${START_DATE}' AND '${END_DATE}'
           AND play_mode IN (1, 2, 3)
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
@@ -453,7 +453,7 @@ WITH detail_agg AS (
         SELECT app_id, uid, dt
         FROM tcy_temp.dws_crazyddz_daily_game
         WHERE game_id = 521
-          AND dt = '2026-06-08'
+          AND dt BETWEEN '${START_DATE}' AND '${END_DATE}'
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
     ) u
@@ -472,7 +472,7 @@ WITH detail_agg AS (
     FROM (
         SELECT app_id, uid, dt, game_outcome_money
         FROM tcy_temp.dws_ddz_daily_game
-        WHERE dt = '2026-06-08'
+        WHERE dt BETWEEN '${START_DATE}' AND '${END_DATE}'
           AND play_mode IN (1, 2, 3)
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
@@ -480,7 +480,7 @@ WITH detail_agg AS (
         SELECT app_id, uid, dt, game_outcome_money
         FROM tcy_temp.dws_crazyddz_daily_game
         WHERE game_id = 521
-          AND dt = '2026-06-08'
+          AND dt BETWEEN '${START_DATE}' AND '${END_DATE}'
           AND robot != 1
           AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
     ) u
@@ -492,23 +492,14 @@ SELECT s.uid, s.dt,
 FROM tcy_temp.dws_app_silvergame_stat s
 LEFT JOIN detail_agg d
   ON s.uid = d.uid AND s.dt = d.dt AND s.app_id = d.app_id
-WHERE s.dt = '2026-06-08'
+WHERE s.dt BETWEEN '${START_DATE}' AND '${END_DATE}'
   AND s.total_diff_money != d.detail_diff;
 ```
 
 ## 版本历史
 
-> **文档版本**：v4.3
-> **创建时间**：2026-06-08
-> **设计目标**：APP 新增留存归因 → 金流 + 玩法体验两维度分层分析
-> **核心决策**：
+> **文档版本**：v1.0
+> **创建时间**：2026-06-11
+> **更新说明**：
 >
-> - 本表 = 金流 + 参与度，不含任何倍数 / 体验指标，510K 金流完全并入
-> - 玩法体验维度走 `dws_app_allgame_stat`，倍数分桶用 NTILE(4) 分位分桶
-> - 从明细表（`dws_ddz_daily_game` + `dws_crazyddz_daily_game`）直接 UNION ALL 重算
-> - 粒度：uid × dt（去除原 `dws_ddz_app_game_stat` 的 app_code 维度）
-
-> **v4.3 变更**：表名从 `dws_app_game_stat` 改为 `dws_app_silvergame_stat`，因原名"game"易被误读为"全量玩法"，新名以币种（silver）明确边界；同步规划姊妹表 `dws_app_scoregame_stat`（积分玩法，待建）
-> **v4.2 变更**：与 allgame_stat 联动调整，allgame_stat 倍数分桶从硬编码阈值（≤6 / 6\~24 / >24）改为 NTILE(4) 分位分桶
-> **v4.1 变更**：移除 crazyddz_\* 专属字段（`total_settle_rounds` / `avg_settle_rounds` / `outcome_gdp` / `max_settle_round_single`），510K 体验信号统一由 allgame_stat（play_mode=7）承载，保持本表的纯金流边界
-> **v4.0 变更**：新建本表，替代 `dws_ddz_app_game_stat`（旧表含 app_code 与硬编码倍数阈值），510K 金流并入
+> - v1.0：初始版本

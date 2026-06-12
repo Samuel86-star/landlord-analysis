@@ -7,10 +7,10 @@
 | 库名 | `tcy_temp` |
 | 表名 | `dws_app_gamemode_active` |
 | 全名 | `tcy_temp.dws_app_gamemode_active` |
-| 类型 | DWS 层聚合表（一次性创建，**T-2 可用**） |
+| 类型 | DWS 层聚合表（一次性创建，**T-1 可用**） |
 | 描述 | APP 端每日按玩法活跃用户去重清单，**专用于"同玩法留存"flag 计算** |
 | 粒度 | uid × dt × app_id × play_mode（一个用户一天一个应用一种玩法一行） |
-| 数据延迟 | **T-2**：依赖 `dws_crazyddz_daily_game`（跨天对局需 T+1 日日志才可聚合），T 日活跃数据在 T+2 日才可产出 |
+| 数据延迟 | **T-1**：依赖 `dws_crazyddz_daily_game`，上游 raw 层已通过 min_dt 机制处理跨天对局，T 日活跃数据在 T+1 日可产出 |
 
 ## 与 `dws_app_game_active` 的区别
 
@@ -32,7 +32,7 @@
 
 ## 字段说明
 
-| 字段名 | 类型 | 说明 | 礷例值 |
+| 字段名 | 类型 | 说明 | 示例值 |
 | -------- | ------ | ------ | -------- |
 | app_id | int | 应用 ID | 1880053 |
 | uid | int | 玩家唯一标识 | 123456789 |
@@ -107,10 +107,8 @@ tcy_temp.dws_dq_app_daily_reg                 （APP 端注册用户宽表）
 tcy_temp.ddz_gamemode_firstday_features       （分玩法分析宽表）
 ```
 
-> **文档版本**：v2.1
+> **文档版本**：v1.0
+> **创建时间**：2026-06-11
 > **更新说明**：
 >
-> - v1.0：初始版本（原名 `dws_ddz_daily_play_by_mode`）
-> - v1.1：优化 Bucket 配置（32→64）；添加排序键（`ORDER BY dt, uid, play_mode`）
-> - v2.0：重命名为 `dws_app_gamemode_active`；新增 `app_id` 字段；更新与配对表的对比说明
-> - **v2.1**：新增疯狂斗地主（play_mode=7）数据源；活跃口径扩展为 `dws_ddz_daily_game` ∪ `dws_crazyddz_daily_game`
+> - v1.0：初始版本

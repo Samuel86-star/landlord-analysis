@@ -31,10 +31,11 @@
 | op_name | varchar(64) | 操作名称 | 对局输赢 |
 | op_type_id | int | 操作类型 ID | 1 |
 | op_type_name | varchar(64) | 操作类型名称 | 游戏 |
+| fin_flow_scn_id | int | 金流场景 ID，关联 `dq_fin_flow_scene_dict.scene_id` | 1001 |
 | settlement_type | tinyint | 结算类型：0=经营支出, 1=经营收入, 2=充值直得, 3=保险箱, 4=机器人, 5=沙盒, 6=后备箱 | 1 |
-| silver_diff | int | 银两变化（含服务费），正=收入，负=支出 | 500 |
-| silver_deposit | int | 银两变化或服务费 | 500 |
-| silver_amount | int | 银两变化（不含服务费） | 400 |
+| silver_diff | int | 银两变化（含服务费），正=收入，负=支出。仅 `op_id = 300501` 时有记录值。`silver_diff = silver_balance - silver_initial` | 500 |
+| silver_deposit | int | `op_id = 300501` 时为服务费，其余为货币变动值 | 500 |
+| silver_amount | int | `op_id = 300501` 时为总变动（`silver_diff + silver_deposit`），其余为货币变动值 | 400 |
 | silver_balance | bigint | 操作后银子余额 | 10000 |
 | silver_initial | bigint | 操作前银子余额 | 9500 |
 | group_id | int | 大厅组号 | 6 |
@@ -66,15 +67,16 @@
 CREATE TABLE tcy_temp.dws_dq_silver_logs (
   `app_id` int(11) NOT NULL COMMENT "应用ID",
   `dt` date NOT NULL COMMENT "日期",
+  `game_id` int(11) NOT NULL COMMENT "游戏ID",
   `uid` int(11) NOT NULL COMMENT "玩家ID",
   `app_code` varchar(32) NULL COMMENT "应用code",
   `app_vers` varchar(32) NULL COMMENT "应用版本号",
-  `game_id` int(11) NOT NULL COMMENT "游戏ID",
   `date_time` datetime NULL COMMENT "操作时间",
   `op_id` int(11) NULL COMMENT "操作ID",
   `op_name` varchar(64) NULL COMMENT "操作名称",
   `op_type_id` int(11) NULL COMMENT "操作类型ID",
   `op_type_name` varchar(64) NULL COMMENT "操作类型名称",
+  `fin_flow_scn_id` int(11) NULL COMMENT "金流场景ID，关联dq_fin_flow_scene_dict.scene_id",
   `settlement_type` tinyint(4) NULL COMMENT "结算类型：0经营支出,1经营收入,2充值直得,3保险箱,4机器人,5沙盒,6后备箱",
   `silver_diff` int(11) NULL COMMENT "银两变化（含服务费），正=收入，负=支出",
   `silver_deposit` int(11) NULL COMMENT "银两变化或服务费",
@@ -89,7 +91,7 @@ CREATE TABLE tcy_temp.dws_dq_silver_logs (
   `guid_title` varchar(255) NULL COMMENT "发放名称",
   `guid_type` tinyint(4) NULL COMMENT "发放类型：0免费，1付费"
 ) ENGINE=OLAP
-DUPLICATE KEY(`app_id`, `dt`, `uid`)
+DUPLICATE KEY(`app_id`, `dt`, `game_id`, `uid`)
 COMMENT "斗地主玩家银子变动日志宽表"
 PARTITION BY RANGE(`dt`) (
     START ("2026-01-01") END ("2027-01-01") EVERY (INTERVAL 1 DAY)
@@ -100,30 +102,34 @@ PROPERTIES (
     "compression" = "LZ4",
     "dynamic_partition.enable" = "true",
     "dynamic_partition.time_unit" = "DAY",
-    "dynamic_partition.start" = "-80",
+    "dynamic_partition.start" = "-365",
+    "dynamic_partition.history_partition_num" = "365",
     "dynamic_partition.end" = "3",
     "dynamic_partition.prefix" = "p",
     "colocate_with" = "group_daily_data"
 );
 ```
 
-### 初始化 SQL
+### 数据导入 SQL
 
 ```sql
--- 斗地主银子变动日志全量初始化
+-- 斗地主银子变动日志导入
+-- 参数：${START_DATE} / ${END_DATE} 替换为实际日期（int 格式，如 20260429）
+--       全量初始化时使用日期范围，增量更新时 START_DATE = END_DATE
 INSERT INTO tcy_temp.dws_dq_silver_logs
 SELECT
     s.app_id,
     STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
+    s.game_id,
     s.uid,
     COALESCE(s.game_code, s.app_code) as app_code,
     COALESCE(s.game_vers, s.app_vers) as app_vers,
-    s.game_id,
     s.date_time,
     s.op_id,
     s.op_name,
     s.op_type_id,
     s.op_type_name,
+    s.fin_flow_scn_id,
     COALESCE(op.settlement_type, -1) AS settlement_type,
     s.silver_diff,
     s.silver_deposit,
@@ -146,50 +152,7 @@ LEFT JOIN tcy_temp.dq_currency_guid_config gc
     ON s.app_id = gc.app_id AND s.source_guid = gc.guid
 WHERE s.app_id = 1880053
   AND s.game_id = 53
-  AND s.dt BETWEEN 20260101 AND 20260428;
-```
-
-### 增量更新 SQL
-
-```sql
--- 斗地主银子变动日志增量导入
--- 参数：将 ${DATE} 替换为实际日期（int 格式，如 20260429）
-INSERT INTO tcy_temp.dws_dq_silver_logs
-SELECT
-    s.app_id,
-    STR_TO_DATE(CAST(s.dt AS VARCHAR), '%Y%m%d') AS dt,
-    s.uid,
-    COALESCE(s.game_code, s.app_code) as app_code,
-    COALESCE(s.game_vers, s.app_vers) as app_vers,
-    s.game_id,
-    s.date_time,
-    s.op_id,
-    s.op_name,
-    s.op_type_id,
-    s.op_type_name,
-    COALESCE(op.settlement_type, -1) AS settlement_type,
-    s.silver_diff,
-    s.silver_deposit,
-    s.silver_amount,
-    s.silver_balance,
-    s.silver_initial,
-    s.group_id,
-    s.channel_id,
-    COALESCE(chn.channel_category_name, '其他') AS channel_category_name,
-    COALESCE(chn.channel_category_tag_id, -1) AS channel_category_tag_id,
-    s.source_guid,
-    COALESCE(gc.guid_title, '') AS guid_title,
-    COALESCE(gc.guid_type, CASE WHEN s.op_id = 300104 THEN 0 ELSE -1 END) AS guid_type
-FROM tcy_dwd.dwd_silver_si s
-LEFT JOIN tcy_temp.dq_channel_category_map chn
-    ON s.channel_id = chn.channel_id
-LEFT JOIN tcy_temp.dq_currency_op_config op
-    ON s.app_id = op.app_id AND s.op_id = op.op_id
-LEFT JOIN tcy_temp.dq_currency_guid_config gc
-    ON s.app_id = gc.app_id AND s.source_guid = gc.guid
-WHERE s.app_id = 1880053
-  AND s.game_id = 53
-  AND s.dt = ${DATE};
+  AND s.dt BETWEEN ${START_DATE} AND ${END_DATE};
 ```
 
 ## 使用场景
@@ -297,7 +260,8 @@ WITH src AS (
 tgt AS (
     SELECT COUNT(*) AS tgt_cnt
     FROM tcy_temp.dws_dq_silver_logs
-    WHERE dt = '2026-04-29'
+    WHERE app_id = 1880053
+      AND dt = '2026-04-29'
 )
 SELECT src.src_cnt, tgt.tgt_cnt, (src.src_cnt - tgt.tgt_cnt) AS diff
 FROM src, tgt;
@@ -318,48 +282,64 @@ SELECT
     SUM(CASE WHEN date_time IS NULL THEN 1 ELSE 0 END) AS null_date_time,
     COUNT(*) AS total_cnt
 FROM tcy_temp.dws_dq_silver_logs
-WHERE dt = '2026-04-29';
+WHERE app_id = 1880053
+  AND dt = '2026-04-29';
 ```
 
 > **期望结果**：所有 `null_*` 字段应为 0。
 
 ### 3. 银子余额连续性校验
 
-> **校验目标**：单笔流水 `silver_initial + silver_diff` 应等于 `silver_balance`（账户余额变动应闭环）。若不相等，说明源表数据质量有问题。
+> **校验目标**：操作前后的余额变动应闭环（`silver_diff = silver_balance - silver_initial`）。
+> - `op_id = 300501`（对局货币变动）：`silver_initial + silver_diff = silver_balance`
+> - 其他 op_id：`silver_diff` 无记录值，`silver_amount` 即为货币变动值，校验 `silver_initial + silver_amount = silver_balance`
 
 ```sql
 SELECT
     uid,
     date_time,
+    op_id,
     op_name,
     silver_initial,
     silver_diff,
+    silver_amount,
     silver_balance,
-    (silver_initial + silver_diff - silver_balance) AS residual
+    CASE
+        WHEN op_id = 300501 THEN ABS(silver_initial + silver_diff - silver_balance)
+        ELSE ABS(silver_initial + silver_amount - silver_balance)
+    END AS residual
 FROM tcy_temp.dws_dq_silver_logs
-WHERE dt = '2026-04-29'
-  AND ABS(silver_initial + silver_diff - silver_balance) > 0
+WHERE app_id = 1880053
+  AND dt = '2026-04-29'
+  AND CASE
+        WHEN op_id = 300501 THEN ABS(silver_initial + silver_diff - silver_balance)
+        ELSE ABS(silver_initial + silver_amount - silver_balance)
+      END > 0
 LIMIT 10;
 ```
 
 > **期望结果**：返回 0 行。若有大量不闭环记录，需排查源表 `dwd_silver_si` 数据质量。
 
-### 4. 服务费拆分一致性校验
+### 4. 服务费拆分一致性校验（仅 op_id = 300501）
 
-> **校验目标**：`silver_diff`（含服务费）应等于 `silver_amount`（不含服务费）与 `silver_deposit`（服务费部分）的代数和。
+> **校验目标**：对局货币变动场景下，`silver_diff + silver_deposit = silver_amount`。
+> **注意**：非 `op_id = 300501` 时 `silver_diff` 无记录值，不适用此校验。
 
 ```sql
 SELECT
     uid,
     date_time,
+    op_id,
     op_name,
     silver_diff,
-    silver_amount,
     silver_deposit,
-    (silver_diff - silver_amount - silver_deposit) AS residual
+    silver_amount,
+    (silver_diff + silver_deposit - silver_amount) AS residual
 FROM tcy_temp.dws_dq_silver_logs
-WHERE dt = '2026-04-29'
-  AND ABS(silver_diff - silver_amount - silver_deposit) > 0
+WHERE app_id = 1880053
+  AND dt = '2026-04-29'
+  AND op_id = 300501
+  AND ABS(silver_diff + silver_deposit - silver_amount) > 0
 LIMIT 10;
 ```
 
@@ -376,7 +356,8 @@ SELECT
     ROUND(SUM(CASE WHEN settlement_type = -1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS unmatched_settlement_pct,
     ROUND(SUM(CASE WHEN guid_type = -1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS unmatched_guid_pct
 FROM tcy_temp.dws_dq_silver_logs
-WHERE dt = '2026-04-29';
+WHERE app_id = 1880053
+  AND dt = '2026-04-29';
 ```
 
 > **期望结果**：`unmatched_channel_pct` 与 `unmatched_settlement_pct` 通常 <5%。`unmatched_guid_pct` 可较高（大部分流水无 `source_guid`），但需跟踪其趋势稳定性。
@@ -391,7 +372,8 @@ SELECT
     game_id,
     COUNT(*) AS cnt
 FROM tcy_temp.dws_dq_silver_logs
-WHERE dt = '2026-04-29'
+WHERE app_id = 1880053
+  AND dt = '2026-04-29'
 GROUP BY app_id, game_id
 HAVING app_id != 1880053 OR game_id != 53;
 ```
@@ -413,11 +395,13 @@ tcy_temp.dws_ddz_daily_game        （对局战绩统一字段表）
 
 ## 注意事项
 
-1. 仅包含斗地主游戏数据（`app_id = 1880053`，`game_id = 53`）
-2. `silver_diff` 含服务费，`silver_amount` 不含服务费，分析实际输赢时使用 `silver_amount`
-3. `silver_balance` 为操作后余额，`silver_initial` 为操作前余额
-4. 渠道分类通过 `LEFT JOIN dq_channel_category_map` 获取，未匹配到的标记为 `'其他'`
-5. 不包含渠道分类信息的 `channel_id` 可通过关联 `dq_channel_category_map` 补全
+1. **查询必须加 `WHERE app_id = 1880053`**：使用本表时 SQL 一律需要带上该条件，否则可能导致全表扫描或结果异常
+2. 仅包含斗地主游戏数据（`app_id = 1880053`，`game_id = 53`）
+3. **`op_id = 300501`（对局货币变动）**：`silver_diff = silver_balance - silver_initial`（含服务费的变动），`silver_deposit` 为服务费，`silver_amount = silver_diff + silver_deposit`（总变动）
+4. **其他 op_id**：`silver_diff` 无记录值，`silver_amount` 和 `silver_deposit` 均为货币变动值，分析时建议直接使用 `silver_amount`
+5. `silver_balance` 为操作后余额，`silver_initial` 为操作前余额
+6. 渠道分类通过 `LEFT JOIN dq_channel_category_map` 获取，未匹配到的标记为 `'其他'`
+7. 不包含渠道分类信息的 `channel_id` 可通过关联 `dq_channel_category_map` 补全
 
 > **文档版本**：v1.0
 > **创建时间**：2026-04-29
