@@ -83,6 +83,13 @@ ops/                 # 运维操作手册
 requirements/        # 研发需求文档
 ---
 
+## Git 操作规范
+
+- **Git 操作仅限 CLI 环境执行**：cowork 运行在沙箱中，`git commit`、`git push` 等操作无法实际生效
+- 在 cowork 中收到 git 操作请求时，**拒绝执行**并提示用户切换到 CLI 进行操作
+
+---
+
 ## 本地环境配置
 
 本项目使用 `CLAUDE.local.md` 存储每台机器的本地环境信息（系统、Shell、注意事项），该文件已被 `.gitignore` 排除，不会提交到远程仓库。不同机器上的 `CLAUDE.local.md` 内容可以不同。
