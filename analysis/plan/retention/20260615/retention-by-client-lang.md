@@ -417,4 +417,4 @@ ORDER BY client_lang, game_count_group;
 > **创建时间**：2026-06-15
 > **更新说明**：
 >
-> - v2.0：基于 2026-06-11 重构后数仓表全面更新。移除已废弃的 `is_login_log_missing` 过滤条件。移除已下线的 `dws_ddz_app_game_stat`，游戏留存改用 `dws_app_game_active`，游戏行为指标改用 `dws_app_silvergame_stat`。新增游戏留存口径（2.3）、游戏时长分析（3.4）、无对局率分析（3.5）。分析时间段延长至 2026-06-15。              
+> - v2.0：基于 2026-06-11 重构后数仓表全面更新。移除已废弃的 `is_login_log_missing` 过滤条件。移除已下线的 `dws_ddz_app_game_stat`，游戏留存改用 `dws_app_game_active`，游戏行为指标改用 `dws_app_silvergame_stat`。新增游戏留存口径（2.3）、游戏时长分析（3.4）、无对局率分析（3.5）。分析时间段延长至 2026-06-15。

@@ -404,4 +404,4 @@ tcy_temp.dws_ddz_daily_game        （对局战绩统一字段表）
 7. 不包含渠道分类信息的 `channel_id` 可通过关联 `dq_channel_category_map` 补全
 
 > **文档版本**：v1.0
-> **创建时间**：2
+> **创建时间**：2026-04-29

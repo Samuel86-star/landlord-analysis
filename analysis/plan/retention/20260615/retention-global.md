@@ -1501,4 +1501,3 @@ ORDER BY dimension, value;
 
 > **分析框架速查**：[retention-analysis-framework.md](retention-analysis-framework.md)
 > **上一版本**：[retention-global.md](retention-global.md)（v1.0，基于旧表结构）
-                  

@@ -757,4 +757,7 @@ ORDER BY 1;
 
 > **文档版本**：v2.0
 > **创建时间**：2026-06-15
-> *
+> **更新说明**：
+>
+> - v2.0：基于 2026-06-11 重构后的数仓表结构全面更新。移除已废弃的 `is_login_log_missing` 过滤条件。移除已下线的 `dws_ddz_app_game_stat`。游戏留存改用 `dws_app_game_active`，银子玩法指标改用 `dws_app_silvergame_stat`，全玩法体验改用 `dws_app_allgame_stat`。新增问题5（高倍局创伤下钻）。所有 SQL 使用 `DATE` 类型和 `DATE_ADD` 语法。
+
