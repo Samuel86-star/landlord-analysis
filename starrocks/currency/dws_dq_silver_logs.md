@@ -124,7 +124,7 @@ SELECT
     s.uid,
     COALESCE(s.game_code, s.app_code) as app_code,
     COALESCE(s.game_vers, s.app_vers) as app_vers,
-    s.date_time,
+    s.op_date AS date_time,
     s.op_id,
     s.op_name,
     s.op_type_id,
@@ -404,4 +404,4 @@ tcy_temp.dws_ddz_daily_game        （对局战绩统一字段表）
 7. 不包含渠道分类信息的 `channel_id` 可通过关联 `dq_channel_category_map` 补全
 
 > **文档版本**：v1.0
-> **创建时间**：2026-04-29
+> **创建时间**：2

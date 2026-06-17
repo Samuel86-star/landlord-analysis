@@ -1,0 +1,1504 @@
+# 全局层留存分析：用户属性与核心指标
+
+> 本文档聚焦**全局层**留存分析，覆盖用户属性视角和投入度视角的核心指标，采用双重留存口径（登录留存 + 游戏留存）。分玩法/分客户端/银子经济/积分玩法的专项分析见对应文档。
+>
+> **分析时间段**：2026-02-10 至 2026-06-15
+> **留存口径**：登录留存（基于 `dws_dq_daily_login`）+ 游戏留存（基于 `dws_app_game_active`）
+
+---
+
+## 目录
+
+1. [数据基础](#一数据基础)
+2. [用户属性视角](#二用户属性视角)
+3. [高相关性指标](#三高相关性指标)
+4. [中等相关性指标](#四中等相关性指标)
+5. [高危信号组合](#五高危信号组合)
+6. [游戏留存与登录留存对比](#六游戏留存与登录留存对比)
+7. [专项分析索引](#七专项分析索引)
+
+---
+
+## 一、数据基础
+
+### 1.1 核心数据表
+
+| 表名 | 粒度 | 说明 | 关键字段 |
+| ---- | ---- | ---- | ---- |
+| `dws_dq_app_daily_reg` | uid | APP端注册用户宽表（预关联登录+渠道分类） | `reg_app_code`, `reg_group_id`, `channel_category_name`, `first_day_login_cnt`, `reg_date` |
+| `dws_dq_daily_login` | uid x login_date | 每日登录聚合 | `login_date`, `login_count`, `app_id` |
+| `dws_app_game_active` | uid x dt x app_id | **游戏留存 flag**（任意玩法有对局即活跃，含 510K） | `dt`, `app_id` |
+| `dws_app_silvergame_stat` | uid x dt | 银子玩法金流+参与度（play_mode 1,2,3,7） | `game_count`, `win_rate`, `max_lose_streak`, `total_diff_money`, `money_valley`, `escape_count` |
+| `dws_app_allgame_stat` | uid x dt x play_mode | 全玩法体验分析（play_mode 1~7） | `avg_magnification`, `multi_q4_win_count`, `multi_q4_lose_count`, `room_base` |
+| `dws_ddz_firstday_game` | resultguid x uid | 经典斗地主首日对局明细 | `result_id`, `role`, `magnification`, `room_base`, `start_money`, `end_money`, `game_datetime` |
+| `dq_channel_category_map` | — | 渠道分类映射维表 | `channel_category_name` |
+
+### 1.2 留存计算公式
+
+留存计算采用 CTE 模式，核心注册表 `dws_dq_app_daily_reg` 作为左表，分别 JOIN 登录留存表和游戏留存表。
+
+```sql
+-- 登录留存：用户在第 N 天有登录行为
+LEFT JOIN tcy_temp.dws_dq_daily_login l
+    ON l.app_id = r.app_id
+    AND l.uid = r.uid
+    AND l.login_date = DATE_ADD(r.reg_date, INTERVAL N DAY)
+
+-- 游戏留存：用户在第 N 天有对局行为（任意玩法，含 510K）
+LEFT JOIN tcy_temp.dws_app_game_active a
+    ON a.app_id = r.app_id
+    AND a.uid = r.uid
+    AND a.dt = DATE_ADD(r.reg_date, INTERVAL N DAY)
+```
+
+**留存率计算示例（次留 Day 1 / 7 留 Day 7 / 30 留 Day 30）：**
+
+```sql
+-- 次留（Day 1）
+ROUND(
+    COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END)
+    * 100.0 / COUNT(DISTINCT r.uid), 2
+) AS login_day1
+
+-- 7 留（Day 7）
+ROUND(
+    COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 7 DAY) THEN r.uid END)
+    * 100.0 / COUNT(DISTINCT r.uid), 2
+) AS game_day7
+
+-- 30 留（Day 30）
+ROUND(
+    COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 30 DAY) THEN r.uid END)
+    * 100.0 / COUNT(DISTINCT r.uid), 2
+) AS game_day30
+```
+
+### 1.3 表选用决策树
+
+```text
+需要留存 flag？
+  ├── 登录留存 → dws_dq_daily_login
+  └── 游戏留存 → dws_app_game_active（任意玩法，含 510K）
+
+需要归因指标？
+  ├── 银子金流/参与度 → dws_app_silvergame_stat
+  ├── 玩法体验（倍数/炸弹/底注） → dws_app_allgame_stat
+  └── 首日对局明细 → dws_ddz_firstday_game
+
+需要用户属性？
+  └── dws_dq_app_daily_reg（含渠道分类、客户端版本、设备类型）
+```
+
+### 1.4 重要字段说明
+
+| 字段 | 来源表 | 类型 | 说明 |
+| ---- | ---- | ---- | ---- |
+| `reg_date` | `dws_dq_app_daily_reg` | DATE | 注册日期，可直接用于 DATE_ADD 计算 |
+| `reg_app_code` | `dws_dq_app_daily_reg` | STRING | `zgda` = Cocos-Lua, `zgdx` = Cocos-Creator |
+| `reg_group_id` | `dws_dq_app_daily_reg` | INT | 8,88 = iOS; 6,66,33,44,77,99 = Android |
+| `channel_category_name` | `dws_dq_app_daily_reg` | STRING | 渠道分类名称 |
+| `first_day_login_cnt` | `dws_dq_app_daily_reg` | INT | 注册当天登录次数（反映稳定性） |
+| `is_login_log_missing` | ~~`dws_dq_app_daily_reg`~~ | ~~INT~~ | **已废弃，不可使用** |
+| `money_valley` | `dws_app_silvergame_stat` | BIGINT | 当日银子谷值（最低值） |
+| `total_diff_money` | `dws_app_silvergame_stat` | BIGINT | 当日银子净变化（正=赢，负=亏） |
+| `multi_q4_win_count` | `dws_app_allgame_stat` | INT | 高倍局（>24x）获胜次数 |
+| `multi_q4_lose_count` | `dws_app_allgame_stat` | INT | 高倍局（>24x）失败次数 |
+| `avg_magnification` | `dws_app_allgame_stat` | DOUBLE | 平均倍数 |
+| `escape_count` | `dws_app_silvergame_stat` | INT | 当日逃跑次数 |
+
+> **注意**：`is_login_log_missing` 字段已废弃，所有查询中不得使用该字段进行过滤。
+
+---
+
+## 二、用户属性视角
+
+> 核心问题："谁"更容易留存/流失？
+
+### 2.1 按渠道分类留存
+
+渠道分类来自 `dws_dq_app_daily_reg.channel_category_name`，可通过 `dq_channel_category_map` 维表获取完整分类映射。
+
+```sql
+WITH reg_base AS (
+    SELECT
+        uid,
+        reg_date,
+        CASE
+            WHEN r.channel_category_name IN ('OPPO','IOS','vivo','华为','咪咕','官方(非CPS)','荣耀')
+                THEN r.channel_category_name
+            ELSE '其他'
+        END AS channel,
+        app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        rb.reg_date,
+        rb.channel,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS login_d3,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS login_d14,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date BETWEEN DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+                             AND DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+    GROUP BY rb.uid, rb.reg_date, rb.channel
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        rb.reg_date,
+        rb.channel,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS game_d3,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS game_d14,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt BETWEEN DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+                     AND DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+    GROUP BY rb.uid, rb.reg_date, rb.channel
+)
+SELECT
+    rb.channel,
+    COUNT(DISTINCT rb.uid) AS reg_users,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d3) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d3,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(lr.login_d14) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d14,
+    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d3) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d3,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
+    ROUND(SUM(gr.game_d14) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d14,
+    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
+FROM reg_base rb
+LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
+LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
+GROUP BY rb.channel
+ORDER BY reg_users DESC;
+```
+
+#### 2.1.1 渠道分类说明
+
+`dq_channel_category_map` 维表结构参考：
+
+```sql
+-- 查询渠道分类映射
+SELECT DISTINCT channel_category_name
+FROM tcy_temp.dq_channel_category_map
+WHERE app_id = 1880053
+ORDER BY channel_category_name;
+```
+
+### 2.2 按设备类型留存
+
+iOS 与 Android 的用户体验差异可能导致留存偏差（如 iOS 支付流程更顺畅、Android 机型适配问题更多）。
+
+```sql
+WITH reg_base AS (
+    SELECT
+        uid,
+        reg_date,
+        CASE
+            WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
+            WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
+            ELSE '其他'
+        END AS platform,
+        app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        rb.reg_date,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid, rb.reg_date
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        rb.reg_date,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid, rb.reg_date
+)
+SELECT
+    rb.platform,
+    COUNT(DISTINCT rb.uid) AS reg_users,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
+    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
+FROM reg_base rb
+LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
+LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
+GROUP BY rb.platform
+ORDER BY reg_users DESC;
+```
+
+### 2.3 按客户端版本留存
+
+`reg_app_code` 标识客户端框架版本：`zgda` = Cocos-Lua（旧框架），`zgdx` = Cocos-Creator（新框架）。不同框架在稳定性、性能、包体大小方面存在差异。
+
+```sql
+WITH reg_base AS (
+    SELECT
+        uid,
+        reg_date,
+        CASE r.reg_app_code
+            WHEN 'zgda' THEN 'Cocos-Lua'
+            WHEN 'zgdx' THEN 'Cocos-Creator'
+            ELSE '其他'
+        END AS client_lang,
+        app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        rb.reg_date,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid, rb.reg_date
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        rb.reg_date,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid, rb.reg_date
+)
+SELECT
+    rb.client_lang,
+    COUNT(DISTINCT rb.uid) AS reg_users,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
+    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
+FROM reg_base rb
+LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
+LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
+GROUP BY rb.client_lang
+ORDER BY reg_users DESC;
+```
+
+### 2.4 按注册小时留存
+
+不同注册时段反映用户画像差异（夜猫子型 vs 休闲型 vs 通勤型），其留存行为特征不同。
+
+```sql
+WITH reg_base AS (
+    SELECT
+        uid,
+        reg_date,
+        HOUR(r.reg_time) AS reg_hour,
+        app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_time IS NOT NULL
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN rb.reg_hour BETWEEN 6 AND 11 THEN 'A: 早间(6-11点)'
+        WHEN rb.reg_hour BETWEEN 12 AND 17 THEN 'B: 午后(12-17点)'
+        WHEN rb.reg_hour BETWEEN 18 AND 23 THEN 'C: 晚间(18-23点)'
+        ELSE 'D: 凌晨(0-5点)'
+    END AS reg_period,
+    rb.reg_hour,
+    COUNT(DISTINCT rb.uid) AS reg_users,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1
+FROM reg_base rb
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY rb.reg_hour
+ORDER BY rb.reg_hour;
+```
+
+---
+
+## 三、高相关性指标
+
+> 核心问题：哪些指标直接影响留存？本节指标均基于 `dws_app_silvergame_stat`（银子金流+参与度）和 `dws_app_allgame_stat`（玩法体验）。
+
+### 3.1 首日对局数（投入度核心指标）
+
+对局数是投入度最直接的指标。零对局用户留存极低，但过高的对局数（10+局）也可能因疲劳导致留存下降。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        COALESCE(gs.game_count, 0) AS game_count
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.game_count = 0 THEN 'A: 0局'
+        WHEN gs.game_count = 1 THEN 'B: 1局'
+        WHEN gs.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
+        WHEN gs.game_count BETWEEN 6 AND 10 THEN 'D: 6-10局'
+        ELSE 'E: 10局+'
+    END AS game_count_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(AVG(gs.game_count), 1) AS avg_game_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
+    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
+FROM reg_base rb
+LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 3.2 首日胜率（胜负情绪线）
+
+胜率是新手体验的核心感知指标。胜率过低（<30%）的用户流失风险极高。注意：仅对有对局的用户有意义，零对局用户需单独分组。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        gs.game_count,
+        gs.win_rate
+    FROM reg_base rb
+    INNER JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+    WHERE gs.game_count > 0
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.win_rate < 30 THEN 'A: <30%'
+        WHEN gs.win_rate < 50 THEN 'B: 30-50%'
+        WHEN gs.win_rate < 70 THEN 'C: 50-70%'
+        ELSE 'D: >=70%'
+    END AS win_rate_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(AVG(gs.game_count), 1) AS avg_games,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7
+FROM reg_base rb
+INNER JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 3.3 连败长度（关键流失预警）
+
+连败是挫败感的直接体现。连败超过 3 局时，用户的流失概率急剧上升。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        COALESCE(gs.max_lose_streak, 0) AS max_lose_streak,
+        gs.game_count
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.game_count IS NULL OR gs.game_count = 0 THEN 'A: 无对局'
+        WHEN gs.max_lose_streak = 0 THEN 'B: 无连败'
+        WHEN gs.max_lose_streak <= 2 THEN 'C: 1-2连败'
+        WHEN gs.max_lose_streak <= 5 THEN 'D: 3-5连败'
+        ELSE 'E: 5+连败'
+    END AS lose_streak_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
+FROM reg_base rb
+LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 3.4 银子净变化（经济压力线）
+
+银子净变化反映用户首日的经济得失。巨亏用户留存显著低于盈利用户。分组时需考虑房间底注水平，不同房间的盈亏绝对值含义不同。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        gs.game_count,
+        gs.total_diff_money
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.game_count IS NULL OR gs.game_count = 0 THEN '0: 无对局'
+        WHEN gs.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
+        WHEN gs.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
+        WHEN gs.total_diff_money < 0 THEN 'C: 小亏(-1万~0)'
+        WHEN gs.total_diff_money < 10000 THEN 'D: 小赚(0~1万)'
+        WHEN gs.total_diff_money < 50000 THEN 'E: 大赚(1万~5万)'
+        ELSE 'F: 巨赚(>5万)'
+    END AS money_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(AVG(gs.total_diff_money), 0) AS avg_money_change,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1
+FROM reg_base rb
+LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 3.5 破产状态
+
+破产（银子谷值 ≤ 最低房间门槛）是用户退出的直接经济原因。结合 `money_valley` 字段判断是否触及破产线。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        gs.game_count,
+        gs.money_valley,
+        gs.total_diff_money
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.game_count IS NULL OR gs.game_count = 0 THEN 'C: 无对局'
+        WHEN gs.money_valley <= 1000 THEN 'A: 疑似破产(≤1000)'
+        ELSE 'B: 未破产'
+    END AS bankrupt_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(AVG(gs.money_valley), 0) AS avg_money_valley,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7
+FROM reg_base rb
+LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 3.6 高倍局输赢
+
+高倍局（倍数 > 24x）的输赢体验对用户情绪影响极大。输高倍局可能导致用户一次性巨额亏损，引发流失。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        -- 聚合所有玩法的高倍局数据
+        SUM(CASE WHEN gs.multi_q4_win_count > 0 THEN gs.multi_q4_win_count ELSE 0 END) AS total_high_multi_wins,
+        SUM(CASE WHEN gs.multi_q4_lose_count > 0 THEN gs.multi_q4_lose_count ELSE 0 END) AS total_high_multi_losses
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_allgame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+    GROUP BY rb.uid, rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN COALESCE(gs.total_high_multi_wins, 0) = 0 AND COALESCE(gs.total_high_multi_losses, 0) = 0
+            THEN 'A: 未经历高倍'
+        WHEN gs.total_high_multi_wins > 0 AND COALESCE(gs.total_high_multi_losses, 0) = 0
+            THEN 'B: 仅赢高倍'
+        WHEN COALESCE(gs.total_high_multi_wins, 0) = 0 AND gs.total_high_multi_losses > 0
+            THEN 'C: 仅输高倍'
+        ELSE 'D: 有赢有输'
+    END AS high_multi_exp,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
+FROM reg_base rb
+LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 3.7 登录频次（稳定性信号）
+
+`first_day_login_cnt` 反映注册当天的登录次数。多次登录（≥3次）可能是客户端崩溃/闪退的信号，这类用户的留存率可能受到稳定性问题影响。
+
+```sql
+WITH reg_base AS (
+    SELECT
+        r.uid,
+        r.reg_date,
+        r.app_id,
+        r.first_day_login_cnt
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN rb.first_day_login_cnt = 1 THEN 'A: 1次(正常)'
+        WHEN rb.first_day_login_cnt = 2 THEN 'B: 2次'
+        WHEN rb.first_day_login_cnt BETWEEN 3 AND 5 THEN 'C: 3-5次(疑似崩溃)'
+        ELSE 'D: 5次+(高频崩溃)'
+    END AS login_freq_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7
+FROM reg_base rb
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+---
+
+## 四、中等相关性指标
+
+> 核心问题：哪些指标在特定场景下影响留存？
+
+### 4.1 平均倍数
+
+平均倍数与留存呈倒 U 型关系：倍数过低（≤6x）体验平淡，倍数过高（>24x）波动过大。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        AVG(gs.avg_magnification) AS avg_multi,
+        SUM(gs.game_count) AS total_games
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_allgame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+    GROUP BY rb.uid, rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.total_games IS NULL OR gs.total_games = 0 THEN '0: 无对局'
+        WHEN gs.avg_multi <= 6 THEN 'A: ≤6x'
+        WHEN gs.avg_multi <= 12 THEN 'B: 6-12x'
+        WHEN gs.avg_multi <= 24 THEN 'C: 12-24x'
+        ELSE 'D: 24x+'
+    END AS multi_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(AVG(gs.avg_multi), 1) AS avg_multi,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
+FROM reg_base rb
+LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 4.2 首局胜负
+
+首局胜负对用户的第一印象至关重要。使用 `dws_ddz_firstday_game` 表的 `MIN_BY` 函数获取首局结果。
+
+```sql
+WITH first_game AS (
+    SELECT
+        g.uid,
+        g.dt,
+        MIN_BY(g.result_id, g.game_datetime) AS first_game_result
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.robot != 1
+      AND g.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+      AND g.play_mode IN (1, 2, 3, 5)
+    GROUP BY g.uid, g.dt
+),
+reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN fg.first_game_result = 1 THEN 'A: 首局胜'
+        WHEN fg.first_game_result = 2 THEN 'B: 首局负'
+        ELSE 'C: 无对局或非经典玩法'
+    END AS first_game_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7
+FROM reg_base rb
+LEFT JOIN first_game fg ON rb.uid = fg.uid AND rb.reg_date = fg.dt
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 4.3 角色偏好（地主/农民）
+
+地主 vs 农民的角色偏好反映了用户的激进程度。地主体验方差大（大输大赢），偏好地主的用户留存与经济变化强绑定。
+
+```sql
+WITH role_stats AS (
+    SELECT
+        g.uid,
+        g.dt,
+        COUNT(*) AS game_count,
+        SUM(CASE WHEN g.role = 1 THEN 1 ELSE 0 END) AS landlord_count
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.robot != 1
+      AND g.play_mode IN (1, 2, 3)
+    GROUP BY g.uid, g.dt
+),
+reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN rs.landlord_count = 0 THEN 'A: 纯农民'
+        WHEN rs.landlord_count * 1.0 / rs.game_count < 0.3 THEN 'B: 偏好农民(<30%)'
+        WHEN rs.landlord_count * 1.0 / rs.game_count < 0.6 THEN 'C: 均衡(30-60%)'
+        ELSE 'D: 偏好地主(>=60%)'
+    END AS role_preference,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(AVG(rs.landlord_count * 1.0 / rs.game_count), 2) AS avg_landlord_ratio,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
+FROM reg_base rb
+INNER JOIN role_stats rs ON rb.uid = rs.uid AND rb.reg_date = rs.dt
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 4.4 逃跑行为
+
+逃跑反映挫败感或操作意外。逃跑率高的用户留存率极低。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        gs.game_count,
+        COALESCE(gs.escape_count, 0) AS escape_count
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+    WHERE gs.game_count > 0
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.escape_count = 0 THEN 'A: 无逃跑'
+        WHEN gs.escape_count = 1 THEN 'B: 逃跑1次'
+        WHEN gs.escape_count = 2 THEN 'C: 逃跑2次'
+        ELSE 'D: 逃跑3+次'
+    END AS escape_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(AVG(gs.escape_count * 1.0 / gs.game_count) * 100, 2) AS avg_escape_rate,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
+FROM reg_base rb
+INNER JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 4.5 房间底注体验
+
+房间底注影响用户的经济压力水平。底注越高，破产风险越大，新手留存压力也越大。
+
+```sql
+WITH room_base AS (
+    SELECT
+        g.uid,
+        g.dt,
+        AVG(g.room_base) AS avg_room_base
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.robot != 1
+      AND g.play_mode IN (1, 2, 3)
+    GROUP BY g.uid, g.dt
+),
+reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN rb.avg_room_base <= 50 THEN 'A: 极低底注(<=50)'
+        WHEN rb.avg_room_base <= 200 THEN 'B: 低底注(51-200)'
+        WHEN rb.avg_room_base <= 1000 THEN 'C: 中底注(201-1000)'
+        ELSE 'D: 高底注(>1000)'
+    END AS room_base_group,
+    COUNT(DISTINCT reg.uid) AS user_count,
+    ROUND(AVG(rb.avg_room_base), 0) AS avg_room_base,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT reg.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT reg.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT reg.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT reg.uid), 2) AS game_d7
+FROM reg_base reg
+INNER JOIN room_base rb ON reg.uid = rb.uid AND reg.reg_date = rb.dt
+LEFT JOIN login_ret lr ON reg.uid = lr.uid
+LEFT JOIN game_ret gr ON reg.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+---
+
+## 五、高危信号组合
+
+> 多维交叉识别最高危流失组合。
+
+### 5.1 连败 × 亏损 × 高倍输
+
+三重高危信号叠加：连败≥3 且银子大亏且经历高倍局失败。
+
+```sql
+WITH reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+silver_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        gs.max_lose_streak,
+        gs.total_diff_money,
+        gs.game_count
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+),
+allgame_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        SUM(gs.multi_q4_lose_count) AS high_multi_losses
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_allgame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+    GROUP BY rb.uid, rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+),
+game_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+        )
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN COALESCE(ss.game_count, 0) = 0 THEN '0: 无对局'
+        WHEN ss.max_lose_streak >= 3
+             AND ss.total_diff_money < -10000
+             AND COALESCE(ags.high_multi_losses, 0) > 0
+            THEN 'A: 连败3+×大亏×高倍输'
+        WHEN ss.max_lose_streak >= 3 AND ss.total_diff_money < -10000
+            THEN 'B: 连败3+×大亏'
+        WHEN ss.max_lose_streak >= 3
+            THEN 'C: 连败3+'
+        WHEN ss.total_diff_money < -10000
+            THEN 'D: 大亏'
+        ELSE 'E: 正常'
+    END AS risk_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7
+FROM reg_base rb
+LEFT JOIN silver_stat ss ON rb.uid = ss.uid AND rb.reg_date = ss.reg_date
+LEFT JOIN allgame_stat ags ON rb.uid = ags.uid AND rb.reg_date = ags.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+LEFT JOIN game_ret gr ON rb.uid = gr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 5.2 首局负 × 地主 × 高倍局
+
+首局即输且担任地主且经历高倍，三重负面体验叠加。
+
+```sql
+WITH first_game AS (
+    SELECT
+        g.uid, g.dt,
+        MIN_BY(g.result_id, g.game_datetime) AS first_game_result,
+        MIN_BY(g.role, g.game_datetime) AS first_game_role,
+        MIN_BY(g.magnification, g.game_datetime) AS first_game_magnification
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.robot != 1
+      AND g.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
+      AND g.play_mode IN (1, 2, 3, 5)
+    GROUP BY g.uid, g.dt
+),
+reg_base AS (
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN fg.first_game_result = 2 AND fg.first_game_role = 1 AND fg.first_game_magnification > 24
+            THEN 'A: 首局负×地主×高倍'
+        WHEN fg.first_game_result = 2 AND fg.first_game_role = 1
+            THEN 'B: 首局负×地主'
+        WHEN fg.first_game_result = 2
+            THEN 'C: 首局负(农民)'
+        WHEN fg.first_game_result = 1
+            THEN 'D: 首局胜'
+        ELSE 'E: 无对局或非经典玩法'
+    END AS first_game_risk,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
+FROM reg_base rb
+LEFT JOIN first_game fg ON rb.uid = fg.uid AND rb.reg_date = fg.dt
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+### 5.3 零对局 × 高频登录
+
+注册当天登录多次但未进行任何对局，可能是客户端问题（崩溃/卡死）导致无法进入游戏。
+
+```sql
+WITH reg_base AS (
+    SELECT
+        r.uid, r.reg_date, r.app_id,
+        r.first_day_login_cnt
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+game_stat AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        COALESCE(gs.game_count, 0) AS game_count
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+),
+login_ret AS (
+    SELECT
+        rb.uid,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid
+)
+SELECT
+    CASE
+        WHEN gs.game_count = 0 AND rb.first_day_login_cnt >= 3 THEN 'A: 0局×登录3+次(崩溃)'
+        WHEN gs.game_count = 0 AND rb.first_day_login_cnt = 2 THEN 'B: 0局×登录2次'
+        WHEN gs.game_count = 0 THEN 'C: 0局×登录1次'
+        WHEN gs.game_count > 0 AND rb.first_day_login_cnt >= 3 THEN 'D: 有对局×高频登录'
+        ELSE 'E: 有对局×正常登录'
+    END AS crash_risk_group,
+    COUNT(DISTINCT rb.uid) AS user_count,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
+FROM reg_base rb
+LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
+LEFT JOIN login_ret lr ON rb.uid = lr.uid
+GROUP BY 1
+ORDER BY 1;
+```
+
+---
+
+## 六、游戏留存与登录留存对比
+
+> 新增章节：双重口径对比，识别"登录但不游戏"的用户占比。
+
+登录留存和游戏留存之间的差值反映"只看不玩"的用户群体。若差值持续扩大，说明用户虽然打开应用但未进入游戏，需排查登录后的体验卡点。
+
+### 6.1 每日留存对比曲线
+
+```sql
+WITH reg_base AS (
+    SELECT
+        r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+login_ret AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS login_d3,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS login_d14,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid, rb.reg_date
+),
+game_ret AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS game_d3,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS game_d14,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
+    GROUP BY rb.uid, rb.reg_date
+)
+SELECT
+    rb.reg_date,
+    COUNT(DISTINCT rb.uid) AS reg_users,
+    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
+    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
+    ROUND((SUM(lr.login_d1) - SUM(gr.game_d1)) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS gap_d1,
+    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
+    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
+    ROUND((SUM(lr.login_d7) - SUM(gr.game_d7)) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS gap_d7,
+    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
+    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30,
+    ROUND((SUM(lr.login_d30) - SUM(gr.game_d30)) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS gap_d30
+FROM reg_base rb
+LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
+LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
+GROUP BY rb.reg_date
+ORDER BY rb.reg_date;
+```
+
+### 6.2 登录但未游戏用户画像
+
+识别"登录留存 - 游戏留存"差值中的用户特征，了解这部分用户是谁、来自什么渠道。
+
+```sql
+WITH reg_base AS (
+    SELECT
+        r.uid, r.reg_date, r.app_id,
+        r.channel_category_name,
+        r.reg_app_code,
+        CASE WHEN r.reg_group_id IN (8, 88) THEN 'iOS' ELSE 'Android' END AS platform
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+user_ret AS (
+    SELECT
+        rb.uid, rb.reg_date,
+        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
+        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
+        rb.channel_category_name,
+        rb.reg_app_code,
+        rb.platform
+    FROM reg_base rb
+    LEFT JOIN tcy_temp.dws_dq_daily_login l
+        ON l.app_id = rb.app_id AND l.uid = rb.uid
+        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    LEFT JOIN tcy_temp.dws_app_game_active a
+        ON a.app_id = rb.app_id AND a.uid = rb.uid
+        AND a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+    GROUP BY rb.uid, rb.reg_date, rb.channel_category_name, rb.reg_app_code, rb.platform
+)
+SELECT
+    '按渠道' AS dimension,
+    channel_category_name AS value,
+    COUNT(DISTINCT uid) AS total_users,
+    ROUND(SUM(CASE WHEN login_d1 = 1 AND game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
+        / NULLIF(SUM(login_d1), 0), 2) AS login_no_game_pct
+FROM user_ret
+WHERE login_d1 = 1
+GROUP BY channel_category_name
+UNION ALL
+SELECT
+    '按平台' AS dimension,
+    platform AS value,
+    COUNT(DISTINCT uid) AS total_users,
+    ROUND(SUM(CASE WHEN login_d1 = 1 AND game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
+        / NULLIF(SUM(login_d1), 0), 2) AS login_no_game_pct
+FROM user_ret
+WHERE login_d1 = 1
+GROUP BY platform
+UNION ALL
+SELECT
+    '按客户端' AS dimension,
+    reg_app_code AS value,
+    COUNT(DISTINCT uid) AS total_users,
+    ROUND(SUM(CASE WHEN login_d1 = 1 AND game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
+        / NULLIF(SUM(login_d1), 0), 2) AS login_no_game_pct
+FROM user_ret
+WHERE login_d1 = 1
+GROUP BY reg_app_code
+ORDER BY dimension, value;
+```
+
+### 6.3 留存口径差异分析说明
+
+| 对比维度 | 登录留存 | 游戏留存 | 差异含义 |
+| ---- | ---- | ---- | ---- |
+| **计算口径** | 基于 `dws_dq_daily_login` | 基于 `dws_app_game_active` | 游戏留存更严格 |
+| **反映行为** | 用户打开应用 | 用户完成对局 | 登录-游戏差值 = 打开未游戏 |
+| **正常范围** | 通常高于游戏留存 | 低于登录留存 | 5-15% 差值为正常范围 |
+| **差值扩大** | — | — | 需排查登录到游戏流程中的卡点 |
+| **差值缩小** | — | — | 用户更加"目标明确"地玩游戏 |
+
+---
+
+## 七、专项分析索引
+
+| 专项文档 | 分析视角 | 核心问题 |
+| ---- | ---- | ---- |
+| [retention-by-mode.md](retention-by-mode.md) | 分玩法层 | 玩法内倍数/胜率/经济差异 |
+| [retention-by-client-lang.md](retention-by-client-lang.md) | 分客户端层 | 稳定性/性能/登录次数异常 |
+| [retention-financial.md](retention-financial.md) | 银子经济层 | 金流归因与留存的关系 |
+| [retention-score-game.md](retention-score-game.md) | 积分玩法层 | 积分参与度与留存 |
+| [retention-deepdive-sql.md](retention-deepdive-sql.md) | 高危信号下钻 | 1局用户、客户端问题、渠道质量 |
+
+> **分析框架速查**：[retention-analysis-framework.md](retention-analysis-framework.md)
+> **上一版本**：[retention-global.md](retention-global.md)（v1.0，基于旧表结构）
+                  
