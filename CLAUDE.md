@@ -81,7 +81,10 @@ starrocks/           # StarRocks 数仓能力
   config/            # 配置表（道具、渠道、货币配置等）
 ops/                 # 运维操作手册
 requirements/        # 研发需求文档
-tech/                # 技术参考文档
-```
-
 ---
+
+## 本地环境配置
+
+本项目使用 `CLAUDE.local.md` 存储每台机器的本地环境信息（系统、Shell、注意事项），该文件已被 `.gitignore` 排除，不会提交到远程仓库。不同机器上的 `CLAUDE.local.md` 内容可以不同。
+
+请在执行 Shell 命令前，读取 `CLAUDE.local.md` 了解当前机器的 Shell 限制。
