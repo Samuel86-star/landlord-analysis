@@ -54,7 +54,7 @@
 | 小游戏 | 56 |
 | PC | 不在以上范围，且不在 55, 69, 0, 68 中 |
 
-详细分端说明见 [README-data.md](../README-data.md)。
+详细分端说明见 [README-data.md](../../README-data.md)。
 
 ## 构建 SQL
 
@@ -104,6 +104,21 @@ PROPERTIES (
 ```
 
 ### 数据导入 SQL
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_prop_log.py`](../../py/batch_insert_prop_log.py)
+
+> **依赖**：hive_catalog_cdh5.dwd.fact_gtpl_prop_detail 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_prop_log.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_prop_log.py --start 2026-04-29 --end 2026-04-29
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_prop_log.py --start 20260617 --end 20260617 --dry-run
+```
+
 
 ```sql
 -- 游戏道具流水日志导入

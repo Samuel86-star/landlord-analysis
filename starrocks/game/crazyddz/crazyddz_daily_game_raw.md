@@ -118,6 +118,20 @@ PROPERTIES (
 ```
 
 ## 更新SQL
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_crazyddz_daily_game_raw.py`](../../../py/batch_insert_crazyddz_daily_game_raw.py)
+
+> **依赖**：tcy_dwd.dwd_game_combatgains_si 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_crazyddz_daily_game_raw.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_crazyddz_daily_game_raw.py --start 2026-06-01 --end 2026-06-08
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_crazyddz_daily_game_raw.py --start 20260617 --end 20260617 --dry-run
+```
 
 510K 存在跨天对局（同一 resultguid 的玩家记录可能分布在 T 日和 T+1 日），通过 `MIN(dt) OVER (PARTITION BY resultguid)` 确定每个对局的首次出现日期并覆盖 `dt` 字段，T 日初始化时一并回补 T+1 日属于该对局的记录。下游读取时无需关心跨天——直接 `WHERE dt = T` 即可。
 
@@ -168,7 +182,7 @@ WHERE game_id = 521
 ORDER BY dt, resultguid;
 ```
 
-> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
+> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../../../ops/daily_data_ops.md)
 
 ## 表数据流向
 

@@ -57,7 +57,7 @@
 | 小游戏 | 56 |
 | PC | 不在以上范围，且不在 55, 69, 0, 68 中 |
 
-详细分端说明见 [README-data.md](../README-data.md)。
+详细分端说明见 [README-data.md](../../README-data.md)。
 
 ## 构建 SQL
 
@@ -111,6 +111,21 @@ PROPERTIES (
 ```
 
 ### 数据导入 SQL
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_dq_silver_logs.py`](../../py/batch_insert_dq_silver_logs.py)
+
+> **依赖**：tcy_dwd.dwd_silver_si、dq_channel_category_map 等维表 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_dq_silver_logs.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_dq_silver_logs.py --start 2026-04-29 --end 2026-04-29
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_dq_silver_logs.py --start 20260617 --end 20260617 --dry-run
+```
+
 
 ```sql
 -- 斗地主银子变动日志导入

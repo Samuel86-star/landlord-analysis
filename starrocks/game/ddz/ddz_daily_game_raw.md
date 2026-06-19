@@ -296,6 +296,20 @@ PROPERTIES (
 ```
 
 ## 更新SQL
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_ddz_daily_game_raw.py`](../../../py/batch_insert_ddz_daily_game_raw.py)
+
+> **依赖**：hive_catalog_cdh5.dwd.fact_game_combatgains 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_ddz_daily_game_raw.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_ddz_daily_game_raw.py --start 2026-06-01 --end 2026-06-08
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_ddz_daily_game_raw.py --start 20260617 --end 20260617 --dry-run
+```
 
 ```sql
 INSERT INTO tcy_temp.ddz_daily_game_raw
@@ -311,7 +325,7 @@ WHERE game_id = 53
   AND dt BETWEEN 20260515 AND 20260518
 ```
 
-> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
+> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../../../ops/daily_data_ops.md)
 
 ## 使用示例
 

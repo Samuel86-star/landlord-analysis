@@ -96,8 +96,23 @@ PROPERTIES (
 
 ### 增量数据导入
 
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_app_daily_reg.py](../../py/batch_insert_app_daily_reg.py)
+
+> **依赖**：本表依赖 `dws_dq_daily_reg`、`dws_dq_daily_login`，对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_app_daily_reg.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_app_daily_reg.py --start 2026-02-10 --end 2026-04-20
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_app_daily_reg.py --start 20260617 --end 20260617 --dry-run
+```
+
 ```sql
-insert into tcy_temp.dws_dq_app_daily_reg
+INSERT INTO tcy_temp.dws_dq_app_daily_reg
 SELECT
     r.app_id,
     r.reg_date,
@@ -123,7 +138,9 @@ WHERE r.app_id = 1880053
   AND r.reg_date between '2026-02-10' and '2026-04-21';
 ```
 
-> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
+> 上述 SQL 为单次区间导入示例；按天幂等回填请用上方脚本（脚本内按天 `r.reg_date = '{d}'` 过滤）。
+
+> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../../ops/daily_data_ops.md)
 
 ## 使用示例
 

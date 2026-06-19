@@ -9,3 +9,10 @@ CLAUDE.local.md
 
 # 临时工作区（探索性查询、草稿、个人笔记等，不提交到仓库）
 tmp/
+
+# Python 字节码缓存
+__pycache__/
+*.pyc
+
+# 调度器运行日志（每天每张表的 stdout/stderr，不提交）
+py/logs/

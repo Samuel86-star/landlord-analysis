@@ -81,7 +81,7 @@
 | landlord_double_bet | tinyint | 地主加倍倍数：1=不加倍，2=加倍，4=超级加倍 | 1 |
 | total_farmer_double_bet | tinyint | 所有农民加倍倍数 | 2 |
 | real_magnification | double | 游戏输赢实际倍数 | 5.0 |
-| hand_cards | varchar(32) | 手牌 | "3455677888999JJJQQQKKKAAA222" |
+| hand_cards | varchar(64) | 手牌 | "3455677888999JJJQQQKKKAAA222" |
 | bottom_cards | varchar(16) | 底牌 | "345" |
 | shuffle_type | int | 配牌类型: 0=随机发牌，201=新手保护机器人，202=充值保护机器人匹配，203=老用户每日前N，204=房间前N次触发机器人保护，205=低保次数触发机器人保护，206=连输保护机器人匹配，207=连输银两触发机器人匹配，默认为0 | 0 |
 | card_id | int | 牌库编号（默认0，0为随机牌；>0时代表有配牌，对应牌库编号） | 1001 |
@@ -175,7 +175,7 @@ CREATE TABLE tcy_temp.dws_ddz_daily_game (
   `landlord_double_bet` tinyint(4) NULL COMMENT "地主加倍倍数：1=不加倍，2=加倍，4=超级加倍",
   `total_farmer_double_bet` tinyint(4) NULL COMMENT "所有农民加倍倍数",
   `real_magnification` double NULL COMMENT "游戏输赢实际倍数",
-  `hand_cards` varchar(32) NULL COMMENT "手牌",
+  `hand_cards` varchar(64) NULL COMMENT "手牌",
   `bottom_cards` varchar(16) NULL COMMENT "底牌",
   `shuffle_type` int(11) NULL COMMENT "配牌类型: 0=随机发牌，201=新手保护机器人，202=充值保护机器人匹配，203=老用户每日前N，204=房间前N次触发机器人保护，205=低保次数触发机器人保护，206=连输保护机器人匹配，207=连输银两触发机器人匹配，默认为0",
   `card_id` int(11) NULL COMMENT "牌库编号（默认0，0为随机牌；>0时代表有配牌，对应牌库编号）",
@@ -211,6 +211,22 @@ PROPERTIES (
 ```
 
 ## 更新SQL
+
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_ddz_daily_game.py`](../../../py/batch_insert_ddz_daily_game.py)
+
+> **依赖**：ddz_daily_game_raw 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_ddz_daily_game.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_ddz_daily_game.py --start 2026-06-01 --end 2026-06-08
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_ddz_daily_game.py --start 20260617 --end 20260617 --dry-run
+```
+
 
 `extend_content` 字段兼容新旧两种 JSON 格式，以下 SQL 通过 `get_json_*` 与正则混合提取，同时覆盖两种格式。
 
@@ -293,7 +309,7 @@ WHERE game_id = 53
   AND dt BETWEEN '2026-05-15' AND '2026-05-18';
 ```
 
-> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
+> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../../../ops/daily_data_ops.md)
 
 新旧格式中提取方式不同的字段对照：
 

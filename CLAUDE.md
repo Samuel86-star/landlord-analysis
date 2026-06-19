@@ -79,8 +79,17 @@ starrocks/           # StarRocks 数仓能力
   game/              # 游戏域（对局、战绩等）
   currency/          # 货币域（银子、积分等）
   config/            # 配置表（道具、渠道、货币配置等）
-ops/                 # 运维操作手册
+  retention/         # 留存域（首日指标、留存 flag）
+py/                  # 回填脚本集（调度器 + 单表脚本 + 工具，详见 py/README.md）
+  daily_backfill.py  # 每日初始化调度器（15 张表）
+  daily_retention.py # 留存回扫调度器（35 天）
+  README.md          # ← 脚本使用说明，团队入口
+ops/                 # 运维操作手册（daily_data_ops.md / troubleshooting.md 等）
 requirements/        # 研发需求文档
+```
+
+> **日常运维入口**：[py/README.md](py/README.md) —— 两条命令完成每天数据回填（`daily_backfill.py` 初始化当天 + `daily_retention.py` 刷留存）。
+
 ---
 
 ## Git 操作规范
@@ -90,8 +99,7 @@ requirements/        # 研发需求文档
 
 ---
 
-## 本地环境配置
+## DDL 操作规范
 
-本项目使用 `CLAUDE.local.md` 存储每台机器的本地环境信息（系统、Shell、注意事项），该文件已被 `.gitignore` 排除，不会提交到远程仓库。不同机器上的 `CLAUDE.local.md` 内容可以不同。
-
-请在执行 Shell 命令前，读取 `CLAUDE.local.md` 了解当前机器的 Shell 限制。
+- **禁止通过 sr_exec.py 执行 DDL**：建表（CREATE TABLE）、改表（ALTER TABLE）、删表（DROP TABLE）等 DDL 操作一律不通过 `py/sr_exec.py` 或任何脚本执行
+- DDL 操作必须由用户在 CloudBeaver / 

@@ -125,8 +125,21 @@ PROPERTIES (
 
 ## 数据SQL
 
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_daily_login.py](../../py/batch_insert_daily_login.py)
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_daily_login.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_daily_login.py --start 2026-02-10 --end 2026-04-20
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_daily_login.py --start 20260617 --end 20260617 --dry-run
+```
+
 ```sql
-insert into tcy_temp.dws_dq_daily_login
+INSERT INTO tcy_temp.dws_dq_daily_login
 SELECT
     app_id,
     DATE(dt) AS login_date,
@@ -166,7 +179,9 @@ FROM (
 GROUP BY app_id, DATE(dt), uid;
 ```
 
-> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
+> 上述 SQL 为单次区间导入示例；按天幂等回填请用上方脚本（脚本内按天 `dt >= '{d} 00:00:00' AND dt <= '{d} 23:59:59'` 过滤）。
+
+> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../../ops/daily_data_ops.md)
 
 ## 使用场景
 

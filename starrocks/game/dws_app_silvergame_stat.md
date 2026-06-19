@@ -163,6 +163,22 @@ PROPERTIES (
 
 ### 增量数据导入
 
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_app_silvergame_stat.py`](../../py/batch_insert_app_silvergame_stat.py)
+
+> **依赖**：dws_ddz_daily_game、dws_crazyddz_daily_game 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_app_silvergame_stat.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_app_silvergame_stat.py --start 2026-06-01 --end 2026-06-08
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_app_silvergame_stat.py --start 20260617 --end 20260617 --dry-run
+```
+
+
 > **说明**：经典系（`dws_ddz_daily_game`，单轮）与 510K（`dws_crazyddz_daily_game`，多轮）通过 UNION ALL 拼接为统一明细，再做用户级聚合。
 
 ```sql

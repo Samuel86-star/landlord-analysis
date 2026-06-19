@@ -69,19 +69,34 @@ PROPERTIES (
 
 ### 增量数据导入
 
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_daily_reg.py](../../py/batch_insert_daily_reg.py)
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_daily_reg.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_daily_reg.py --start 2026-02-10 --end 2026-04-20
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_daily_reg.py --start 20260617 --end 20260617 --dry-run
+```
+
 ```sql
 INSERT INTO tcy_temp.dws_dq_daily_reg
 SELECT
     app_id,
     uid,
-    str_to_date(CAST(dt AS STRING), '%Y%m%d'),
+    str_to_date(CAST(dt AS STRING), '%Y%m%d') AS reg_date,
     FROM_UNIXTIME(first_login_ts / 1000) AS reg_datetime
 FROM hive_catalog_cdh5.dm.olap_tcy_userapp_d_p_login1st
 WHERE app_id = 1880053
   AND dt between 20260210 and 20260420;
 ```
 
-> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../ops/daily_data_ops.md)
+> 上述 SQL 为单次区间导入示例；按天幂等回填请用上方脚本（脚本内将 `dt between` 改为单天 `dt =`）。
+
+> **增量更新操作手册**：详见 [ops/daily_data_ops.md](../../ops/daily_data_ops.md)
 
 ## 如何获取渠道信息
 

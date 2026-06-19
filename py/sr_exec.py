@@ -2,8 +2,20 @@
 """
 CloudBeaver / FlowOps StarRocks 查询客户端
 用法:
-    python3 sr_query.py "SELECT * FROM some_table LIMIT 10"
-    python3 sr_query.py -f query.sql
+    python3 sr_exec.py "SELECT * FROM some_table LIMIT 10"
+    python3 sr_exec.py -f query.sql
+
+实现说明：
+    1. CloudBeaver 异步任务的 statusMessage='Executed' 仅代表"任务跑完"，
+       不代表"数据真正落盘"。SR 在 strict mode 下因脏数据回滚整批 INSERT 时，
+       任务仍以 Executed 结束、GraphQL 层看不到错误。因此调用方在 INSERT 后
+       必须用 SELECT COUNT 复核行数（backfill_runner 的 check_template 即做此事）。
+       排查 strict mode 静默回滚见 ops/troubleshooting.md。
+    2. asyncSqlExecuteResults 对 INSERT/DELETE 有两种成功返回路径：
+         a) 整个 r 字段为 null → GraphQL 抛 NullValueInNonNullableField
+         b) r.statusMessage='Executed' 且 r.results[0].resultSet=null
+       _verify_status / query 都已处理这两条路径。
+    3. -f 读 SQL 文件强制 utf-8，不依赖系统 locale（Windows 下默认 GBK 会炸）。
 """
 
 import requests, json, time, sys, argparse
@@ -16,6 +28,9 @@ PASSWORD_HASH = "AE7810A8EB5BF4D967CFA9F63B34E770"
 class StarRocksClient:
     def __init__(self):
         self.s = requests.Session()
+        # flowops 是内网域名，强制忽略环境变量里的代理设置（HTTP_PROXY / HTTPS_PROXY 等），
+        # 避免在配了代理的机器上走代理失败。团队任何机器都能直连内网，无需代理软件。
+        self.s.trust_env = False
         self.conn_id = None
         self.ctx_id = None
 
@@ -54,29 +69,39 @@ class StarRocksClient:
         self.ctx_id = res["data"]["ctx"]["id"]
         return self
 
-    def execute(self, sql):
-        """执行 SQL 并返回结果"""
-        # 提交查询
+    def _submit_and_wait(self, sql):
+        """提交 SQL 异步任务并轮询至完成，返回 task_id。"""
         res = self.gql(
             "mutation execSql($cid: ID!, $ctx: ID!, $sql: String!) { result: asyncSqlExecuteQuery(connectionId: $cid, contextId: $ctx, sql: $sql) { id } }",
             {"cid": self.conn_id, "ctx": self.ctx_id, "sql": sql}
         )
         if "errors" in res:
-            raise Exception(f"SQL execution error: {res['errors']}")
+            raise Exception("SQL execution error: {}".format(res['errors']))
         task_id = res["data"]["result"]["id"]
 
-        # 轮询等待完成
-        for _ in range(60):
+        task_running = True
+        for _ in range(600):
             time.sleep(1)
             info = self.gql(
-                "mutation check($id: String!) { t: asyncTaskInfo(id: $id, removeOnFinish: false) { id status running } }",
+                "mutation check($id: String!) { t: asyncTaskInfo(id: $id, removeOnFinish: false) { id running } }",
                 {"id": task_id}
             )
             task = info.get("data", {}).get("t", {})
-            if not task.get("running"):
+            task_running = task.get("running", True)
+            if not task_running:
                 break
+        if task_running:
+            raise Exception("Task timed out after 600s")
+        return task_id
 
-        # 获取结果
+    def _verify_status(self, task_id):
+        """查询任务结果状态。
+
+        CloudBeaver 对 INSERT/DELETE 有两种成功返回路径：
+        1. 整个 r 为 null → GraphQL 抛 NullValueInNonNullableField（旧路径）
+        2. r.statusMessage='Executed'，但 r.results[0].resultSet=null（新路径）
+        两者都视为成功。注意 statusMessage='Executed' 不代表数据落盘（见模块 docstring 1）。
+        """
         res = self.gql("""
             mutation getRes($tid: ID!) {
                 r: asyncSqlExecuteResults(taskId: $tid) {
@@ -86,14 +111,35 @@ class StarRocksClient:
                 }
             }
         """, {"tid": task_id})
-
         if "errors" in res:
-            raise Exception(f"Result fetch error: {res['errors']}")
+            for err in res["errors"]:
+                if "NullValueInNonNullableField" in err.get("extensions", {}).get("classification", ""):
+                    return None
+            raise Exception("Result fetch error: {}".format(res["errors"]))
+        return res.get("data", {}).get("r")
 
-        result_data = res.get("data", {}).get("r", {})
+    def execute_write(self, sql):
+        """执行 INSERT/DELETE/UPDATE，提交后校验任务执行状态。
+
+        注意：本方法只能拦"任务真没跑"或"GraphQL 层错误"，拦不住 strict mode 下
+        SR 静默回滚。调用方必须事后用 SELECT COUNT 复核数据落盘情况。
+        """
+        task_id = self._submit_and_wait(sql)
+        result_data = self._verify_status(task_id)
+        if result_data is None:
+            return  # 路径 1：r=null，视为已执行
+        status = result_data.get("statusMessage")
+        if status != "Executed":
+            raise Exception("Write not executed (status={}): {}".format(status, str(result_data)[:300]))
+
+    def execute(self, sql):
+        """执行 SQL 并返回结果"""
+        task_id = self._submit_and_wait(sql)
+        result_data = self._verify_status(task_id)
+        if result_data is None:
+            return {"statusMessage": "Executed", "results": []}
         if result_data.get("statusMessage") != "Executed":
             raise Exception(f"Query not executed: {result_data.get('statusMessage')}")
-
         return result_data
 
     def query(self, sql):
@@ -102,7 +148,10 @@ class StarRocksClient:
         results = data.get("results", [])
         if not results:
             return []
-        rs = results[0].get("resultSet", {})
+        rs = results[0].get("resultSet")
+        # INSERT/DELETE 路径 2：r 存在但 resultSet=null，无数据可返回
+        if rs is None:
+            return []
         columns = [c["name"] for c in rs.get("columns", [])]
         rows = rs.get("rows", [])
 
@@ -120,7 +169,7 @@ def main():
     args = parser.parse_args()
 
     if args.file:
-        with open(args.file) as f:
+        with open(args.file, encoding="utf-8") as f:
             sql = f.read()
     elif args.sql:
         sql = args.sql

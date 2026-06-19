@@ -1,0 +1,91 @@
+INSERT INTO tcy_temp.dws_app_firstday_retention
+SELECT
+
+    r.app_id, r.reg_date, r.uid,
+    r.reg_channel_id, r.reg_group_id, r.reg_app_code,
+    r.channel_category_id, r.channel_category_name, r.channel_category_tag_id,
+    r.first_day_login_cnt,
+    si.game_count, si.win_rate, si.max_lose_streak, si.max_win_streak,
+    si.total_diff_money, si.money_valley, si.money_peak,
+    si.start_money, si.end_money, si.total_fee_paid,
+    si.escape_count, si.distinct_rooms, si.total_play_seconds,
+    sc.game_count, sc.win_rate, sc.max_lose_streak, sc.max_win_streak,
+    sc.escape_count, sc.total_play_seconds,
+    ag.distinct_modes, ag.total_games,
+    ag.avg_magnification, ag.max_magnification,
+    ag.bomb_count, ag.spring_count,
+    ag.multi_1_win, ag.multi_1_lose,
+    ag.multi_2_win, ag.multi_2_lose,
+    ag.multi_3_6_win, ag.multi_3_6_lose,
+    ag.multi_6_12_win, ag.multi_6_12_lose,
+    ag.multi_12_24_win, ag.multi_12_24_lose,
+    ag.multi_24_48_win, ag.multi_24_48_lose,
+    ag.multi_48_96_win, ag.multi_48_96_lose,
+    ag.multi_96_192_win, ag.multi_96_192_lose,
+    ag.multi_192_384_win, ag.multi_192_384_lose,
+    ag.multi_384_plus_win, ag.multi_384_plus_lose,
+    CASE WHEN a1.dt IS NOT NULL THEN 1 ELSE 0 END AS d1_game,
+    CASE WHEN a7.dt IS NOT NULL THEN 1 ELSE 0 END AS d7_game,
+    CASE WHEN a30.dt IS NOT NULL THEN 1 ELSE 0 END AS d30_game,
+    CASE WHEN l1.login_date IS NOT NULL THEN 1 ELSE 0 END AS d1_login,
+    CASE WHEN l7.login_date IS NOT NULL THEN 1 ELSE 0 END AS d7_login,
+    CASE WHEN l30.login_date IS NOT NULL THEN 1 ELSE 0 END AS d30_login
+FROM tcy_temp.dws_dq_app_daily_reg r
+LEFT JOIN tcy_temp.dws_app_silvergame_stat si
+    ON si.app_id = r.app_id AND si.uid = r.uid AND si.dt = r.reg_date
+LEFT JOIN tcy_temp.dws_app_scoregame_stat sc
+    ON sc.app_id = r.app_id AND sc.uid = r.uid AND sc.dt = r.reg_date
+LEFT JOIN (
+    SELECT
+        app_id, uid, dt,
+        COUNT(DISTINCT play_mode)     AS distinct_modes,
+        SUM(game_count)               AS total_games,
+        AVG(avg_magnification)        AS avg_magnification,
+        MAX(max_magnification)        AS max_magnification,
+        SUM(bomb_0_games + bomb_1_games + bomb_2_games + bomb_3plus_games) AS bomb_count,
+        SUM(spring_count)             AS spring_count,
+        SUM(multi_1_win)         AS multi_1_win,
+        SUM(multi_1_lose)        AS multi_1_lose,
+        SUM(multi_2_win)         AS multi_2_win,
+        SUM(multi_2_lose)        AS multi_2_lose,
+        SUM(multi_3_6_win)       AS multi_3_6_win,
+        SUM(multi_3_6_lose)      AS multi_3_6_lose,
+        SUM(multi_6_12_win)      AS multi_6_12_win,
+        SUM(multi_6_12_lose)     AS multi_6_12_lose,
+        SUM(multi_12_24_win)     AS multi_12_24_win,
+        SUM(multi_12_24_lose)    AS multi_12_24_lose,
+        SUM(multi_24_48_win)     AS multi_24_48_win,
+        SUM(multi_24_48_lose)    AS multi_24_48_lose,
+        SUM(multi_48_96_win)     AS multi_48_96_win,
+        SUM(multi_48_96_lose)    AS multi_48_96_lose,
+        SUM(multi_96_192_win)    AS multi_96_192_win,
+        SUM(multi_96_192_lose)   AS multi_96_192_lose,
+        SUM(multi_192_384_win)   AS multi_192_384_win,
+        SUM(multi_192_384_lose)  AS multi_192_384_lose,
+        SUM(multi_384_plus_win)  AS multi_384_plus_win,
+        SUM(multi_384_plus_lose) AS multi_384_plus_lose
+    FROM tcy_temp.dws_app_allgame_stat
+    WHERE app_id = 1880053
+      AND dt = '2026-03-01'
+    GROUP BY app_id, uid, dt
+) ag ON ag.app_id = r.app_id AND ag.uid = r.uid AND ag.dt = r.reg_date
+WHERE r.app_id = 1880053
+  AND r.reg_date = '2026-03-01'
+LEFT JOIN tcy_temp.dws_app_game_active a1
+    ON a1.app_id = r.app_id AND a1.uid = r.uid
+    AND a1.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+LEFT JOIN tcy_temp.dws_app_game_active a7
+    ON a7.app_id = r.app_id AND a7.uid = r.uid
+    AND a7.dt = DATE_ADD(r.reg_date, INTERVAL 7 DAY)
+LEFT JOIN tcy_temp.dws_app_game_active a30
+    ON a30.app_id = r.app_id AND a30.uid = r.uid
+    AND a30.dt = DATE_ADD(r.reg_date, INTERVAL 30 DAY)
+LEFT JOIN tcy_temp.dws_dq_daily_login l1
+    ON l1.app_id = r.app_id AND l1.uid = r.uid
+    AND l1.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+LEFT JOIN tcy_temp.dws_dq_daily_login l7
+    ON l7.app_id = r.app_id AND l7.uid = r.uid
+    AND l7.login_date = DATE_ADD(r.reg_date, INTERVAL 7 DAY)
+LEFT JOIN tcy_temp.dws_dq_daily_login l30
+    ON l30.app_id = r.app_id AND l30.uid = r.uid
+    AND l30.login_date = DATE_ADD(r.reg_date, INTERVAL 30 DAY)

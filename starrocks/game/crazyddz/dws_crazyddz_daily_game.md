@@ -123,6 +123,22 @@ PROPERTIES (
 
 ### 数据初始化SQL
 
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_crazyddz_daily_game.py`](../../../py/batch_insert_crazyddz_daily_game.py)
+
+> **依赖**：crazyddz_daily_game_raw 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_crazyddz_daily_game.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_crazyddz_daily_game.py --start 2026-06-01 --end 2026-06-08
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_crazyddz_daily_game.py --start 20260617 --end 20260617 --dry-run
+```
+
+
 ```sql
 -- 初始化指定时间段内的对局数据
 -- 参数说明：

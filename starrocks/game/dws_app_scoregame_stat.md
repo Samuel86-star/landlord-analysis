@@ -136,6 +136,22 @@ PROPERTIES (
 
 ### 增量数据导入
 
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_app_scoregame_stat.py`](../../py/batch_insert_app_scoregame_stat.py)
+
+> **依赖**：dws_ddz_daily_game 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_app_scoregame_stat.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_app_scoregame_stat.py --start 2026-06-01 --end 2026-06-08
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_app_scoregame_stat.py --start 20260617 --end 20260617 --dry-run
+```
+
+
 > **说明**：积分玩法数据仅来自 `dws_ddz_daily_game`（经典斗地主明细表），无需 UNION ALL `dws_crazyddz_daily_game`（510K 为银子玩法，无积分版本）。积分玩法不存在平局，`win_rate + lose_rate = 100`。
 
 ```sql

@@ -76,6 +76,22 @@ PROPERTIES (
 
 ## 初始化数据
 
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_app_game_active.py`](../../py/batch_insert_app_game_active.py)
+
+> **依赖**：dws_ddz_daily_game、dws_crazyddz_daily_game 对应日期需先回填。
+
+```powershell
+# 单天
+py -3 -u .\batch_insert_app_game_active.py --start 20260617 --end 20260617
+
+# 区间回填
+py -3 -u .\batch_insert_app_game_active.py --start 2026-06-01 --end 2026-06-08
+
+# 先看 SQL 不实际执行
+py -3 -u .\batch_insert_app_game_active.py --start 20260617 --end 20260617 --dry-run
+```
+
+
 > **说明**：活跃用户 = 经典斗地主活跃用户 ∪ 疯狂斗地主活跃用户（去重）
 
 ```sql
