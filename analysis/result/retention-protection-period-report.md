@@ -288,22 +288,22 @@
 
 ## 八、本报告对应的 SQL 索引
 
-所有数字可复现，SQL 文件位于 `tmp/` 目录（执行时日期参数需对应 04-22 ~ 06-19 / 04-22 ~ 05-20 两个窗口）：
+所有数字可复现，SQL 文件位于 `py/tmp/` 目录（执行时日期参数需对应 04-22 ~ 06-19 / 04-22 ~ 05-20 两个窗口）：
 
 | 章节 | SQL 文件 | 日期窗口 |
 | ---- | ---- | ---- |
-| 1.1 大盘留存 | `tmp/overview_q1_baseline.sql` | 04-22 ~ 05-20 |
-| 1.2 月度趋势 | `tmp/verify_q1_monthly.sql` | 04-22 ~ 05-20 |
-| 2.1 对局数分桶 | `tmp/overview_q3_gamecount.sql` | 04-22 ~ 05-20 |
-| 3.1 保护期对手与胜率曲线 | `tmp/report_q3_winrate_curve.sql` | 04-22 ~ 06-19 |
-| 4.1 三组基线 | `tmp/leave_q1_cohort_overview.sql` | 04-22 ~ 05-20 |
-| 4.2 A 组按对局数细分 | `tmp/leave_q3_by_gamecount.sql` | 04-22 ~ 05-20 |
-| 4.3 A 组末局结果 | `tmp/verify_leave_q2_lastgame.sql` | 04-22 ~ 05-20 |
-| 4.4 A 组胜率金流交叉 | `tmp/leave_q2_wr_money_cross.sql` | 04-22 ~ 05-20 |
-| 4.5 局间隔 | `tmp/report_q1_game_gap.sql` | 06-12 ~ 06-19 |
-| 5.1 全渠道 | `tmp/overview_q2_channel.sql` | 04-22 ~ 05-20 |
-| 5.3 1 局即走渠道分布 | `tmp/verify_leave_q1_channel.sql` | 04-22 ~ 05-20 |
-| 4.1 时长分布 | `tmp/report_q2_duration.sql` | 04-22 ~ 05-20 |
+| 1.1 大盘留存 | `py/tmp/overview_q1_baseline.sql` | 04-22 ~ 05-20 |
+| 1.2 月度趋势 | `py/tmp/verify_q1_monthly.sql` | 04-22 ~ 05-20 |
+| 2.1 对局数分桶 | `py/tmp/overview_q3_gamecount.sql` | 04-22 ~ 05-20 |
+| 3.1 保护期对手与胜率曲线 | `py/tmp/report_q3_winrate_curve.sql` | 04-22 ~ 06-19 |
+| 4.1 三组基线 | `py/tmp/leave_q1_cohort_overview.sql` | 04-22 ~ 05-20 |
+| 4.2 A 组按对局数细分 | `py/tmp/leave_q3_by_gamecount.sql` | 04-22 ~ 05-20 |
+| 4.3 A 组末局结果 | `py/tmp/verify_leave_q2_lastgame.sql` | 04-22 ~ 05-20 |
+| 4.4 A 组胜率金流交叉 | `py/tmp/leave_q2_wr_money_cross.sql` | 04-22 ~ 05-20 |
+| 4.5 局间隔 | `py/tmp/report_q1_game_gap.sql` | 06-12 ~ 06-19 |
+| 5.1 全渠道 | `py/tmp/overview_q2_channel.sql` | 04-22 ~ 05-20 |
+| 5.3 1 局即走渠道分布 | `py/tmp/verify_leave_q1_channel.sql` | 04-22 ~ 05-20 |
+| 4.1 时长分布 | `py/tmp/report_q2_duration.sql` | 04-22 ~ 05-20 |
 
 ---
 
