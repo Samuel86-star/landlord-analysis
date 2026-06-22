@@ -98,15 +98,12 @@ ROUND(
 | `reg_group_id` | `dws_dq_app_daily_reg` | INT | 8,88 = iOS; 6,66,33,44,77,99 = Android |
 | `channel_category_name` | `dws_dq_app_daily_reg` | STRING | 渠道分类名称 |
 | `first_day_login_cnt` | `dws_dq_app_daily_reg` | INT | 注册当天登录次数（反映稳定性） |
-| `is_login_log_missing` | ~~`dws_dq_app_daily_reg`~~ | ~~INT~~ | **已废弃，不可使用** |
 | `money_valley` | `dws_app_silvergame_stat` | BIGINT | 当日银子谷值（最低值） |
 | `total_diff_money` | `dws_app_silvergame_stat` | BIGINT | 当日银子净变化（正=赢，负=亏） |
 | `multi_q4_win_count` | `dws_app_allgame_stat` | INT | 高倍局（>24x）获胜次数 |
 | `multi_q4_lose_count` | `dws_app_allgame_stat` | INT | 高倍局（>24x）失败次数 |
 | `avg_magnification` | `dws_app_allgame_stat` | DOUBLE | 平均倍数 |
 | `escape_count` | `dws_app_silvergame_stat` | INT | 当日逃跑次数 |
-
-> **注意**：`is_login_log_missing` 字段已废弃，所有查询中不得使用该字段进行过滤。
 
 ---
 
@@ -146,8 +143,13 @@ login_ret AS (
     FROM reg_base rb
     LEFT JOIN tcy_temp.dws_dq_daily_login l
         ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date BETWEEN DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-                             AND DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        AND l.login_date IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
     GROUP BY rb.uid, rb.reg_date, rb.channel
 ),
 game_ret AS (
@@ -163,8 +165,13 @@ game_ret AS (
     FROM reg_base rb
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt BETWEEN DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-                     AND DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        AND a.dt IN (
+            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
+            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+        )
     GROUP BY rb.uid, rb.reg_date, rb.channel
 )
 SELECT

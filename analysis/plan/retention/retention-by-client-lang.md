@@ -52,7 +52,6 @@ END AS platform
 
 ### 1.3 关键说明
 
-- `is_login_log_missing` 字段已废弃，不再用于过滤
 - 游戏留存口径使用 `dws_app_game_active`（任意玩法有对局即活跃）
 - 游戏行为指标使用 `dws_app_silvergame_stat`（替代已下线的 `dws_ddz_app_game_stat`）
 
@@ -87,7 +86,14 @@ SELECT
 FROM tcy_temp.dws_dq_app_daily_reg r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
-    AND l.login_date BETWEEN DATE_ADD(r.reg_date, INTERVAL 1 DAY) AND DATE_ADD(r.reg_date, INTERVAL 29 DAY)
+    AND l.login_date IN (
+        DATE_ADD(r.reg_date, INTERVAL 1 DAY),
+        DATE_ADD(r.reg_date, INTERVAL 2 DAY),
+        DATE_ADD(r.reg_date, INTERVAL 3 DAY),
+        DATE_ADD(r.reg_date, INTERVAL 6 DAY),
+        DATE_ADD(r.reg_date, INTERVAL 13 DAY),
+        DATE_ADD(r.reg_date, INTERVAL 29 DAY)
+    )
 WHERE r.app_id = 1880053
   AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 GROUP BY 1
