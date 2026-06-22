@@ -72,8 +72,7 @@
 ```text
 analysis/            # 数据分析工作区
   plan/              # 分析方案（分析思路和 SQL 查询）
-  data/              # 依赖数据（plan 中查询产出的数据结果）
-  result/            # 分析结论（结合 data 和 plan 产出的结论性报告）
+  result/            # 分析结论（结合 plan 产出的结论性报告）
 starrocks/           # StarRocks 数仓能力
   account/           # 账号域（注册、登录等）
   game/              # 游戏域（对局、战绩等）
@@ -84,7 +83,8 @@ py/                  # 回填脚本集（调度器 + 单表脚本 + 工具，详
   daily_backfill.py  # 每日初始化调度器（15 张表）
   daily_retention.py # 留存回扫调度器（35 天）
   README.md          # ← 脚本使用说明，团队入口
-ops/                 # 运维操作手册（daily_data_ops.md / troubleshooting.md 等）
+ops/                 # 运维操作手册（daily_data_ops.md）
+lessons/             # 经验总结（starrocks 技术排查 / troubleshooting）
 requirements/        # 研发需求文档
 ```
 
@@ -102,4 +102,4 @@ requirements/        # 研发需求文档
 ## DDL 操作规范
 
 - **禁止通过 sr_exec.py 执行 DDL**：建表（CREATE TABLE）、改表（ALTER TABLE）、删表（DROP TABLE）等 DDL 操作一律不通过 `py/sr_exec.py` 或任何脚本执行
-- DDL 操作必须由用户在 CloudBeaver / 
+- DDL 操作必须由用户在 CloudBeaver 网页端手动执行 

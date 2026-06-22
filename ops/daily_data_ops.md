@@ -334,7 +334,7 @@ py -3 -u .\daily_backfill.py --start 20260617 --end 20260617 --dry-run
 
 调度器特性：
 - 失败即停（避免下游空跑），提示从哪一层续跑
-- 行数为 0 的表打 `⚠️ WARNING` 并汇总到结尾，需人工确认（见 [troubleshooting.md](./troubleshooting.md#1-insert-脚本报-ok-但目标表-0-行strict-mode-静默回滚)）
+- 行数为 0 的表打 `⚠️ WARNING` 并汇总到结尾，需人工确认（见 [troubleshooting.md](../lessons/troubleshooting.md#1-insert-脚本报-ok-但目标表-0-行strict-mode-静默回滚)）
 - 每天日志写 `py/logs/backfill_YYYY-MM-DD.log`，含每张表的完整 stdout 便于回溯
 
 retention 域（daily_allgame_stat + retention_flag + firstday_game_stat）走独立调度 [py/daily_retention.py](../py/daily_retention.py)，默认回扫 35 天 reg_date 重算，因为 retention_flag 的 d30 留存需要 reg_date+30 天的数据齐全：
@@ -354,7 +354,7 @@ py -3 -u .\daily_retention.py --window 60                      # 自定义回扫
 3. **L2 依赖 L1**：app_daily_reg / ddz_daily_game / crazyddz_daily_game / dq_silver_logs
 4. **L3 依赖 L2**：app_game_active / app_gamemode_active / silvergame_stat / scoregame_stat / allgame_stat / ddz_firstday_game
 5. **retention 域**：daily_allgame_stat / retention_flag / firstday_game_stat（按 reg_date 回扫，详见 [py/daily_retention.py](../py/daily_retention.py)）
-6. **数据校验**：`py -3 -u .\sr_exec.py -f check_data.sql`（改 sql 里日期），若 INSERT 报 OK 但行数为 0 或对不上，参见 [troubleshooting.md](./troubleshooting.md)。
+6. **数据校验**：`py -3 -u .\sr_exec.py -f check_data.sql`（改 sql 里日期），若 INSERT 报 OK 但行数为 0 或对不上，参见 [troubleshooting.md](../lessons/troubleshooting.md)。
 
 ## 19. 常见问题
 
@@ -362,7 +362,7 @@ py -3 -u .\daily_retention.py --window 60                      # 自定义回扫
 
 CloudBeaver GraphQL API 的 `statusMessage=Executed` **不可信**——SR 在 strict mode 下因数据质量过滤回滚整批时，任务仍会以"Executed"结束。常见触发原因是字段长度不够、类型不匹配等。
 
-排查步骤：在 CloudBeaver 网页端跑同一句 INSERT 看真实报错，根据报错里的 `job_id` 查 `information_schema.load_tracking_logs` 定位脏行。完整流程详见 [troubleshooting.md](./troubleshooting.md#1-insert-脚本报-ok-但目标表-0-行strict-mode-静默回滚)。
+排查步骤：在 CloudBeaver 网页端跑同一句 INSERT 看真实报错，根据报错里的 `job_id` 查 `information_schema.load_tracking_logs` 定位脏行。完整流程详见 [troubleshooting.md](../lessons/troubleshooting.md#1-insert-脚本报-ok-但目标表-0-行strict-mode-静默回滚)。
 
 ### Q2: 如何手动清理某日重复数据
 

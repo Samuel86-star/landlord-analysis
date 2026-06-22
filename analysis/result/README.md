@@ -12,9 +12,8 @@
 | **分玩法层** | [retention-by-mode-report.md](retention-by-mode-report.md) | 经典/不洗牌/癞子的留存差异、玩法内因子规律 | 对局留存（分子必须有对局，才能识别玩法归属） |
 | **分客户端语言层** | [retention-by-client-lang-report.md](retention-by-client-lang-report.md) | Cocos Lua vs Cocos Creator 的留存差异、技术归因诊断 | 登录留存 |
 
-分析框架及 SQL 见 [`../docs/retention-global.md`](../docs/retention-global.md)、[`../docs/retention-by-mode.md`](../docs/retention-by-mode.md)、[`../docs/retention-by-client-lang.md`](../docs/retention-by-client-lang.md)。
+分析框架及 SQL 见 [`../plan/retention/retention-global.md`](../plan/retention/retention-global.md)、[`../plan/retention/retention-by-mode.md`](../plan/retention/retention-by-mode.md)、[`../plan/retention/retention-by-client-lang.md`](../plan/retention/retention-by-client-lang.md)。
 
-**专项分析方案（首日仅 1 局归因）**：[`../docs/one-game-first-day-analysis-plan.md`](../docs/one-game-first-day-analysis-plan.md) — 与全局报告 **3.2 首日对局数**（1 局占比、次留对比）对齐，含多套分母口径、假设树与 SQL 提纲。
 
 ---
 
@@ -75,7 +74,7 @@
 ### P2（数据缺口先补齐）
 
 7. 补 L-09 版本切换分析、重构 by-mode 连败分析（控制对局数）、从监控看板移除新手逃跑率指标
-8. **首日仅 1 局专项拆解**：按 [`../docs/one-game-first-day-analysis-plan.md`](../docs/one-game-first-day-analysis-plan.md) 执行渠道/首局/时长等归因，支撑 P1「首日任务引导对局数」的优先级与实验设计
+8. **首日仅 1 局专项拆解**：按留存分析框架中的首日对局数分析执行渠道/首局/时长等归因，支撑 P1「首日任务引导对局数」的优先级与实验设计
 
 ---
 
@@ -85,7 +84,6 @@
 2. **再看** [retention-by-mode-report.md](retention-by-mode-report.md) 理解玩法差异
 3. **最后** [retention-by-client-lang-report.md](retention-by-client-lang-report.md) 做技术归因
 4. 每份报告末尾有"关键数据表摘录"附录，可作为讨论时的引用依据
-5. 若重点攻关「注册当日只打 1 局」人群，配合阅读 [`../docs/one-game-first-day-analysis-plan.md`](../docs/one-game-first-day-analysis-plan.md)
 
 ---
 
