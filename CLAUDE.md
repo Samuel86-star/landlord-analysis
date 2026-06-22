@@ -83,6 +83,7 @@ py/                  # 回填脚本集（调度器 + 单表脚本 + 工具，详
   daily_backfill.py  # 每日初始化调度器（15 张表）
   daily_retention.py # 留存回扫调度器（35 天）
   README.md          # ← 脚本使用说明，团队入口
+  tmp/               # 分析执行过程的临时文件（临时 SQL、探查脚本等，不提交，见 .gitignore）
 ops/                 # 运维操作手册（daily_data_ops.md）
 lessons/             # 经验总结（starrocks 技术排查 / troubleshooting）
 requirements/        # 研发需求文档
