@@ -1836,7 +1836,8 @@ ORDER BY reg_date;
 识别"登录留存 - 游戏留存"差值中的用户特征，了解这部分用户是谁、来自什么渠道。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT
         r.uid, r.reg_date, r.app_id,
         r.channel_category_name,
@@ -1844,54 +1845,88 @@ WITH reg_base AS (
         CASE WHEN r.reg_group_id IN (8, 88) THEN 'iOS' ELSE 'Android' END AS platform
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-user_ret AS (
+date_bounds AS (
+    -- 2. 动态计算次留所需的分区裁剪边界（最大边界精准卡死在 +1 天）
     SELECT
-        rb.uid, rb.reg_date,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        rb.channel_category_name,
-        rb.reg_app_code,
-        rb.platform
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid, rb.reg_date, rb.channel_category_name, rb.reg_app_code, rb.platform
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_stream AS (
+    -- 3. 【核心提速：核心人群下推】
+    -- 既然原 SQL 最终只看 login_d1 = 1 的用户，这里直接使用次日登录表 INNER JOIN 圈定目标人群
+    -- 从而在第一步就剔除掉没有次留的大量垃圾用户
+    SELECT
+        g.uid, g.channel_category_name, g.reg_app_code, g.platform,
+        1 AS login_d1,
+        0 AS game_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN reg_base_raw g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.channel_category_name, g.reg_app_code, g.platform
+
+    UNION ALL
+
+    -- 4. 游戏流：同样是在已确定次留的人群范围内，观察谁次日也玩了游戏
+    SELECT
+        g.uid, g.channel_category_name, g.reg_app_code, g.platform,
+        0 AS login_d1,
+        1 AS game_d1
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN (
+        -- 仅拉取有次日登录的目标种子用户
+        SELECT DISTINCT l_sub.uid, g_sub.reg_date
+        FROM tcy_temp.dws_dq_daily_login l_sub
+        INNER JOIN reg_base_raw g_sub ON l_sub.app_id = 1880053 AND l_sub.uid = g_sub.uid
+        WHERE l_sub.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+          AND l_sub.login_date = DATE_ADD(g_sub.reg_date, INTERVAL 1 DAY)
+    ) seed ON a.app_id = 1880053 AND a.uid = seed.uid AND a.dt = DATE_ADD(seed.reg_date, INTERVAL 1 DAY)
+    INNER JOIN reg_base_raw g ON a.uid = g.uid AND a.dt = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.channel_category_name, g.reg_app_code, g.platform
+),
+user_profile_deduped AS (
+    -- 5. 汇聚轻量化结果：计算出次留种子的单人行为快照
+    SELECT
+        uid, channel_category_name, reg_app_code, platform,
+        MAX(login_d1) AS has_login_d1,
+        MAX(game_d1) AS has_game_d1
+    FROM all_events_stream
+    GROUP BY uid, channel_category_name, reg_app_code, platform
+),
+aggregated_cube AS (
+    -- 6. 🛠️ 终极降维打击：利用 GROUPING SETS 替代外层的多个 UNION ALL
+    -- 这样可以强制 StarRocks 只扫描一次 user_profile_deduped 管道，在内存中多线程同时切片算好 3 个维度
+    SELECT
+        channel_category_name,
+        platform,
+        reg_app_code,
+        COUNT(DISTINCT uid) AS total_users,
+        ROUND(SUM(CASE WHEN has_login_d1 = 1 AND has_game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
+            / NULLIF(SUM(has_login_d1), 0), 2) AS login_no_game_pct,
+        -- 使用 grouping_id 或组合逻辑生成维度标识标签
+        CASE
+            WHEN channel_category_name IS NOT NULL THEN '按渠道'
+            WHEN platform IS NOT NULL THEN '按平台'
+            ELSE '按客户端'
+        END AS dimension
+    FROM user_profile_deduped
+    GROUP BY GROUPING SETS (
+        (channel_category_name),
+        (platform),
+        (reg_app_code)
+    )
 )
-SELECT
-    '按渠道' AS dimension,
-    channel_category_name AS value,
-    COUNT(DISTINCT uid) AS total_users,
-    ROUND(SUM(CASE WHEN login_d1 = 1 AND game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
-        / NULLIF(SUM(login_d1), 0), 2) AS login_no_game_pct
-FROM user_ret
-WHERE login_d1 = 1
-GROUP BY channel_category_name
-UNION ALL
-SELECT
-    '按平台' AS dimension,
-    platform AS value,
-    COUNT(DISTINCT uid) AS total_users,
-    ROUND(SUM(CASE WHEN login_d1 = 1 AND game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
-        / NULLIF(SUM(login_d1), 0), 2) AS login_no_game_pct
-FROM user_ret
-WHERE login_d1 = 1
-GROUP BY platform
-UNION ALL
-SELECT
-    '按客户端' AS dimension,
-    reg_app_code AS value,
-    COUNT(DISTINCT uid) AS total_users,
-    ROUND(SUM(CASE WHEN login_d1 = 1 AND game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
-        / NULLIF(SUM(login_d1), 0), 2) AS login_no_game_pct
-FROM user_ret
-WHERE login_d1 = 1
-GROUP BY reg_app_code
+-- 7. 主查询输出与排序，加入 Planner 超时防护 HINT
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    dimension,
+    COALESCE(channel_category_name, platform, reg_app_code) AS value,
+    total_users,
+    login_no_game_pct
+FROM aggregated_cube
 ORDER BY dimension, value;
 ```
 
