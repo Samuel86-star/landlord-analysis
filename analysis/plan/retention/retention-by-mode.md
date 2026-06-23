@@ -374,48 +374,84 @@ ORDER BY play_mode, multi_group;
 > 字段来源：`dws_app_allgame_stat.win_rate`
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
-    -- 活跃事实表分区裁剪窗口
+    -- 2. 统一时间调度：产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_d1_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_d1_date
+    FROM reg_base_raw
+),
+user_profile AS (
+    -- 3. 🛠️ 标签解耦层：底层直接 INNER JOIN 圈定首日切实参与玩法的目标用户
+    -- 提前将"胜率区间"在最底层转换为轻量文本标签，防止复杂表达式向后方的聚合流传递
+    SELECT
+        r.uid, r.reg_date,
+        st.play_mode,
+        CASE
+            WHEN st.win_rate < 30 THEN 'A: <30%'
+            WHEN st.win_rate < 50 THEN 'B: 30-50%'
+            WHEN st.win_rate < 70 THEN 'C: 50-70%'
+            ELSE                       'D: >=70%'
+        END AS winrate_group
+    FROM reg_base_raw r
+    INNER JOIN tcy_temp.dws_app_allgame_stat st
+        ON st.app_id = r.app_id AND st.uid = r.uid AND st.dt = r.reg_date
+    WHERE st.play_mode IN (1, 2, 3, 7)
+      AND st.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+),
+all_events_stream AS (
+    -- 4. 垂直管道第一层：基础注册种子人群流（作为计算同玩法留存的分母）
+    SELECT uid, play_mode, winrate_group, 1 AS is_reg, 0 AS is_ret_d1
+    FROM user_profile
+
+    UNION ALL
+
+    -- 5. 垂直管道第二层：次日(D1)同玩法活跃流（作为计算同玩法留存的分子）
+    -- 强制开启 D+1 静态分区裁剪，并在 user_profile 种子网格范围内进行去重合拢
+    SELECT
+        ma.uid, ma.play_mode, p.winrate_group, 0 AS is_reg, 1 AS is_ret_d1
+    FROM tcy_temp.dws_app_gamemode_active ma
+    INNER JOIN user_profile p
+        ON ma.app_id = 1880053
+       AND ma.uid = p.uid
+       AND ma.play_mode = p.play_mode
+       AND ma.dt = DATE_ADD(p.reg_date, INTERVAL 1 DAY)
+    WHERE ma.dt BETWEEN (SELECT min_d1_date FROM date_bounds) AND (SELECT max_d1_date FROM date_bounds)
+    GROUP BY ma.uid, ma.play_mode, p.winrate_group
 )
-SELECT
-    CASE st.play_mode
+-- 🌟 6. 主查询行列式转换聚合，内嵌物理 HINT 放宽优化器编译时限至 15 秒
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    CASE play_mode
         WHEN 1 THEN '经典'
         WHEN 2 THEN '不洗牌'
         WHEN 3 THEN '癞子'
         WHEN 7 THEN '510K'
+        ELSE '其他'
     END AS play_mode_name,
-    CASE
-        WHEN st.win_rate IS NULL THEN '0: 无对局'
-        WHEN st.win_rate < 30 THEN 'A: <30%'
-        WHEN st.win_rate < 50 THEN 'B: 30-50%'
-        WHEN st.win_rate < 70 THEN 'C: 50-70%'
-        ELSE                       'D: >=70%'
-    END AS winrate_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN ma.dt IS NOT NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS same_mode_d1_rate
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_app_allgame_stat st
-    ON st.app_id = r.app_id AND st.uid = r.uid AND st.dt = r.reg_date
-    AND st.play_mode IN (1, 2, 3, 7)
-LEFT JOIN tcy_temp.dws_app_gamemode_active ma
-    ON ma.app_id = r.app_id AND ma.uid = r.uid
-    AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-    AND ma.play_mode = st.play_mode
-    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-WHERE st.play_mode IS NOT NULL
-GROUP BY st.play_mode, winrate_group
-ORDER BY st.play_mode, winrate_group;
+    winrate_group,
+
+    -- 分母：该玩法、该胜率区间下的去重新登总人数
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 分子 / 分母 = 次日同玩法留存率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_ret_d1 = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS same_mode_d1_rate
+FROM all_events_stream
+GROUP BY play_mode, winrate_group
+ORDER BY play_mode, winrate_group;
 ```
 
 ### 3.3 分玩法 × 对局数分组留存
