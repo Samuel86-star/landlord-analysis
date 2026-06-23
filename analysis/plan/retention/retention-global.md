@@ -1599,7 +1599,16 @@ ORDER BY risk_group;
 首局即输且担任地主且经历高倍，三重负面体验叠加。
 
 ```sql
-WITH first_game AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
+),
+first_game_raw AS (
+    -- 2. 提取首局核心特征事实（下推分区过滤，利用 MIN_BY 锁定第一局）
     SELECT
         g.uid, g.dt,
         MIN_BY(g.result_id, g.game_datetime) AS first_game_result,
@@ -1613,41 +1622,58 @@ WITH first_game AS (
       AND g.play_mode IN (1, 2, 3, 5)
     GROUP BY g.uid, g.dt
 ),
-reg_base AS (
-    SELECT r.uid, r.reg_date, r.app_id
-    FROM tcy_temp.dws_dq_app_daily_reg r
-    WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
-),
-login_ret AS (
+user_profile AS (
+    -- 3. 🛠️ 标签解耦层：横向轻量关联，提前将首局的"胜负、角色、倍数"在最底层写死为轻量文本
+    -- 这样做彻底斩断了多重 MIN_BY 产生的逻辑树向后方大表传递，为优化器进行极致减负
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        rb.uid, rb.reg_date,
+        CASE
+            WHEN fg.first_game_result = 2 AND fg.first_game_role = 1 AND fg.first_game_magnification > 24
+                THEN 'A: 首局负×地主×高倍'
+            WHEN fg.first_game_result = 2 AND fg.first_game_role = 1
+                THEN 'B: 首局负×地主'
+            WHEN fg.first_game_result = 2
+                THEN 'C: 首局负(农民)'
+            WHEN fg.first_game_result = 1
+                THEN 'D: 首局胜'
+            ELSE 'E: 无对局或非经典玩法'
+        END AS first_game_risk
+    FROM reg_base_raw rb
+    LEFT JOIN first_game_raw fg ON rb.uid = fg.uid AND rb.reg_date = fg.dt
+),
+date_bounds AS (
+    -- 4. 动态计算次留所需的分区裁剪边界（最大边界只需 +1 天，从物理上隔绝历史无效分区扫描）
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_deduped AS (
+    -- 5. 基础全量用户流
+    SELECT uid, first_game_risk, 1 AS is_reg, 0 AS is_login_d1
+    FROM user_profile
+
+    UNION ALL
+
+    -- 6. 次日登录活跃流（刚性裁剪分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.first_game_risk, 0 AS is_reg, 1 AS is_login_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN user_profile g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.first_game_risk
 )
-SELECT
-    CASE
-        WHEN fg.first_game_result = 2 AND fg.first_game_role = 1 AND fg.first_game_magnification > 24
-            THEN 'A: 首局负×地主×高倍'
-        WHEN fg.first_game_result = 2 AND fg.first_game_role = 1
-            THEN 'B: 首局负×地主'
-        WHEN fg.first_game_result = 2
-            THEN 'C: 首局负(农民)'
-        WHEN fg.first_game_result = 1
-            THEN 'D: 首局胜'
-        ELSE 'E: 无对局或非经典玩法'
-    END AS first_game_risk,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
-FROM reg_base rb
-LEFT JOIN first_game fg ON rb.uid = fg.uid AND rb.reg_date = fg.dt
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-GROUP BY 1
-ORDER BY 1;
+-- 🌟 7. 主查询加入超时放宽 HINT，赋予优化器 15秒 的充裕算力筹备时间
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    first_game_risk,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 次留计算
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+FROM all_events_deduped
+GROUP BY first_game_risk
+ORDER BY first_game_risk;
 ```
 
 ### 5.3 零对局 × 高频登录
