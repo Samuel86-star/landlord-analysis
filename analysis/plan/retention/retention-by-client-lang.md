@@ -332,27 +332,52 @@ ORDER BY client_lang;
 > 多次登录（>=3 次）可能反映：闪退、掉线后重连、进程被杀等稳定性问题。`first_day_login_cnt` 来自 `dws_dq_app_daily_reg` 预聚合字段。
 
 ```sql
-SELECT
-    CASE r.reg_app_code
-        WHEN 'zgda' THEN 'Cocos-Lua'
-        WHEN 'zgdx' THEN 'Cocos-Creator'
-        ELSE '其他'
-    END AS client_lang,
-    CASE
-        WHEN r.first_day_login_cnt = 1 THEN 'A: 1次（正常）'
-        WHEN r.first_day_login_cnt = 2 THEN 'B: 2次'
-        WHEN r.first_day_login_cnt BETWEEN 3 AND 5 THEN 'C: 3-5次（可疑）'
-        WHEN r.first_day_login_cnt >= 6 THEN 'D: 6次以上（异常）'
-        ELSE 'Z: 未知'
-    END AS login_cnt_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT r.uid) * 100.0 / SUM(COUNT(DISTINCT r.uid)) OVER (PARTITION BY r.reg_app_code), 2) AS pct_in_client,
-    ROUND(AVG(r.first_day_login_cnt), 1) AS avg_login_cnt
-FROM tcy_temp.dws_dq_app_daily_reg r
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
-GROUP BY 1, 2
-ORDER BY client_lang, login_cnt_group;
+WITH user_seed_profile AS (
+    -- 1. 🛠️ 标签固化层：在单表最底层一次性完成双维度清洗与常数映射，避免高频函数计算
+    SELECT
+        uid,
+        CASE reg_app_code
+            WHEN 'zgda' THEN 'Cocos-Lua'
+            WHEN 'zgdx' THEN 'Cocos-Creator'
+            ELSE '其他'
+        END AS client_lang,
+        CASE
+            WHEN first_day_login_cnt = 1 THEN 'A: 1次（正常）'
+            WHEN first_day_login_cnt = 2 THEN 'B: 2次'
+            WHEN first_day_login_cnt BETWEEN 3 AND 5 THEN 'C: 3-5次（可疑）'
+            WHEN first_day_login_cnt >= 6 THEN 'D: 6次以上（异常）'
+            ELSE 'Z: 未知'
+        END AS login_cnt_group,
+        first_day_login_cnt
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+client_base_count AS (
+    -- 2. 🛠️ 纯正分母计算源：在底层优雅、高效率地算好各引擎切实去重的总人数
+    -- 结果集极轻（仅3条数据），外层关联时会直接触发最快的本地 Broadcast HASH Join
+    SELECT client_lang, COUNT(DISTINCT uid) AS base_users
+    FROM user_seed_profile
+    GROUP BY client_lang
+)
+-- 🌟 3. 主查询：双维度无开窗聚合输出，内嵌物理 HINT 强开多线程并行加速
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    p.client_lang,
+    p.login_cnt_group,
+
+    -- 当前分组下的去重新登人数
+    COUNT(DISTINCT p.uid) AS user_count,
+
+    -- 分子 / 底层挂载的单维度刚性分母 = 绝对严谨、无开窗损耗的占比
+    ROUND(COUNT(DISTINCT p.uid) * 100.0 / b.base_users, 2) AS pct_in_client,
+
+    -- 人均登录次数
+    ROUND(AVG(p.first_day_login_cnt), 1) AS avg_login_cnt
+FROM user_seed_profile p
+INNER JOIN client_base_count b ON p.client_lang = b.client_lang -- 极致对撞挂载
+GROUP BY p.client_lang, p.login_cnt_group, b.base_users
+ORDER BY p.client_lang, p.login_cnt_group;
 ```
 
 ### 3.2 按客户端 x 登录次数分组的留存
