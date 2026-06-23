@@ -758,70 +758,85 @@ ORDER BY lose_streak_group;
 银子净变化反映用户首日的经济得失。巨亏用户留存显著低于盈利用户。分组时需考虑房间底注水平，不同房间的盈亏绝对值含义不同。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
+    -- 2. 提取当天对局输赢数据并提前打上分层标签
     SELECT
         rb.uid, rb.reg_date,
-        gs.game_count,
-        gs.total_diff_money
-    FROM reg_base rb
+        CASE
+            WHEN gs.game_count IS NULL OR gs.game_count = 0 THEN '0: 无对局'
+            WHEN gs.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
+            WHEN gs.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
+            WHEN gs.total_diff_money < 0 THEN 'C: 小亏(-1万~0)'
+            WHEN gs.total_diff_money < 10000 THEN 'D: 小赚(0~1万)'
+            WHEN gs.total_diff_money < 50000 THEN 'E: 大赚(1万~5万)'
+            ELSE 'F: 巨赚(>5万)'
+        END AS money_group,
+        COALESCE(gs.total_diff_money, 0) AS total_diff_money
+    FROM reg_base_raw rb
     LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
         ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
 ),
-login_ret AS (
+date_bounds AS (
+    -- 3. 动态计算活跃表的分区裁剪边界（只看到7留，最大边界只需+7天，大幅降低IO扫描）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
-        )
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+    FROM reg_base_raw
 ),
-game_ret AS (
+all_events_deduped AS (
+    -- 4. 圈定基础人群流与行为标签
+    SELECT uid, money_group, total_diff_money, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM game_stat
+
+    UNION ALL
+
+    -- 5. 登录留存流（刚性裁剪分区 + 局部去重）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
-        )
-    GROUP BY rb.uid
+        g.uid, g.money_group, g.total_diff_money, 0 AS is_reg,
+        DATEDIFF(l.login_date, g.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN game_stat g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, g.reg_date) IN (1, 7)
+    GROUP BY g.uid, g.money_group, g.total_diff_money, login_days_diff
+
+    UNION ALL
+
+    -- 6. 游戏留存流（刚性裁剪分区 + 局部去重，原SQL只查了game_d1）
+    SELECT
+        g.uid, g.money_group, g.total_diff_money, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, g.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN game_stat g ON a.app_id = 1880053 AND a.uid = g.uid
+    WHERE a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      -- 🌟 配合你外层只统计了game_d1，这里仅保留次日
+      AND DATEDIFF(a.dt, g.reg_date) = 1
+    GROUP BY g.uid, g.money_group, g.total_diff_money, game_days_diff
 )
 SELECT
-    CASE
-        WHEN gs.game_count IS NULL OR gs.game_count = 0 THEN '0: 无对局'
-        WHEN gs.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
-        WHEN gs.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
-        WHEN gs.total_diff_money < 0 THEN 'C: 小亏(-1万~0)'
-        WHEN gs.total_diff_money < 10000 THEN 'D: 小赚(0~1万)'
-        WHEN gs.total_diff_money < 50000 THEN 'E: 大赚(1万~5万)'
-        ELSE 'F: 巨赚(>5万)'
-    END AS money_group,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(AVG(gs.total_diff_money), 0) AS avg_money_change,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1
-FROM reg_base rb
-LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-LEFT JOIN game_ret gr ON rb.uid = gr.uid
-GROUP BY 1
-ORDER BY 1;
+    money_group,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+    -- 🌟 锁定在注册流上计算平均输赢差额，防止结果被外部流摊薄
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN total_diff_money ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0) AS avg_money_change,
+
+    -- 登录留存
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+
+    -- 游戏留存
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1
+FROM all_events_deduped
+GROUP BY money_group
+ORDER BY money_group;
 ```
 
 ### 3.5 破产状态
