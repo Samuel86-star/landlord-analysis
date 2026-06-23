@@ -1305,47 +1305,76 @@ ORDER BY role_preference;
 逃跑反映挫败感或操作意外。逃跑率高的用户留存率极低。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
+    -- 2. 圈定核心有对局人群，并计算底层指标
     SELECT
         rb.uid, rb.reg_date,
         gs.game_count,
         COALESCE(gs.escape_count, 0) AS escape_count
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
+    FROM reg_base_raw rb
+    INNER JOIN tcy_temp.dws_app_silvergame_stat gs
         ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
     WHERE gs.game_count > 0
 ),
-login_ret AS (
+user_profile AS (
+    -- 3. 🛠️ 新增标签解耦层：在进入 UNION 垂直流前把条件分支和文本写死
+    -- 这样可以强制优化器将其视为一个轻量视图，避免向后方的留存大表传递复杂的聚合树，极大地为优化器减负
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        uid,
+        reg_date,
+        escape_count * 1.0 / NULLIF(game_count, 0) AS escape_rate, -- 用 NULLIF 绝对防御潜在的除以 0 异常
+        CASE
+            WHEN escape_count = 0 THEN 'A: 无逃跑'
+            WHEN escape_count = 1 THEN 'B: 逃跑1次'
+            WHEN escape_count = 2 THEN 'C: 逃跑2次'
+            ELSE 'D: 逃跑3+次'
+        END AS escape_group
+    FROM game_stat
+),
+date_bounds AS (
+    -- 4. 动态计算次留所需的分区裁剪边界（最大边界只需 +1 天，从物理上隔离无效的 IO 扫描）
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_deduped AS (
+    -- 5. 基础有对局用户流
+    SELECT uid, escape_group, escape_rate, 1 AS is_reg, 0 AS is_login_d1
+    FROM user_profile
+
+    UNION ALL
+
+    -- 6. 次日登录活跃流（刚性裁剪分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.escape_group, g.escape_rate, 0 AS is_reg, 1 AS is_login_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN user_profile g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.escape_group, g.escape_rate
 )
-SELECT
-    CASE
-        WHEN gs.escape_count = 0 THEN 'A: 无逃跑'
-        WHEN gs.escape_count = 1 THEN 'B: 逃跑1次'
-        WHEN gs.escape_count = 2 THEN 'C: 逃跑2次'
-        ELSE 'D: 逃跑3+次'
-    END AS escape_group,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(AVG(gs.escape_count * 1.0 / gs.game_count) * 100, 2) AS avg_escape_rate,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
-FROM reg_base rb
-INNER JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-GROUP BY 1
-ORDER BY 1;
+-- 🌟 7. 主查询加入 HINT，放宽优化器筹备时间至 15 秒
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    escape_group,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 🌟 修正原 AVG 算法：锁定在注册基础流上算平均逃跑率，防止分母被次留活跃数据行摊薄失真
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN escape_rate ELSE 0 END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS avg_escape_rate,
+
+    -- 次留计算
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+FROM all_events_deduped
+GROUP BY escape_group
+ORDER BY escape_group;
 ```
 
 ### 4.5 房间底注体验
