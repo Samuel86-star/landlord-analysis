@@ -1065,7 +1065,6 @@ FROM all_events_deduped
 GROUP BY login_freq_group
 ORDER BY login_freq_group;
 ```
-```
 
 ---
 
