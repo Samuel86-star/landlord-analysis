@@ -996,61 +996,75 @@ ORDER BY high_multi_exp;
 `first_day_login_cnt` 反映注册当天的登录次数。多次登录（≥3次）可能是客户端崩溃/闪退的信号，这类用户的留存率可能受到稳定性问题影响。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据 + 标签提前封装
     SELECT
         r.uid,
         r.reg_date,
         r.app_id,
-        r.first_day_login_cnt
+        CASE
+            WHEN r.first_day_login_cnt = 1 THEN 'A: 1次(正常)'
+            WHEN r.first_day_login_cnt = 2 THEN 'B: 2次'
+            WHEN r.first_day_login_cnt BETWEEN 3 AND 5 THEN 'C: 3-5次(疑似崩溃)'
+            ELSE 'D: 5次+(高频崩溃)'
+        END AS login_freq_group
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-login_ret AS (
+date_bounds AS (
+    -- 2. 动态计算活跃表的分区裁剪边界（因为只看7留，最大边界只需+7天，消除几百个分区的无用扫描）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
-        )
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+    FROM reg_base_raw
 ),
-game_ret AS (
+all_events_deduped AS (
+    -- 3. 基础新登用户流
+    SELECT uid, login_freq_group, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM reg_base_raw
+
+    UNION ALL
+
+    -- 4. 登录留存流（刚性裁剪分区 + 局部去重）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
-        )
-    GROUP BY rb.uid
+        g.uid, g.login_freq_group, 0 AS is_reg,
+        DATEDIFF(l.login_date, g.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN reg_base_raw g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, g.reg_date) IN (1, 7)
+    GROUP BY g.uid, g.login_freq_group, login_days_diff
+
+    UNION ALL
+
+    -- 5. 游戏留存流（刚性裁剪分区 + 局部去重）
+    SELECT
+        g.uid, g.login_freq_group, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, g.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN reg_base_raw g ON a.app_id = 1880053 AND a.uid = g.uid
+    WHERE a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(a.dt, g.reg_date) IN (1, 7)
+    GROUP BY g.uid, g.login_freq_group, game_days_diff
 )
 SELECT
-    CASE
-        WHEN rb.first_day_login_cnt = 1 THEN 'A: 1次(正常)'
-        WHEN rb.first_day_login_cnt = 2 THEN 'B: 2次'
-        WHEN rb.first_day_login_cnt BETWEEN 3 AND 5 THEN 'C: 3-5次(疑似崩溃)'
-        ELSE 'D: 5次+(高频崩溃)'
-    END AS login_freq_group,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
-    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7
-FROM reg_base rb
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-LEFT JOIN game_ret gr ON rb.uid = gr.uid
-GROUP BY 1
-ORDER BY 1;
+    login_freq_group,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 登录留存
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+
+    -- 游戏留存
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+FROM all_events_deduped
+GROUP BY login_freq_group
+ORDER BY login_freq_group;
+```
 ```
 
 ---
