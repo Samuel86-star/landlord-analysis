@@ -763,43 +763,45 @@ ORDER BY client_lang, platform;
 > **核心问题**：用户注册时使用 A 版本，但首次登录时是否切换到了 B 版本？版本切换率高可能意味着用户主动卸载 / 更新了客户端，或渠道分发了错误的包体。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础信息：确保 reg_app_code 存在
     SELECT uid, reg_date, app_id, reg_app_code
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
-date_bounds AS (
+login_summary AS (
+    -- 2. 聚合首日行为：使用确认的字段 first_app_code
+    SELECT uid, MAX(first_app_code) AS first_day_code
+    FROM tcy_temp.dws_dq_daily_login
+    WHERE app_id = 1880053
+      AND login_date BETWEEN '2026-02-10' AND '2026-06-15'
+    GROUP BY uid
+),
+joined_data AS (
+    -- 3. 关联并打标：通过 LEFT JOIN 补全无登录用户
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        r.uid, r.reg_date, r.reg_app_code,
+        COALESCE(l.first_day_code, 'NONE') AS first_day_code
+    FROM reg_base_raw r
+    LEFT JOIN login_summary l ON r.uid = l.uid
 )
+-- 4. 最终聚合输出
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
         WHEN 'zgdx' THEN 'Cocos-Creator'
         ELSE '其他'
-    END AS reg_client_lang,
+    END AS client_lang,
     CASE
-        WHEN login1.first_app_code IS NULL THEN 'X: 首日无登录'
-        WHEN login1.first_app_code = r.reg_app_code THEN 'A: 版本未切换'
+        WHEN first_day_code = 'NONE' THEN 'X: 首日无登录'
+        WHEN first_day_code = r.reg_app_code THEN 'A: 版本未切换'
         ELSE 'B: 版本已切换'
     END AS switch_status,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_dq_daily_login login1
-    ON login1.app_id = r.app_id AND login1.uid = r.uid AND login1.login_date = r.reg_date
-LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON l.app_id = r.app_id AND l.uid = r.uid
-    AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    COUNT(DISTINCT r.uid) AS user_count
+FROM joined_data r
 GROUP BY 1, 2
-ORDER BY reg_client_lang, switch_status;
+ORDER BY 1, 2;
 ```
 
 ### 4.2 首日对局数分布（游戏参与度对比）
