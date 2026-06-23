@@ -45,7 +45,7 @@ END AS platform
 | `reg_group_id` | `dws_dq_app_daily_reg` | 用户注册时的设备平台分组 |
 | `first_day_login_cnt` | `dws_dq_app_daily_reg` | 注册当日登录次数，稳定性代理指标 |
 | `first_app_code` | `dws_dq_daily_login` | 用户**当日首次登录**使用的客户端版本 |
-| `is_game_active` | `dws_app_game_active` | 当日是否有任意玩法对局活跃 |
+| `game_active(dt)` | `dws_app_game_active` | 任意玩法对局活跃标记（**该表无 is_game_active 字段，行存在即活跃**） |
 | `game_count` | `dws_app_silvergame_stat` | 银子玩法当日对局数 |
 | `escape_count` | `dws_app_silvergame_stat` | 银子玩法当日逃跑次数 |
 | `avg_game_seconds` | `dws_app_silvergame_stat` | 银子玩法平均对局时长（秒） |
@@ -291,7 +291,7 @@ all_events_stream AS (
     UNION ALL
 
     -- 5. 垂直管道第二层：游戏活跃行为流（分子基准）
-    -- 🌟 核心提速点：提前下推 is_game_active = 1，将非游戏活跃数据直接阻断在最底层
+    -- 🌟 dws_app_game_active 无 is_game_active 字段，行存在即游戏活跃 → INNER JOIN 命中即活跃
     SELECT
         ga.uid,
         p.client_lang,
@@ -301,8 +301,7 @@ all_events_stream AS (
         MAX(CASE WHEN ga.dt = p.d30_target THEN 1 ELSE 0 END) AS is_d30
     FROM tcy_temp.dws_app_game_active ga
     INNER JOIN user_seed_profile p ON ga.app_id = p.app_id AND ga.uid = p.uid
-    WHERE ga.is_game_active = 1 -- 硬核游戏活跃限制前置
-      AND ga.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    WHERE ga.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
     GROUP BY ga.uid, p.client_lang
 )
 -- 🌟 6. 主查询：单维度游戏留存漏斗矩阵坍缩，内嵌物理 HINT
@@ -640,50 +639,107 @@ ORDER BY client_lang, duration_group;
 
 ### 3.5 按客户端 x 平台的无对局率
 
-> "注册后无对局"可能是稳定性问题的极端表现（闪退导致无法进入游戏）。计算各版本 x 平台组合中当日 game_count = 0 或无游戏活跃记录的用户比例。
+> "注册后无对局"可能是稳定性问题的极端表现（闪退导致无法进入游戏）。计算各版本 x 平台组合中**首日无对局用户占比**，并交叉对比两个数据源：
+>
+> - `dws_app_game_active`（任意玩法活跃）：**该表无 `is_game_active` 字段，行存在即游戏活跃**，无匹配行 = 无对局
+> - `dws_app_silvergame_stat`（银子玩法）：`game_count IS NULL OR game_count = 0` = 无银子对局
+>
+> 两个口径差值 = "玩了积分/非银子玩法但无银子对局"的用户。
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id, reg_app_code, reg_group_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id, r.reg_app_code, r.reg_group_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
+    -- 🌟 极致分区剪枝：只看次留，上限直接收紧到 INTERVAL 1 DAY
     SELECT
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+user_seed_profile AS (
+    -- 3. 🛠️ 双维度与时间常数固化层：LEFT JOIN 两张事实表判定首日是否有对局
+    -- 🌟 dws_app_game_active 无 is_game_active 字段，行存在即活跃 → 用 ga.uid IS NOT NULL 判定
+    SELECT
+        r.uid, r.reg_date, r.app_id,
+        CASE r.reg_app_code
+            WHEN 'zgda' THEN 'Cocos-Lua'
+            WHEN 'zgdx' THEN 'Cocos-Creator'
+            ELSE '其他'
+        END AS client_lang,
+        CASE
+            WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
+            WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
+            ELSE '其他'
+        END AS platform,
+        -- 任意玩法活跃（行存在即活跃）
+        CASE WHEN ga.uid IS NOT NULL THEN 1 ELSE 0 END AS has_game_active,
+        -- 银子玩法有对局（game_count > 0）
+        CASE WHEN s.game_count > 0 THEN 1 ELSE 0 END AS has_silvergame,
+        DATE_ADD(r.reg_date, INTERVAL 1 DAY) AS d1_target
+    FROM reg_base_raw r
+    LEFT JOIN tcy_temp.dws_app_game_active ga
+        ON ga.app_id = r.app_id AND ga.uid = r.uid AND ga.dt = r.reg_date
+        AND ga.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat s
+        ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
+        AND s.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+),
+all_events_stream AS (
+    -- 4. 垂直管道第一层：基础新登人群种子流（双维度分母基准，携带两条无对局标记）
+    SELECT
+        uid, client_lang, platform, has_game_active, has_silvergame, 1 AS is_reg, 0 AS is_d1
+    FROM user_seed_profile
+
+    UNION ALL
+
+    -- 5. 垂直管道第二层：次日大盘独立登录行为流（分子基准）
+    -- 强制开启 D1 静态分区裁剪，并就地压缩去重，消灭横向关联行膨胀
+    SELECT
+        l.uid,
+        p.client_lang,
+        p.platform,
+        0 AS has_game_active,
+        0 AS has_silvergame,
+        0 AS is_reg,
+        1 AS is_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN user_seed_profile p ON l.app_id = p.app_id AND l.uid = p.uid AND l.login_date = p.d1_target
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    GROUP BY l.uid, p.client_lang, p.platform
 )
-SELECT
-    CASE r.reg_app_code
-        WHEN 'zgda' THEN 'Cocos-Lua'
-        WHEN 'zgdx' THEN 'Cocos-Creator'
-        ELSE '其他'
-    END AS client_lang,
-    CASE
-        WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
-        WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
-        ELSE '其他'
-    END AS platform,
-    COUNT(DISTINCT r.uid) AS reg_users,
-    ROUND(COUNT(DISTINCT CASE
-              WHEN ga.dt = r.reg_date AND (ga.is_game_active IS NULL OR ga.is_game_active = 0)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS no_game_active_pct,
-    ROUND(COUNT(DISTINCT CASE
-              WHEN s.game_count IS NULL OR s.game_count = 0
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS no_silvergame_pct,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_app_game_active ga
-    ON ga.app_id = r.app_id AND ga.uid = r.uid AND ga.dt = r.reg_date
-LEFT JOIN tcy_temp.dws_app_silvergame_stat s
-    ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
-LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-GROUP BY 1, 2
+-- 🌟 6. 主查询：双维度无对局率 + 次留矩阵坍缩聚合，内嵌物理 HINT
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    client_lang,
+    platform,
+
+    -- 分母：该引擎分支 × 平台下的去重新登总用户数
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
+
+    -- 任意玩法无对局率（基于 dws_app_game_active 行存在判定）
+    ROUND(COUNT(DISTINCT CASE WHEN is_reg = 1 AND has_game_active = 0 THEN uid END) * 100.0
+          / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS no_game_active_pct,
+
+    -- 银子玩法无对局率（基于 silvergame_stat.game_count）
+    ROUND(COUNT(DISTINCT CASE WHEN is_reg = 1 AND has_silvergame = 0 THEN uid END) * 100.0
+          / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS no_silvergame_pct,
+
+    -- 次日大盘任意玩法留存率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_d1 = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS day1_rate
+FROM all_events_stream
+GROUP BY client_lang, platform
 ORDER BY client_lang, platform;
 ```
 
