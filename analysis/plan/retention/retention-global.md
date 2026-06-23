@@ -1077,48 +1077,66 @@ ORDER BY login_freq_group;
 平均倍数与留存呈倒 U 型关系：倍数过低（≤6x）体验平淡，倍数过高（>24x）波动过大。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
+    -- 2. 预聚合玩法表，并直接在最底层打上"倍数分层标签"
     SELECT
         rb.uid, rb.reg_date,
-        AVG(gs.avg_magnification) AS avg_multi,
-        SUM(gs.game_count) AS total_games
-    FROM reg_base rb
+        AVG(gs.avg_magnification) AS raw_avg_multi,
+        CASE
+            WHEN SUM(gs.game_count) IS NULL OR SUM(gs.game_count) = 0 THEN '0: 无对局'
+            WHEN AVG(gs.avg_magnification) <= 6 THEN 'A: ≤6x'
+            WHEN AVG(gs.avg_magnification) <= 12 THEN 'B: 6-12x'
+            WHEN AVG(gs.avg_magnification) <= 24 THEN 'C: 12-24x'
+            ELSE 'D: 24x+'
+        END AS multi_group
+    FROM reg_base_raw rb
     LEFT JOIN tcy_temp.dws_app_allgame_stat gs
         ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
     GROUP BY rb.uid, rb.reg_date
 ),
-login_ret AS (
+date_bounds AS (
+    -- 3. 动态计算次留所需的分区裁剪边界（最大边界只需 +1 天，从物理上隔绝历史大分区）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_deduped AS (
+    -- 4. 基础人群流（携带核心指标与分组标签）
+    SELECT uid, multi_group, raw_avg_multi, 1 AS is_reg, 0 AS is_login_d1
+    FROM game_stat
+
+    UNION ALL
+
+    -- 5. 次日登录活跃流（刚性裁剪分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.multi_group, g.raw_avg_multi, 0 AS is_reg, 1 AS is_login_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN game_stat g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.multi_group, g.raw_avg_multi
 )
 SELECT
-    CASE
-        WHEN gs.total_games IS NULL OR gs.total_games = 0 THEN '0: 无对局'
-        WHEN gs.avg_multi <= 6 THEN 'A: ≤6x'
-        WHEN gs.avg_multi <= 12 THEN 'B: 6-12x'
-        WHEN gs.avg_multi <= 24 THEN 'C: 12-24x'
-        ELSE 'D: 24x+'
-    END AS multi_group,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(AVG(gs.avg_multi), 1) AS avg_multi,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
-FROM reg_base rb
-LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-GROUP BY 1
-ORDER BY 1;
+    multi_group,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 🌟 修正原 AVG 算法：锁定在注册流（is_reg = 1）上计算平均倍数，避免分母被次留流摊薄
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN raw_avg_multi ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 1) AS avg_multi,
+
+    -- 次留计算
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+FROM all_events_deduped
+GROUP BY multi_group
+ORDER BY multi_group;
 ```
 
 ### 4.2 首局胜负
