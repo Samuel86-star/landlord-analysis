@@ -3,6 +3,7 @@
 > 本文档聚焦**全局层**留存分析，覆盖用户属性视角和投入度视角的核心指标，采用双重留存口径（登录留存 + 游戏留存）。分玩法/分客户端/银子经济/积分玩法的专项分析见对应文档。
 >
 > **分析时间段**：2026-03-01 至 2026-06-21
+>
 > **留存口径**：登录留存（基于 `dws_dq_daily_login`）+ 游戏留存（基于 `dws_app_game_active`）
 
 ---
@@ -23,15 +24,17 @@
 
 ### 1.1 核心数据表
 
-| 表名 | 粒度 | 说明 | 关键字段 |
-| ---- | ---- | ---- | ---- |
-| `dws_dq_app_daily_reg` | uid | APP端注册用户宽表（预关联登录+渠道分类） | `reg_app_code`, `reg_group_id`, `channel_category_name`, `first_day_login_cnt`, `reg_date` |
-| `dws_dq_daily_login` | uid x login_date | 每日登录聚合 | `login_date`, `login_count`, `app_id` |
-| `dws_app_game_active` | uid x dt x app_id | **游戏留存 flag**（任意玩法有对局即活跃，含 510K） | `dt`, `app_id` |
-| `dws_app_silvergame_stat` | uid x dt | 银子玩法金流+参与度（play_mode 1,2,3,7） | `game_count`, `win_rate`, `max_lose_streak`, `total_diff_money`, `money_valley`, `escape_count` |
-| `dws_app_allgame_stat` | uid x dt x play_mode | 全玩法体验分析（play_mode 1~7） | `avg_magnification`, `multi_24_48_win`, `multi_24_48_lose`, `room_base` |
-| `dws_ddz_firstday_game` | resultguid x uid | 经典斗地主首日对局明细 | `result_id`, `role`, `magnification`, `room_base`, `start_money`, `end_money`, `game_datetime` |
-| `dq_channel_category_map` | — | 渠道分类映射维表 | `channel_category_name` |
+
+| 表名                        | 粒度                   | 说明                               | 关键字段                                                                                            |
+| ------------------------- | -------------------- | -------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `dws_dq_app_daily_reg`    | uid                  | APP端注册用户宽表（预关联登录+渠道分类）           | `reg_app_code`, `reg_group_id`, `channel_category_name`, `first_day_login_cnt`, `reg_date`      |
+| `dws_dq_daily_login`      | uid x login_date     | 每日登录聚合                           | `login_date`, `login_count`, `app_id`                                                           |
+| `dws_app_game_active`     | uid x dt x app_id    | **游戏留存 flag**（任意玩法有对局即活跃，含 510K） | `dt`, `app_id`                                                                                  |
+| `dws_app_silvergame_stat` | uid x dt             | 银子玩法金流+参与度（play_mode 1,2,3,7）    | `game_count`, `win_rate`, `max_lose_streak`, `total_diff_money`, `money_valley`, `escape_count` |
+| `dws_app_allgame_stat`    | uid x dt x play_mode | 全玩法体验分析（play_mode 1~7）           | `avg_magnification`, `multi_24_48_win`, `multi_24_48_lose`, `room_base`                         |
+| `dws_ddz_firstday_game`   | resultguid x uid     | 经典斗地主首日对局明细                      | `result_id`, `role`, `magnification`, `room_base`, `start_money`, `end_money`, `game_datetime`  |
+| `dq_channel_category_map` | —                    | 渠道分类映射维表                         | `channel_category_name`                                                                         |
+
 
 ### 1.2 留存计算公式
 
@@ -91,19 +94,21 @@ ROUND(
 
 ### 1.4 重要字段说明
 
-| 字段 | 来源表 | 类型 | 说明 |
-| ---- | ---- | ---- | ---- |
-| `reg_date` | `dws_dq_app_daily_reg` | DATE | 注册日期，可直接用于 DATE_ADD 计算 |
-| `reg_app_code` | `dws_dq_app_daily_reg` | STRING | `zgda` = Cocos-Lua, `zgdx` = Cocos-Creator |
-| `reg_group_id` | `dws_dq_app_daily_reg` | INT | 8,88 = iOS; 6,66,33,44,77,99 = Android |
-| `channel_category_name` | `dws_dq_app_daily_reg` | STRING | 渠道分类名称 |
-| `first_day_login_cnt` | `dws_dq_app_daily_reg` | INT | 注册当天登录次数（反映稳定性） |
-| `money_valley` | `dws_app_silvergame_stat` | BIGINT | 当日银子谷值（最低值） |
-| `total_diff_money` | `dws_app_silvergame_stat` | BIGINT | 当日银子净变化（正=赢，负=亏） |
-| `multi_24_48_win` | `dws_app_allgame_stat` | INT | 倍数 [24,48) 区间胜局数（高倍局代表性字段） |
-| `multi_24_48_lose` | `dws_app_allgame_stat` | INT | 倍数 [24,48) 区间负局数（高倍局代表性字段） |
-| `avg_magnification` | `dws_app_allgame_stat` | DOUBLE | 平均倍数 |
-| `escape_count` | `dws_app_silvergame_stat` | INT | 当日逃跑次数 |
+
+| 字段                      | 来源表                       | 类型     | 说明                                         |
+| ----------------------- | ------------------------- | ------ | ------------------------------------------ |
+| `reg_date`              | `dws_dq_app_daily_reg`    | DATE   | 注册日期，可直接用于 DATE_ADD 计算                     |
+| `reg_app_code`          | `dws_dq_app_daily_reg`    | STRING | `zgda` = Cocos-Lua, `zgdx` = Cocos-Creator |
+| `reg_group_id`          | `dws_dq_app_daily_reg`    | INT    | 8,88 = iOS; 6,66,33,44,77,99 = Android     |
+| `channel_category_name` | `dws_dq_app_daily_reg`    | STRING | 渠道分类名称                                     |
+| `first_day_login_cnt`   | `dws_dq_app_daily_reg`    | INT    | 注册当天登录次数（反映稳定性）                            |
+| `money_valley`          | `dws_app_silvergame_stat` | BIGINT | 当日银子谷值（最低值）                                |
+| `total_diff_money`      | `dws_app_silvergame_stat` | BIGINT | 当日银子净变化（正=赢，负=亏）                           |
+| `multi_24_48_win`       | `dws_app_allgame_stat`    | INT    | 倍数 [24,48) 区间胜局数（高倍局代表性字段）                 |
+| `multi_24_48_lose`      | `dws_app_allgame_stat`    | INT    | 倍数 [24,48) 区间负局数（高倍局代表性字段）                 |
+| `avg_magnification`     | `dws_app_allgame_stat`    | DOUBLE | 平均倍数                                       |
+| `escape_count`          | `dws_app_silvergame_stat` | INT    | 当日逃跑次数                                     |
+
 
 ---
 
@@ -609,7 +614,7 @@ ORDER BY game_count_group;
 
 ### 3.2 首日胜率（胜负情绪线）
 
-胜率是新手体验的核心感知指标。胜率过低（<30%）的用户流失风险极高。注意：仅对有对局的用户有意义，零对局用户需单独分组。
+胜率是新手体验的核心感知指标。胜率过低（&lt;30%）的用户流失风险极高。注意：仅对有对局的用户有意义，零对局用户需单独分组。
 
 ```sql
 WITH reg_base_raw AS (
@@ -923,7 +928,7 @@ ORDER BY bankrupt_group;
 
 ### 3.6 高倍局输赢
 
-高倍局（倍数 > 24x）的输赢体验对用户情绪影响极大。输高倍局可能导致用户一次性巨额亏损，引发流失。
+高倍局（倍数 &gt; 24x）的输赢体验对用户情绪影响极大。输高倍局可能导致用户一次性巨额亏损，引发流失。
 
 ```sql
 WITH reg_base_raw AS (
@@ -1074,7 +1079,7 @@ ORDER BY login_freq_group;
 
 ### 4.1 平均倍数
 
-平均倍数与留存呈倒 U 型关系：倍数过低（≤6x）体验平淡，倍数过高（>24x）波动过大。
+平均倍数与留存呈倒 U 型关系：倍数过低（≤6x）体验平淡，倍数过高（&gt;24x）波动过大。
 
 ```sql
 WITH reg_base_raw AS (
@@ -1935,25 +1940,31 @@ ORDER BY dimension, value;
 
 ### 6.3 留存口径差异分析说明
 
-| 对比维度 | 登录留存 | 游戏留存 | 差异含义 |
-| ---- | ---- | ---- | ---- |
-| **计算口径** | 基于 `dws_dq_daily_login` | 基于 `dws_app_game_active` | 游戏留存更严格 |
-| **反映行为** | 用户打开应用 | 用户完成对局 | 登录-游戏差值 = 打开未游戏 |
-| **正常范围** | 通常高于游戏留存 | 低于登录留存 | 5-15% 差值为正常范围 |
-| **差值扩大** | — | — | 需排查登录到游戏流程中的卡点 |
-| **差值缩小** | — | — | 用户更加"目标明确"地玩游戏 |
+
+| 对比维度     | 登录留存                    | 游戏留存                     | 差异含义            |
+| -------- | ----------------------- | ------------------------ | --------------- |
+| **计算口径** | 基于 `dws_dq_daily_login` | 基于 `dws_app_game_active` | 游戏留存更严格         |
+| **反映行为** | 用户打开应用                  | 用户完成对局                   | 登录-游戏差值 = 打开未游戏 |
+| **正常范围** | 通常高于游戏留存                | 低于登录留存                   | 5-15% 差值为正常范围   |
+| **差值扩大** | —                       | —                        | 需排查登录到游戏流程中的卡点  |
+| **差值缩小** | —                       | —                        | 用户更加"目标明确"地玩游戏  |
+
 
 ---
 
 ## 七、专项分析索引
 
-| 专项文档 | 分析视角 | 核心问题 |
-| ---- | ---- | ---- |
-| [retention-by-mode.md](retention-by-mode.md) | 分玩法层 | 玩法内倍数/胜率/经济差异 |
-| [retention-by-client-lang.md](retention-by-client-lang.md) | 分客户端层 | 稳定性/性能/登录次数异常 |
-| [retention-financial.md](retention-financial.md) | 银子经济层 | 金流归因与留存的关系 |
-| [retention-score-game.md](retention-score-game.md) | 积分玩法层 | 积分参与度与留存 |
-| [retention-deepdive-sql.md](retention-deepdive-sql.md) | 高危信号下钻 | 1局用户、客户端问题、渠道质量 |
+
+| 专项文档                                                       | 分析视角   | 核心问题            |
+| ---------------------------------------------------------- | ------ | --------------- |
+| [retention-by-mode.md](retention-by-mode.md)               | 分玩法层   | 玩法内倍数/胜率/经济差异   |
+| [retention-by-client-lang.md](retention-by-client-lang.md) | 分客户端层  | 稳定性/性能/登录次数异常   |
+| [retention-financial.md](retention-financial.md)           | 银子经济层  | 金流归因与留存的关系      |
+| [retention-score-game.md](retention-score-game.md)         | 积分玩法层  | 积分参与度与留存        |
+| [retention-deepdive-sql.md](retention-deepdive-sql.md)     | 高危信号下钻 | 1局用户、客户端问题、渠道质量 |
+
 
 > **分析框架速查**：[retention-analysis-framework.md](retention-analysis-framework.md)
+>
 > **上一版本**：[retention-global.md](retention-global.md)（v1.0，基于旧表结构）
+
