@@ -525,74 +525,86 @@ ORDER BY reg_hour;
 对局数是投入度最直接的指标。零对局用户留存极低，但过高的对局数（10+局）也可能因疲劳导致留存下降。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一需要人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
+    -- 2. 提取并清洗当天对局数（关联注册当天 dt = reg_date）
     SELECT
         rb.uid, rb.reg_date,
+        CASE
+            WHEN COALESCE(gs.game_count, 0) = 0 THEN 'A: 0局'
+            WHEN gs.game_count = 1 THEN 'B: 1局'
+            WHEN gs.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
+            WHEN gs.game_count BETWEEN 6 AND 10 THEN 'D: 6-10局'
+            ELSE 'E: 10局+'
+        END AS game_count_group,
         COALESCE(gs.game_count, 0) AS game_count
-    FROM reg_base rb
+    FROM reg_base_raw rb
     LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
         ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
 ),
-login_ret AS (
+date_bounds AS (
+    -- 3. 动态计算活跃表的分区裁剪边界
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base_raw
 ),
-game_ret AS (
+all_events_deduped AS (
+    -- 4. 注册与对局底表流
+    SELECT uid, game_count_group, game_count, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM game_stat
+
+    UNION ALL
+
+    -- 5. 登录留存流（🌟 已修复：删除了未被 GROUP BY 错引的 l.login_date）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid
+        g.uid, -- 输出 uid
+        g.game_count_group, g.game_count, 0 AS is_reg,
+        DATEDIFF(l.login_date, g.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN game_stat g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, g.reg_date) IN (1, 7, 30)
+    GROUP BY g.uid, g.game_count_group, g.game_count, login_days_diff
+
+    UNION ALL
+
+    -- 6. 游戏留存流（🌟 已修复：删除了未被 GROUP BY 错引的 a.dt）
+    SELECT
+        g.uid, -- 输出 uid
+        g.game_count_group, g.game_count, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, g.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN game_stat g ON a.app_id = 1880053 AND a.uid = g.uid
+    WHERE a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(a.dt, g.reg_date) IN (1, 7, 30)
+    GROUP BY g.uid, g.game_count_group, g.game_count, game_days_diff
 )
 SELECT
-    CASE
-        WHEN gs.game_count = 0 THEN 'A: 0局'
-        WHEN gs.game_count = 1 THEN 'B: 1局'
-        WHEN gs.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
-        WHEN gs.game_count BETWEEN 6 AND 10 THEN 'D: 6-10局'
-        ELSE 'E: 10局+'
-    END AS game_count_group,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(AVG(gs.game_count), 1) AS avg_game_count,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
-    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
-    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
-FROM reg_base rb
-LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-LEFT JOIN game_ret gr ON rb.uid = gr.uid
-GROUP BY 1
-ORDER BY 1;
+    game_count_group,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN game_count ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 1) AS avg_game_count,
+
+    -- 登录留存
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+
+    -- 游戏留存
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+FROM all_events_deduped
+GROUP BY game_count_group
+ORDER BY game_count_group;
 ```
 
 ### 3.2 首日胜率（胜负情绪线）
