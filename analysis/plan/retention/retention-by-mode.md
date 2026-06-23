@@ -1006,47 +1006,104 @@ ORDER BY first_play_mode;
 > 注册当天玩过的玩法数量（play_mode 1,2,3,7）与整体留存的关系。
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
-    -- 活跃事实表分区裁剪窗口
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
+    -- 严格限制在 INTERVAL 1 DAY，物理抹除随后的无用分区扫描
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_d1_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_d1_date
+    FROM reg_base_raw
 ),
-mode_count AS (
-    SELECT r.uid, r.reg_date, r.app_id,
-           COUNT(DISTINCT play_mode) AS mode_count
-    FROM reg_base r
-    LEFT JOIN (
-        SELECT app_id, uid, dt, play_mode
-        FROM tcy_temp.dws_ddz_firstday_game
-        WHERE robot != 1 AND play_mode IN (1, 2, 3)
-        UNION ALL
-        SELECT app_id, uid, dt, 7 AS play_mode
-        FROM tcy_temp.dws_crazyddz_daily_game
-        WHERE robot != 1
-    ) g
-        ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
-    GROUP BY r.uid, r.reg_date, r.app_id
+firstday_game_stream AS (
+    -- 3. 收集首日斗地主玩法（前置下推 D0 分区裁剪）
+    SELECT g.uid, g.dt AS reg_date, g.play_mode
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+      AND g.robot != 1
+      AND g.play_mode IN (1, 2, 3)
+
+    UNION ALL
+
+    -- 4. 收集首日 510K 玩法（前置下推 D0 分区裁剪）
+    SELECT cg.uid, cg.dt AS reg_date, 7 AS play_mode
+    FROM tcy_temp.dws_crazyddz_daily_game cg
+    WHERE cg.app_id = 1880053
+      AND cg.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+      AND cg.robot != 1
+),
+user_seed_profile AS (
+    -- 5. 🛠️ 标签解耦层：在底层直接对首日参与过对局的用户计算去重玩法多元度
+    SELECT
+        u.uid, u.reg_date,
+        COUNT(DISTINCT u.play_mode) AS mode_count
+    FROM firstday_game_stream u
+    GROUP BY u.uid, u.reg_date
+),
+all_events_stream AS (
+    -- 6. 垂直管道第一层：有对局玩法的种子人群流（分母基准 A）
+    SELECT uid, mode_count, 1 AS is_reg, 0 AS is_ret_d1
+    FROM user_seed_profile
+
+    UNION ALL
+
+    -- 7. 垂直管道第二层：补齐【0: 无对局】的纯注册僵尸人群（分母基准 B）
+    -- 找出在注册表但完全没有对局流行为的用户，打上 mode_count = 0 的标签
+    SELECT r.uid, 0 AS mode_count, 1 AS is_reg, 0 AS is_ret_d1
+    FROM reg_base_raw r
+    LEFT JOIN user_seed_profile p ON r.uid = p.uid AND r.reg_date = p.reg_date
+    WHERE p.uid IS NULL
+
+    UNION ALL
+
+    -- 8. 垂直管道第三层：次日(D1) 大盘活跃回流（分子基准）
+    -- 强制开启 D+1 物理分区裁剪，通过将次日大盘表与注册基础表轻量关联，继承其 mode_count 标签
+    SELECT
+        ma.uid,
+        COALESCE(p.mode_count, 0) AS mode_count, -- 没对局的用户次日如果活跃了，归入0次档
+        0 AS is_reg,
+        1 AS is_ret_d1
+    FROM tcy_temp.dws_app_game_active ma
+    INNER JOIN reg_base_raw r
+        ON ma.app_id = r.app_id AND ma.uid = r.uid AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+    LEFT JOIN user_seed_profile p
+        ON p.uid = r.uid AND p.reg_date = r.reg_date
+    WHERE ma.dt BETWEEN (SELECT min_d1_date FROM date_bounds) AND (SELECT max_d1_date FROM date_bounds)
+    GROUP BY ma.uid, COALESCE(p.mode_count, 0)
 )
-SELECT
-    mc.mode_count,
-    COUNT(DISTINCT mc.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN ma.dt IS NOT NULL THEN mc.uid END) * 100.0
-          / COUNT(DISTINCT mc.uid), 2) AS d1_rate_any_mode
-FROM mode_count mc
-LEFT JOIN tcy_temp.dws_app_game_active ma
-    ON ma.app_id = mc.app_id AND ma.uid = mc.uid
-    AND ma.dt = DATE_ADD(mc.reg_date, INTERVAL 1 DAY)
-    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-GROUP BY mc.mode_count
-ORDER BY mc.mode_count;
+-- 🌟 9. 主查询多元度单维度聚合，内嵌物理 HINT 放宽优化器时限至 15 秒
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    CASE mode_count
+        WHEN 0 THEN '0: 无对局'
+        WHEN 1 THEN '1: 仅1种玩法'
+        WHEN 2 THEN '2: 尝试2种玩法'
+        WHEN 3 THEN '3: 尝试3种玩法'
+        WHEN 4 THEN '4: 4种玩法全体验'
+        ELSE CONCAT(CAST(mode_count AS VARCHAR), ' 种玩法')
+    END AS mode_count_group,
+
+    -- 分母：体验了对应玩法数量的去重总新登人数（含无对局人群）
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 分子 / 分母 = 次日大盘任意玩法留存率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_ret_d1 = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS d1_rate_any_mode
+FROM all_events_stream
+GROUP BY mode_count
+ORDER BY mode_count;
 ```
 
 ### 4.3 玩法切换行为
