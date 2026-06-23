@@ -446,52 +446,72 @@ ORDER BY reg_users DESC;
 
 ```sql
 WITH reg_base AS (
+    -- 1. 核心控制层：全 SQL 唯一需要人工修改注册日期的地方
     SELECT
         uid,
         reg_date,
-        HOUR(r.reg_time) AS reg_hour,
+        HOUR(r.reg_datetime) AS reg_hour,
         app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 以后调整时间只需要改这里
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
-      AND r.reg_time IS NOT NULL
+      AND r.reg_datetime IS NOT NULL
 ),
-login_ret AS (
+date_bounds AS (
+    -- 2. 动态计算活跃表的分区裁剪边界（因为只算次留，最大边界只需+1天）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base
 ),
-game_ret AS (
+all_events_deduped AS (
+    -- 3. 注册用户流
+    SELECT uid, reg_hour, 1 AS is_reg, 0 AS is_login_d1, 0 AS is_game_d1
+    FROM reg_base
+
+    UNION ALL
+
+    -- 4. 登录活跃流（刚性裁剪分区 + 局部去重）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        l.uid, r.reg_hour, 0 AS is_reg, 1 AS is_login_d1, 0 AS is_game_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN reg_base r ON l.app_id = r.app_id AND l.uid = r.uid
+    WHERE l.app_id = 1880053
+      -- 🌟 静态常量化分区裁剪，只锁下次留那几天的数据
+      AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+    GROUP BY l.uid, r.reg_hour -- 局部去重
+
+    UNION ALL
+
+    -- 5. 游戏活跃流（刚性裁剪分区 + 局部去重）
+    SELECT
+        a.uid, r.reg_hour, 0 AS is_reg, 0 AS is_login_d1, 1 AS is_game_d1
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN reg_base r ON a.app_id = r.app_id AND a.uid = r.uid
+    WHERE a.app_id = 1880053
+      -- 🌟 静态常量化分区裁剪
+      AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+    GROUP BY a.uid, r.reg_hour -- 局部去重
 )
 SELECT
     CASE
-        WHEN rb.reg_hour BETWEEN 6 AND 11 THEN 'A: 早间(6-11点)'
-        WHEN rb.reg_hour BETWEEN 12 AND 17 THEN 'B: 午后(12-17点)'
-        WHEN rb.reg_hour BETWEEN 18 AND 23 THEN 'C: 晚间(18-23点)'
+        WHEN reg_hour BETWEEN 6 AND 11 THEN 'A: 早间(6-11点)'
+        WHEN reg_hour BETWEEN 12 AND 17 THEN 'B: 午后(12-17点)'
+        WHEN reg_hour BETWEEN 18 AND 23 THEN 'C: 晚间(18-23点)'
         ELSE 'D: 凌晨(0-5点)'
     END AS reg_period,
-    rb.reg_hour,
-    COUNT(DISTINCT rb.uid) AS reg_users,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1
-FROM reg_base rb
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-LEFT JOIN game_ret gr ON rb.uid = gr.uid
-GROUP BY rb.reg_hour
-ORDER BY rb.reg_hour;
+    reg_hour,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
+
+    -- 次留计算（得益于子查询去重，此处 distinct 几乎无压力）
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN is_game_d1 = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1
+FROM all_events_deduped
+GROUP BY reg_hour
+ORDER BY reg_hour;
 ```
 
 ---
