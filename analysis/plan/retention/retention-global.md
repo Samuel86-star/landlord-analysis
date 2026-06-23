@@ -926,50 +926,88 @@ ORDER BY bankrupt_group;
 高倍局（倍数 > 24x）的输赢体验对用户情绪影响极大。输高倍局可能导致用户一次性巨额亏损，引发流失。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
+    -- 2. 聚合所有玩法的高倍局（>24x）输赢数据，并提前打标签
+    -- 🌟 表结构已变更：multi_q4_win_count/lose_count 已废弃，改为固定倍数段
+    --    高倍 >24x = multi_24_48 + multi_48_96 + multi_96_192 + multi_192_384 + multi_384_plus
     SELECT
         rb.uid, rb.reg_date,
-        -- 聚合所有玩法的高倍局数据
-        SUM(CASE WHEN gs.multi_q4_win_count > 0 THEN gs.multi_q4_win_count ELSE 0 END) AS total_high_multi_wins,
-        SUM(CASE WHEN gs.multi_q4_lose_count > 0 THEN gs.multi_q4_lose_count ELSE 0 END) AS total_high_multi_losses
-    FROM reg_base rb
+        SUM(
+            COALESCE(gs.multi_24_48_win, 0) + COALESCE(gs.multi_48_96_win, 0)
+          + COALESCE(gs.multi_96_192_win, 0) + COALESCE(gs.multi_192_384_win, 0)
+          + COALESCE(gs.multi_384_plus_win, 0)
+        ) AS total_high_multi_wins,
+        SUM(
+            COALESCE(gs.multi_24_48_lose, 0) + COALESCE(gs.multi_48_96_lose, 0)
+          + COALESCE(gs.multi_96_192_lose, 0) + COALESCE(gs.multi_192_384_lose, 0)
+          + COALESCE(gs.multi_384_plus_lose, 0)
+        ) AS total_high_multi_losses
+    FROM reg_base_raw rb
     LEFT JOIN tcy_temp.dws_app_allgame_stat gs
         ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
     GROUP BY rb.uid, rb.reg_date
 ),
-login_ret AS (
+date_bounds AS (
+    -- 3. 动态计算次留所需的分区裁剪边界（因为只看次留，最大边界只需 +1 天，扫描量降到最低）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_deduped AS (
+    -- 4. 基础人群流（含高倍输赢聚合 + 打标签）
+    SELECT
+        uid,
+        CASE
+            WHEN COALESCE(total_high_multi_wins, 0) = 0 AND COALESCE(total_high_multi_losses, 0) = 0
+                THEN 'A: 未经历高倍'
+            WHEN total_high_multi_wins > 0 AND COALESCE(total_high_multi_losses, 0) = 0
+                THEN 'B: 仅赢高倍'
+            WHEN COALESCE(total_high_multi_wins, 0) = 0 AND total_high_multi_losses > 0
+                THEN 'C: 仅输高倍'
+            ELSE 'D: 有赢有输'
+        END AS high_multi_exp,
+        1 AS is_reg, 0 AS is_login_d1
+    FROM game_stat
+
+    UNION ALL
+
+    -- 5. 次日登录活跃流（刚性裁剪分区 + 局部去重）
+    SELECT
+        g.uid,
+        CASE
+            WHEN COALESCE(g.total_high_multi_wins, 0) = 0 AND COALESCE(g.total_high_multi_losses, 0) = 0
+                THEN 'A: 未经历高倍'
+            WHEN g.total_high_multi_wins > 0 AND COALESCE(g.total_high_multi_losses, 0) = 0
+                THEN 'B: 仅赢高倍'
+            WHEN COALESCE(g.total_high_multi_wins, 0) = 0 AND g.total_high_multi_losses > 0
+                THEN 'C: 仅输高倍'
+            ELSE 'D: 有赢有输'
+        END AS high_multi_exp,
+        0 AS is_reg, 1 AS is_login_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN game_stat g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.total_high_multi_wins, g.total_high_multi_losses -- 局部去重
 )
 SELECT
-    CASE
-        WHEN COALESCE(gs.total_high_multi_wins, 0) = 0 AND COALESCE(gs.total_high_multi_losses, 0) = 0
-            THEN 'A: 未经历高倍'
-        WHEN gs.total_high_multi_wins > 0 AND COALESCE(gs.total_high_multi_losses, 0) = 0
-            THEN 'B: 仅赢高倍'
-        WHEN COALESCE(gs.total_high_multi_wins, 0) = 0 AND gs.total_high_multi_losses > 0
-            THEN 'C: 仅输高倍'
-        ELSE 'D: 有赢有输'
-    END AS high_multi_exp,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
-FROM reg_base rb
-LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-GROUP BY 1
-ORDER BY 1;
+    high_multi_exp,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 次留计算
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+FROM all_events_deduped
+GROUP BY high_multi_exp
+ORDER BY high_multi_exp;
 ```
 
 ### 3.7 登录频次（稳定性信号）
