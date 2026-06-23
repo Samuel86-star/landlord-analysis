@@ -1111,55 +1111,87 @@ ORDER BY mode_count;
 > 注册当天玩过多个玩法的用户中，各玩法对的交叉留存（在 A 玩法注册，第 2 天是否在 B 玩法活跃）。
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
-    -- 活跃事实表分区裁剪窗口
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
+    -- 严格卡死在 INTERVAL 1 DAY，物理抹除随后 29 天的无效大分区扫描
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_d1_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_d1_date
+    FROM reg_base_raw
 ),
-reg_mode_pairs AS (
-    -- 注册当天各玩法参与标记
-    SELECT r.uid, r.reg_date, r.app_id,
-           g.play_mode
-    FROM reg_base r
-    LEFT JOIN tcy_temp.dws_ddz_firstday_game g
-        ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
-        AND g.robot != 1 AND g.play_mode IN (1, 2, 3)
-    WHERE g.play_mode IS NOT NULL
+first_day_modes AS (
+    -- 3. 提取首日玩过【经典/不洗牌/癞子】的用户（底层独立去重，消灭行膨胀）
+    SELECT g.uid, g.dt AS reg_date, g.play_mode
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+      AND g.robot != 1
+      AND g.play_mode IN (1, 2, 3)
+    GROUP BY g.uid, g.dt, g.play_mode
+
     UNION ALL
-    SELECT r.uid, r.reg_date, r.app_id, 7 AS play_mode
-    FROM reg_base r
-    INNER JOIN tcy_temp.dws_crazyddz_daily_game cg
-        ON cg.app_id = r.app_id AND cg.uid = r.uid AND cg.dt = r.reg_date
-        AND cg.robot != 1
+
+    -- 4. 提取首日玩过【510K】的用户（底层独立去重）
+    SELECT cg.uid, cg.dt AS reg_date, 7 AS play_mode
+    FROM tcy_temp.dws_crazyddz_daily_game cg
+    WHERE cg.app_id = 1880053
+      AND cg.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+      AND cg.robot != 1
+    GROUP BY cg.uid, cg.dt
 ),
-cross_retention AS (
+user_seed_profile AS (
+    -- 5. 🛠️ 人群解耦层：圈定新登且首日真正有玩法对局的分析分母
+    SELECT r.uid, r.reg_date, f.play_mode AS reg_mode
+    FROM reg_base_raw r
+    INNER JOIN first_day_modes f ON r.uid = f.uid AND r.reg_date = f.reg_date
+),
+mode_base_count AS (
+    -- 6. 🛠️ 纯正分母计算源：在最底层优雅、高效率地算好首日各玩法切实去重的总人数
+    -- 用于最外层精准计算留存占比，不给后方大流聚合增加一丝负担
+    SELECT reg_mode, COUNT(DISTINCT uid) AS base_users
+    FROM user_seed_profile
+    GROUP BY reg_mode
+),
+all_events_stream AS (
+    -- 7. 垂直管道第一层：将次日（D1）各玩法的留存流垂直打入管道
+    -- 强制开启 D+1 静态分区裁剪，并且只与首日种子用户进行轻量 INNER JOIN 继承 reg_mode
     SELECT
-        rm.play_mode AS reg_mode,
-        ma.play_mode AS ret_mode,
-        COUNT(DISTINCT rm.uid) AS user_count
-    FROM reg_mode_pairs rm
-    INNER JOIN tcy_temp.dws_app_gamemode_active ma
-        ON ma.app_id = rm.app_id AND ma.uid = rm.uid
-        AND ma.dt = DATE_ADD(rm.reg_date, INTERVAL 1 DAY)
-        AND ma.play_mode IN (1, 2, 3, 7)
-        AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-    GROUP BY rm.play_mode, ma.play_mode
+        ma.uid,
+        p.reg_mode,
+        ma.play_mode AS ret_mode
+    FROM tcy_temp.dws_app_gamemode_active ma
+    INNER JOIN user_seed_profile p
+        ON ma.app_id = 1880053
+       AND ma.uid = p.uid
+       AND ma.dt = DATE_ADD(p.reg_date, INTERVAL 1 DAY)
+    WHERE ma.play_mode IN (1, 2, 3, 7)
+      AND ma.dt BETWEEN (SELECT min_d1_date FROM date_bounds) AND (SELECT max_d1_date FROM date_bounds)
+    GROUP BY ma.uid, p.reg_mode, ma.play_mode
 )
-SELECT
-    CASE reg_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '癞子' WHEN 7 THEN '510K' END AS from_mode,
-    CASE ret_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '癞子' WHEN 7 THEN '510K' END AS to_mode,
-    user_count,
-    ROUND(user_count * 100.0 / SUM(user_count) OVER (PARTITION BY reg_mode), 2) AS pct_of_reg_mode
-FROM cross_retention
-ORDER BY reg_mode, ret_mode;
+-- 🌟 8. 主查询进行交叉矩阵网格汇聚，内嵌物理 HINT 放宽编译时限
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    CASE s.reg_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '癞子' WHEN 7 THEN '510K' END AS from_mode,
+    CASE s.ret_mode WHEN 1 THEN '经典' WHEN 2 THEN '不洗牌' WHEN 3 THEN '癞子' WHEN 7 THEN '510K' END AS to_mode,
+
+    -- 分子：去重的交叉转移迁移人数
+    COUNT(DISTINCT s.uid) AS user_count,
+
+    -- 分子 / 精准的首日留存去重总分母 = 绝对严谨的转移矩阵占比
+    ROUND(COUNT(DISTINCT s.uid) * 100.0 / b.base_users, 2) AS pct_of_reg_mode
+FROM all_events_stream s
+INNER JOIN mode_base_count b ON s.reg_mode = b.reg_mode -- 挂载精准的独立分母
+GROUP BY s.reg_mode, s.ret_mode, b.base_users
+ORDER BY s.reg_mode, s.ret_mode;
 ```
 
 ---
