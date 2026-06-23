@@ -545,53 +545,84 @@ ORDER BY play_mode, game_count_group;
 > 字段来源：`dws_app_allgame_stat.bomb_0_games`, `bomb_1_games`, `bomb_2_games`, `bomb_3plus_games`
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
-    -- 活跃事实表分区裁剪窗口
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_d1_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_d1_date
+    FROM reg_base_raw
 ),
-bomb_class AS (
-    SELECT r.uid, r.reg_date, r.app_id, st.play_mode,
-           CASE
-               WHEN st.bomb_3plus_games > 0 THEN 'D: 高频炸弹(3+炸弹对局)'
-               WHEN st.bomb_2_games > 0      THEN 'C: 中频炸弹(2炸弹对局)'
-               WHEN st.bomb_1_games > 0      THEN 'B: 低频炸弹(1炸弹对局)'
-               WHEN st.bomb_0_games > 0      THEN 'A: 无炸弹'
-               ELSE '0: 无对局'
-           END AS bomb_level
-    FROM reg_base r
-    LEFT JOIN tcy_temp.dws_app_allgame_stat st
+user_profile AS (
+    -- 3. 🛠️ 标签解耦层：底层直接 INNER JOIN 圈定首日切实参与玩法的目标用户
+    -- 剔除死代码，并在这一层直接将"炸弹频次区间"转换为轻量文本标签
+    SELECT
+        r.uid, r.reg_date,
+        st.play_mode,
+        CASE
+            WHEN st.bomb_3plus_games > 0 THEN 'D: 高频炸弹(3+炸弹对局)'
+            WHEN st.bomb_2_games > 0     THEN 'C: 中频炸弹(2炸弹对局)'
+            WHEN st.bomb_1_games > 0     THEN 'B: 低频炸弹(1炸弹对局)'
+            ELSE                              'A: 无炸弹'
+        END AS bomb_level
+    FROM reg_base_raw r
+    INNER JOIN tcy_temp.dws_app_allgame_stat st
         ON st.app_id = r.app_id AND st.uid = r.uid AND st.dt = r.reg_date
-        AND st.play_mode IN (1, 2, 3, 7)
-    WHERE st.play_mode IS NOT NULL
+    WHERE st.play_mode IN (1, 2, 3, 7)
+      AND st.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+),
+all_events_stream AS (
+    -- 4. 垂直管道第一层：基础注册种子人群玩法流（作为计算同玩法留存的分母基准）
+    SELECT uid, play_mode, bomb_level, 1 AS is_reg, 0 AS is_ret_d1
+    FROM user_profile
+
+    UNION ALL
+
+    -- 5. 垂直管道第二层：次日(D1)同玩法活跃流（作为计算同玩法留存的分子基准）
+    -- 强制开启 D+1 静态分区裁剪，并且只在种子用户和相同玩法的网格范围内匹配去重
+    SELECT
+        ma.uid, ma.play_mode, p.bomb_level, 0 AS is_reg, 1 AS is_ret_d1
+    FROM tcy_temp.dws_app_gamemode_active ma
+    INNER JOIN user_profile p
+        ON ma.app_id = 1880053
+       AND ma.uid = p.uid
+       AND ma.play_mode = p.play_mode
+       AND ma.dt = DATE_ADD(p.reg_date, INTERVAL 1 DAY)
+    WHERE ma.dt BETWEEN (SELECT min_d1_date FROM date_bounds) AND (SELECT max_d1_date FROM date_bounds)
+    GROUP BY ma.uid, ma.play_mode, p.bomb_level
 )
-SELECT
-    CASE bc.play_mode
+-- 🌟 6. 主查询双维度聚合输出，内嵌物理 HINT 放宽优化器时限至 15 秒
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    CASE play_mode
         WHEN 1 THEN '经典'
         WHEN 2 THEN '不洗牌'
         WHEN 3 THEN '癞子'
         WHEN 7 THEN '510K'
+        ELSE '其他'
     END AS play_mode_name,
-    bc.bomb_level,
-    COUNT(DISTINCT bc.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN ma.dt IS NOT NULL THEN bc.uid END) * 100.0
-          / COUNT(DISTINCT bc.uid), 2) AS same_mode_d1_rate
-FROM bomb_class bc
-LEFT JOIN tcy_temp.dws_app_gamemode_active ma
-    ON ma.app_id = bc.app_id AND ma.uid = bc.uid
-    AND ma.dt = DATE_ADD(bc.reg_date, INTERVAL 1 DAY)
-    AND ma.play_mode = bc.play_mode
-    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-GROUP BY bc.play_mode, bc.bomb_level
-ORDER BY bc.play_mode, bc.bomb_level;
+    bomb_level,
+
+    -- 分母：该玩法、该炸弹频次下的去重新登总人数
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 分子 / 分母 = 同玩法次日留存率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_ret_d1 = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS same_mode_d1_rate
+FROM all_events_stream
+GROUP BY play_mode, bomb_level
+ORDER BY play_mode, bomb_level;
 ```
 
 ### 3.5 分玩法 × 多维度四分位体验留存
