@@ -286,6 +286,7 @@ iOS 与 Android 的用户体验差异可能导致留存偏差（如 iOS 支付�
 
 ```sql
 WITH reg_base AS (
+    -- 1. 核心控制层：全 SQL 唯一需要人工修改注册日期的地方
     SELECT
         uid,
         reg_date,
@@ -297,55 +298,65 @@ WITH reg_base AS (
         app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 以后调整时间只需要改这里
       AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
-login_ret AS (
+date_bounds AS (
+    -- 2. 动态计算活跃表的分区裁剪边界（1日留存最小值 ~ 30日留存最大值）
     SELECT
-        rb.uid,
-        rb.reg_date,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
-game_ret AS (
+all_events_deduped AS (
+    -- 3. 注册用户流
+    SELECT uid, reg_date, platform, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM reg_base
+
+    UNION ALL
+
+    -- 4. 登录活跃流（刚性裁剪分区 + 局部去重）
     SELECT
-        rb.uid,
-        rb.reg_date,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date
+        l.uid, r.reg_date, r.platform, 0 AS is_reg,
+        DATEDIFF(l.login_date, r.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN reg_base r ON l.app_id = r.app_id AND l.uid = r.uid
+    WHERE l.app_id = 1880053
+      -- 🌟 静态常量化分区裁剪，绝不走历史全表扫描
+      AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, r.reg_date) IN (1, 7, 30)
+    GROUP BY l.uid, r.reg_date, r.platform, login_days_diff
+
+    UNION ALL
+
+    -- 5. 游戏活跃流（刚性裁剪分区 + 局部去重）
+    SELECT
+        a.uid, r.reg_date, r.platform, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, r.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN reg_base r ON a.app_id = r.app_id AND a.uid = r.uid
+    WHERE a.app_id = 1880053
+      -- 🌟 静态常量化分区裁剪
+      AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(a.dt, r.reg_date) IN (1, 7, 30)
+    GROUP BY a.uid, r.reg_date, r.platform, game_days_diff
 )
 SELECT
-    rb.platform,
-    COUNT(DISTINCT rb.uid) AS reg_users,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
-    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
-    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
-FROM reg_base rb
-LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
-LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
-GROUP BY rb.platform
+    platform,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
+
+    -- 登录留存率计算
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+
+    -- 游戏留存率计算
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+FROM all_events_deduped
+GROUP BY platform
 ORDER BY reg_users DESC;
 ```
 
