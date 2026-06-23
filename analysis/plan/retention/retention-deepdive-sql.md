@@ -734,11 +734,13 @@ ORDER BY 1;
 
 ## 问题5：高倍局创伤下钻
 
-> **核心疑问**：`dws_app_allgame_stat` 提供了 `multi_q4_losses`（最高 25% 倍数的输局数）字段。经历高倍输局的用户，留存是否显著降低？高倍输局是否与玩法（经典 / 癞子 / 不洗牌）相关？
+> **核心疑问**：`dws_app_allgame_stat` 提供固定倍数段字段，高倍（≥24x）输局数 = `multi_24_48_lose` + `multi_48_96_lose` + `multi_96_192_lose` + `multi_192_384_lose` + `multi_384_plus_lose`。经历高倍输局的用户，留存是否显著降低？高倍输局是否与玩法（经典 / 癞子 / 不洗牌）相关？
 
-### Q5.1 高倍输局（Q4 倍数）用户的留存
+### Q5.1 高倍输局（≥24x 倍数）用户的留存
 
-> **假设**：经历了 Q4 高倍输局的用户，留存率显著低于未经历用户。multi_q4_losses >= 1 即触发高危信号。
+> **假设**：经历了高倍输局的用户，留存率显著低于未经历用户。高倍输局数 ≥ 1 即触发高危信号。
+>
+> 注：表 v1.2（2026-06-17）已移除旧 `multi_q4_losses` 字段，改为固定倍数段，本节据此改写。
 
 ```sql
 WITH reg_base AS (
@@ -755,21 +757,28 @@ date_bounds AS (
 )
 SELECT
     CASE
-        WHEN a.multi_q4_losses IS NULL OR a.multi_q4_losses = 0 THEN 'A: 未经历高倍输局'
-        WHEN a.multi_q4_losses = 1                              THEN 'B: 经历1次高倍输'
-        WHEN a.multi_q4_losses = 2                              THEN 'C: 经历2次高倍输'
-        ELSE                                                         'D: 经历3次以上高倍输'
+        WHEN a.high_multi_losses = 0 THEN 'A: 未经历高倍输局'
+        WHEN a.high_multi_losses = 1 THEN 'B: 经历1次高倍输'
+        WHEN a.high_multi_losses = 2 THEN 'C: 经历2次高倍输'
+        ELSE                            'D: 经历3次以上高倍输'
     END AS q4_loss_group,
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day7_rate,
-    ROUND(AVG(a.multi_q4_losses), 1) AS avg_q4_losses,
+    ROUND(AVG(a.high_multi_losses), 1) AS avg_q4_losses,
     ROUND(AVG(a.avg_multi), 1) AS avg_multi
 FROM reg_base r
-INNER JOIN tcy_temp.dws_app_allgame_stat a
-    ON a.app_id = r.app_id AND a.uid = r.uid AND a.dt = r.reg_date
+INNER JOIN (
+    -- 高倍 ≥24x 输局数 = 5 个高倍区间的 lose 之和（表 v1.2 固定倍数段）
+    SELECT a1.app_id, a1.uid, a1.dt,
+           (COALESCE(a1.multi_24_48_lose, 0) + COALESCE(a1.multi_48_96_lose, 0)
+          + COALESCE(a1.multi_96_192_lose, 0) + COALESCE(a1.multi_192_384_lose, 0)
+          + COALESCE(a1.multi_384_plus_lose, 0)) AS high_multi_losses,
+           a1.avg_multi
+    FROM tcy_temp.dws_app_allgame_stat a1
+) a ON a.app_id = r.app_id AND a.uid = r.uid AND a.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
@@ -803,7 +812,7 @@ SELECT
         ELSE '其他'
     END AS play_mode_name,
     CASE
-        WHEN a.multi_q4_losses IS NULL OR a.multi_q4_losses = 0 THEN 'A: 未经历高倍输'
+        WHEN a.high_multi_losses = 0 THEN 'A: 未经历高倍输'
         ELSE 'B: 经历高倍输'
     END AS q4_loss_flag,
     COUNT(DISTINCT r.uid) AS user_count,
@@ -814,8 +823,16 @@ SELECT
     ROUND(AVG(a.avg_multi), 1) AS avg_multi,
     ROUND(AVG(a.bomb_0_games + a.bomb_1_games + a.bomb_2_games + a.bomb_3plus_games), 1) AS avg_bomb_games
 FROM reg_base r
-INNER JOIN tcy_temp.dws_app_allgame_stat a
-    ON a.app_id = r.app_id AND a.uid = r.uid AND a.dt = r.reg_date
+INNER JOIN (
+    -- 高倍 ≥24x 输局数 = 5 个高倍区间的 lose 之和（表 v1.2 固定倍数段）
+    SELECT a1.app_id, a1.uid, a1.dt, a1.play_mode,
+           (COALESCE(a1.multi_24_48_lose, 0) + COALESCE(a1.multi_48_96_lose, 0)
+          + COALESCE(a1.multi_96_192_lose, 0) + COALESCE(a1.multi_192_384_lose, 0)
+          + COALESCE(a1.multi_384_plus_lose, 0)) AS high_multi_losses,
+           a1.avg_multi,
+           a1.bomb_0_games, a1.bomb_1_games, a1.bomb_2_games, a1.bomb_3plus_games
+    FROM tcy_temp.dws_app_allgame_stat a1
+) a ON a.app_id = r.app_id AND a.uid = r.uid AND a.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))

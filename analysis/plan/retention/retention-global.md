@@ -29,7 +29,7 @@
 | `dws_dq_daily_login` | uid x login_date | 每日登录聚合 | `login_date`, `login_count`, `app_id` |
 | `dws_app_game_active` | uid x dt x app_id | **游戏留存 flag**（任意玩法有对局即活跃，含 510K） | `dt`, `app_id` |
 | `dws_app_silvergame_stat` | uid x dt | 银子玩法金流+参与度（play_mode 1,2,3,7） | `game_count`, `win_rate`, `max_lose_streak`, `total_diff_money`, `money_valley`, `escape_count` |
-| `dws_app_allgame_stat` | uid x dt x play_mode | 全玩法体验分析（play_mode 1~7） | `avg_magnification`, `multi_q4_win_count`, `multi_q4_lose_count`, `room_base` |
+| `dws_app_allgame_stat` | uid x dt x play_mode | 全玩法体验分析（play_mode 1~7） | `avg_magnification`, `multi_24_48_win`, `multi_24_48_lose`, `room_base` |
 | `dws_ddz_firstday_game` | resultguid x uid | 经典斗地主首日对局明细 | `result_id`, `role`, `magnification`, `room_base`, `start_money`, `end_money`, `game_datetime` |
 | `dq_channel_category_map` | — | 渠道分类映射维表 | `channel_category_name` |
 
@@ -100,8 +100,8 @@ ROUND(
 | `first_day_login_cnt` | `dws_dq_app_daily_reg` | INT | 注册当天登录次数（反映稳定性） |
 | `money_valley` | `dws_app_silvergame_stat` | BIGINT | 当日银子谷值（最低值） |
 | `total_diff_money` | `dws_app_silvergame_stat` | BIGINT | 当日银子净变化（正=赢，负=亏） |
-| `multi_q4_win_count` | `dws_app_allgame_stat` | INT | 高倍局（>24x）获胜次数 |
-| `multi_q4_lose_count` | `dws_app_allgame_stat` | INT | 高倍局（>24x）失败次数 |
+| `multi_24_48_win` | `dws_app_allgame_stat` | INT | 倍数 [24,48) 区间胜局数（高倍局代表性字段） |
+| `multi_24_48_lose` | `dws_app_allgame_stat` | INT | 倍数 [24,48) 区间负局数（高倍局代表性字段） |
 | `avg_magnification` | `dws_app_allgame_stat` | DOUBLE | 平均倍数 |
 | `escape_count` | `dws_app_silvergame_stat` | INT | 当日逃跑次数 |
 
@@ -1399,7 +1399,12 @@ silver_stat AS (
 allgame_stat AS (
     SELECT
         rb.uid, rb.reg_date,
-        SUM(gs.multi_q4_lose_count) AS high_multi_losses
+        -- 🌟 高倍 >24x 输局数 = 5 个高倍区间的 lose 之和（multi_q4_lose_count 已废弃，详见表 v1.2）
+        SUM(
+            COALESCE(gs.multi_24_48_lose, 0) + COALESCE(gs.multi_48_96_lose, 0)
+          + COALESCE(gs.multi_96_192_lose, 0) + COALESCE(gs.multi_192_384_lose, 0)
+          + COALESCE(gs.multi_384_plus_lose, 0)
+        ) AS high_multi_losses
     FROM reg_base rb
     LEFT JOIN tcy_temp.dws_app_allgame_stat gs
         ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date

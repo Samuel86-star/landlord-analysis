@@ -403,9 +403,11 @@ ORDER BY bc.play_mode, bc.bomb_level;
 
 ### 3.5 分玩法 × 多维度四分位体验留存
 
-> 字段来源：`dws_app_allgame_stat.multi_q1`, `multi_q2`, `multi_q3`, `multi_q4`
+> 字段来源：`dws_app_allgame_stat` 的固定倍数段（`multi_1` ~ `multi_384_plus` 系列的 `_win`/`_lose`）
 >
-> 将用户首日对局按倍数从低到高分为 Q1-Q4 四组，Q1 为最低倍数对局数，Q4 为最高倍数对局数。观察各倍数段对局数量对留存的影响。
+> 将固定倍数段归并为四档：低倍 `<6x`、中低 `6-12x`、中高 `12-24x`、高倍 `≥24x`。取用户首日落到过的最高档位，观察各档位对留存的影响。绝对阈值跨玩法可比（510K 与经典的 24x 同义）。
+>
+> 注：表 v1.2（2026-06-17）已移除旧 NTILE 四分位字段 `multi_q1~q4`，改为固定绝对阈值段，本节据此改写。
 
 ```sql
 WITH reg_base AS (
@@ -423,14 +425,34 @@ date_bounds AS (
 ),
 quartile AS (
     SELECT r.uid, r.reg_date, r.app_id, st.play_mode,
-           st.multi_q1, st.multi_q2, st.multi_q3, st.multi_q4,
-           (COALESCE(st.multi_q1, 0) + COALESCE(st.multi_q2, 0)
-          + COALESCE(st.multi_q3, 0) + COALESCE(st.multi_q4, 0)) AS total_quartile_games,
+           -- 固定倍数段归四档（表 v1.2 已用固定绝对阈值段替代旧 NTILE 相对四分位）
+           -- 低倍档 <6x：1, 2, 3-6
+           (COALESCE(st.multi_1_win, 0) + COALESCE(st.multi_1_lose, 0)
+          + COALESCE(st.multi_2_win, 0) + COALESCE(st.multi_2_lose, 0)
+          + COALESCE(st.multi_3_6_win, 0) + COALESCE(st.multi_3_6_lose, 0)) AS low_games,
+           -- 中低档 6-12x
+           (COALESCE(st.multi_6_12_win, 0) + COALESCE(st.multi_6_12_lose, 0)) AS mid_low_games,
+           -- 中高档 12-24x
+           (COALESCE(st.multi_12_24_win, 0) + COALESCE(st.multi_12_24_lose, 0)) AS mid_high_games,
+           -- 高倍档 ≥24x：24-48, 48-96, 96-192, 192-384, 384+
+           (COALESCE(st.multi_24_48_win, 0) + COALESCE(st.multi_24_48_lose, 0)
+          + COALESCE(st.multi_48_96_win, 0) + COALESCE(st.multi_48_96_lose, 0)
+          + COALESCE(st.multi_96_192_win, 0) + COALESCE(st.multi_96_192_lose, 0)
+          + COALESCE(st.multi_192_384_win, 0) + COALESCE(st.multi_192_384_lose, 0)
+          + COALESCE(st.multi_384_plus_win, 0) + COALESCE(st.multi_384_plus_lose, 0)) AS high_games,
+           -- 各区间 win/lose 之和 = 总对局数（表注释保证等式成立）
+           COALESCE(st.game_count, 0) AS total_quartile_games,
            CASE
-               WHEN COALESCE(st.multi_q4, 0) > 0 THEN 'D: 有高倍对局'
-               WHEN COALESCE(st.multi_q3, 0) > 0 THEN 'C: 有中高倍对局'
-               WHEN COALESCE(st.multi_q2, 0) > 0 THEN 'B: 有中低倍对局'
-               WHEN COALESCE(st.multi_q1, 0) > 0 THEN 'A: 仅低倍对局'
+               WHEN (COALESCE(st.multi_24_48_win, 0) + COALESCE(st.multi_24_48_lose, 0)
+                  + COALESCE(st.multi_48_96_win, 0) + COALESCE(st.multi_48_96_lose, 0)
+                  + COALESCE(st.multi_96_192_win, 0) + COALESCE(st.multi_96_192_lose, 0)
+                  + COALESCE(st.multi_192_384_win, 0) + COALESCE(st.multi_192_384_lose, 0)
+                  + COALESCE(st.multi_384_plus_win, 0) + COALESCE(st.multi_384_plus_lose, 0)) > 0 THEN 'D: 有高倍对局(≥24x)'
+               WHEN (COALESCE(st.multi_12_24_win, 0) + COALESCE(st.multi_12_24_lose, 0)) > 0 THEN 'C: 有中高倍对局(12-24x)'
+               WHEN (COALESCE(st.multi_6_12_win, 0) + COALESCE(st.multi_6_12_lose, 0)) > 0 THEN 'B: 有中低倍对局(6-12x)'
+               WHEN (COALESCE(st.multi_1_win, 0) + COALESCE(st.multi_1_lose, 0)
+                  + COALESCE(st.multi_2_win, 0) + COALESCE(st.multi_2_lose, 0)
+                  + COALESCE(st.multi_3_6_win, 0) + COALESCE(st.multi_3_6_lose, 0)) > 0 THEN 'A: 仅低倍对局(<6x)'
                ELSE '0: 无对局'
            END AS max_quartile_level
     FROM reg_base r

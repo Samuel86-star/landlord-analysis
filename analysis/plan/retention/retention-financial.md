@@ -909,7 +909,12 @@ silver_stats AS (
 ),
 high_multi_loss AS (
     SELECT a.uid, a.dt,
-           SUM(a.multi_q4_losses) AS total_q4_losses
+           -- 🌟 表 v1.2：multi_q4_losses 已废弃，高倍 >24x 输局数 = 5 个高倍区间的 lose 之和
+           SUM(
+               COALESCE(a.multi_24_48_lose, 0) + COALESCE(a.multi_48_96_lose, 0)
+             + COALESCE(a.multi_96_192_lose, 0) + COALESCE(a.multi_192_384_lose, 0)
+             + COALESCE(a.multi_384_plus_lose, 0)
+           ) AS total_q4_losses
     FROM tcy_temp.dws_app_allgame_stat a
     WHERE a.app_id = 1880053
       AND a.dt BETWEEN '2026-02-10' AND '2026-06-15'
