@@ -55,6 +55,8 @@
 - 看到 `SELECT *` 时警告并建议指定具体列
 - 遇到"可用但慢"的 SQL，建议"预聚合"或"中间表"方案
 
+> **编写查询 SQL 时必须参照 [SQL_STYLE.md](SQL_STYLE.md)**：涵盖 CTE 三段式骨架、目标日期常量化、矩阵坍缩、分区裁剪、StarRocks 兼容坑（LEFT JOIN ON 标量子查询）、已下线字段、常见逻辑 bug 等。仅管查询 SQL（SELECT）；**DDL 一律禁止**，须用户在 CloudBeaver 手动执行。
+
 ---
 
 ## 数据库表命名规范
