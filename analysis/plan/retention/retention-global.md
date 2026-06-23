@@ -1236,50 +1236,68 @@ ORDER BY first_game_group;
 地主 vs 农民的角色偏好反映了用户的激进程度。地主体验方差大（大输大赢），偏好地主的用户留存与经济变化强绑定。
 
 ```sql
-WITH role_stats AS (
-    SELECT
-        g.uid,
-        g.dt,
-        COUNT(*) AS game_count,
-        SUM(CASE WHEN g.role = 1 THEN 1 ELSE 0 END) AS landlord_count
-    FROM tcy_temp.dws_ddz_firstday_game g
-    WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-03-01' AND '2026-06-21'
-      AND g.robot != 1
-      AND g.play_mode IN (1, 2, 3)
-    GROUP BY g.uid, g.dt
-),
-reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-login_ret AS (
+role_stats AS (
+    -- 2. 核心人群圈定与角色偏好标签封装（Early Evaluation）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        rb.uid, rb.reg_date,
+        -- 提前算好比率，用 NULLIF 规避潜在的除以 0 异常
+        SUM(CASE WHEN g.role = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0) AS landlord_ratio,
+        CASE
+            WHEN SUM(CASE WHEN g.role = 1 THEN 1 ELSE 0 END) = 0 THEN 'A: 纯农民'
+            WHEN SUM(CASE WHEN g.role = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0) < 0.3 THEN 'B: 偏好农民(<30%)'
+            WHEN SUM(CASE WHEN g.role = 1 THEN 1 ELSE 0 END) * 1.0 / NULLIF(COUNT(*), 0) < 0.6 THEN 'C: 均衡(30-60%)'
+            ELSE 'D: 偏好地主(>=60%)'
+        END AS role_preference
+    FROM reg_base_raw rb
+    INNER JOIN tcy_temp.dws_ddz_firstday_game g
+        ON g.app_id = rb.app_id AND g.uid = rb.uid AND g.dt = rb.reg_date
+    WHERE g.robot != 1
+      AND g.play_mode IN (1, 2, 3)
+    GROUP BY rb.uid, rb.reg_date
+),
+date_bounds AS (
+    -- 3. 动态计算次留所需的分区裁剪边界（最大边界只需 +1 天，物理隔绝历史大分区开销）
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_deduped AS (
+    -- 4. 基础有对局用户流
+    SELECT uid, role_preference, landlord_ratio, 1 AS is_reg, 0 AS is_login_d1
+    FROM role_stats
+
+    UNION ALL
+
+    -- 5. 次日登录活跃流（刚性裁剪分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.role_preference, g.landlord_ratio, 0 AS is_reg, 1 AS is_login_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN role_stats g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.role_preference, g.landlord_ratio
 )
 SELECT
-    CASE
-        WHEN rs.landlord_count = 0 THEN 'A: 纯农民'
-        WHEN rs.landlord_count * 1.0 / rs.game_count < 0.3 THEN 'B: 偏好农民(<30%)'
-        WHEN rs.landlord_count * 1.0 / rs.game_count < 0.6 THEN 'C: 均衡(30-60%)'
-        ELSE 'D: 偏好地主(>=60%)'
-    END AS role_preference,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(AVG(rs.landlord_count * 1.0 / rs.game_count), 2) AS avg_landlord_ratio,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
-FROM reg_base rb
-INNER JOIN role_stats rs ON rb.uid = rs.uid AND rb.reg_date = rs.dt
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-GROUP BY 1
-ORDER BY 1;
+    role_preference,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 🌟 修正原 AVG 算法：锁定在注册流（is_reg = 1）上计算平均地主比例，避免分母膨胀
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN landlord_ratio ELSE 0 END) / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS avg_landlord_ratio,
+
+    -- 次留计算
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+FROM all_events_deduped
+GROUP BY role_preference
+ORDER BY role_preference;
 ```
 
 ### 4.4 逃跑行为
