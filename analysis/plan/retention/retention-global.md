@@ -1762,70 +1762,73 @@ ORDER BY crash_risk_group;
 ### 6.1 每日留存对比曲线
 
 ```sql
-WITH reg_base AS (
-    SELECT
-        r.uid, r.reg_date, r.app_id
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
+    SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-login_ret AS (
+date_bounds AS (
+    -- 2. 动态计算次留所需的分区裁剪边界（最大边界精准卡死在 +30 天，斩断后续无关历史大分区）
     SELECT
-        rb.uid, rb.reg_date,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS login_d3,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS login_d14,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base_raw
 ),
-game_ret AS (
+all_events_union AS (
+    -- 3. 基础注册流
+    SELECT uid, reg_date, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM reg_base_raw
+
+    UNION ALL
+
+    -- 4. 登录留存流（刚性裁剪 30 天分区 + 局部轻量去重）
     SELECT
-        rb.uid, rb.reg_date,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS game_d3,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS game_d14,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date
+        g.uid, g.reg_date, 0 AS is_reg,
+        DATEDIFF(l.login_date, g.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN reg_base_raw g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, g.reg_date) IN (1, 3, 7, 14, 30)
+    GROUP BY g.uid, g.reg_date, login_days_diff
+
+    UNION ALL
+
+    -- 5. 游戏活跃流（刚性裁剪 30 天分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.reg_date, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, g.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN reg_base_raw g ON a.app_id = 1880053 AND a.uid = g.uid
+    WHERE a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(a.dt, g.reg_date) IN (1, 3, 7, 14, 30)
+    GROUP BY g.uid, g.reg_date, game_days_diff
 )
-SELECT
-    rb.reg_date,
-    COUNT(DISTINCT rb.uid) AS reg_users,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
-    ROUND((SUM(lr.login_d1) - SUM(gr.game_d1)) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS gap_d1,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
-    ROUND((SUM(lr.login_d7) - SUM(gr.game_d7)) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS gap_d7,
-    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
-    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30,
-    ROUND((SUM(lr.login_d30) - SUM(gr.game_d30)) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS gap_d30
-FROM reg_base rb
-LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
-LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
-GROUP BY rb.reg_date
-ORDER BY rb.reg_date;
+-- 🌟 6. 主查询加入超时放宽 HINT，赋予优化器 15秒 的充裕时间
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    reg_date,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
+
+    -- 1日留存与 Gap
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
+    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 1 THEN uid END)) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS gap_d1,
+
+    -- 7日留存与 Gap
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
+    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 7 THEN uid END)) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS gap_d7,
+
+    -- 30日留存与 Gap
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30,
+    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END)) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS gap_d30
+FROM all_events_union
+GROUP BY reg_date
+ORDER BY reg_date;
 ```
 
 ### 6.2 登录但未游戏用户画像
