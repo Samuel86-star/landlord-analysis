@@ -1485,91 +1485,113 @@ ORDER BY room_base_group;
 三重高危信号叠加：连败≥3 且银子大亏且经历高倍局失败。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-silver_stat AS (
+silver_stat_raw AS (
+    -- 2. 抽取银子事实
     SELECT
-        rb.uid, rb.reg_date,
-        gs.max_lose_streak,
-        gs.total_diff_money,
-        gs.game_count
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
-        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+        uid, dt,
+        max_lose_streak,
+        total_diff_money,
+        game_count
+    FROM tcy_temp.dws_app_silvergame_stat
+    WHERE app_id = 1880053
+      AND dt BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-allgame_stat AS (
+allgame_stat_raw AS (
+    -- 3. 抽取高倍输局事实并聚合
+    -- 🌟 高倍 >24x 输局数 = 5 个高倍区间的 lose 之和（multi_q4_lose_count 已废弃，详见表 v1.2）
     SELECT
-        rb.uid, rb.reg_date,
-        -- 🌟 高倍 >24x 输局数 = 5 个高倍区间的 lose 之和（multi_q4_lose_count 已废弃，详见表 v1.2）
+        uid, dt,
         SUM(
-            COALESCE(gs.multi_24_48_lose, 0) + COALESCE(gs.multi_48_96_lose, 0)
-          + COALESCE(gs.multi_96_192_lose, 0) + COALESCE(gs.multi_192_384_lose, 0)
-          + COALESCE(gs.multi_384_plus_lose, 0)
+            COALESCE(multi_24_48_lose, 0) + COALESCE(multi_48_96_lose, 0)
+          + COALESCE(multi_96_192_lose, 0) + COALESCE(multi_192_384_lose, 0)
+          + COALESCE(multi_384_plus_lose, 0)
         ) AS high_multi_losses
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_allgame_stat gs
-        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
-    GROUP BY rb.uid, rb.reg_date
+    FROM tcy_temp.dws_app_allgame_stat
+    WHERE app_id = 1880053
+      AND dt BETWEEN '2026-03-01' AND '2026-06-21'
+    GROUP BY uid, dt
 ),
-login_ret AS (
+user_profile AS (
+    -- 4. 🛠️ 标签解耦层：横向轻量合拢事实表，将全量用户的风险特征打成固定文本
+    -- 这样做可以将复杂的组合过滤条件在这一层锁死，防止优化器将逻辑内联至后方的大表 UNION 中
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
-        )
-    GROUP BY rb.uid
+        rb.uid, rb.reg_date,
+        CASE
+            WHEN COALESCE(ss.game_count, 0) = 0 THEN '0: 无对局'
+            WHEN ss.max_lose_streak >= 3 AND ss.total_diff_money < -10000 AND COALESCE(ags.high_multi_losses, 0) > 0
+                THEN 'A: 连败3+×大亏×高倍输'
+            WHEN ss.max_lose_streak >= 3 AND ss.total_diff_money < -10000
+                THEN 'B: 连败3+×大亏'
+            WHEN ss.max_lose_streak >= 3
+                THEN 'C: 连败3+'
+            WHEN ss.total_diff_money < -10000
+                THEN 'D: 大亏'
+            ELSE 'E: 正常'
+        END AS risk_group
+    FROM reg_base_raw rb
+    LEFT JOIN silver_stat_raw ss ON rb.uid = ss.uid AND rb.reg_date = ss.dt
+    LEFT JOIN allgame_stat_raw ags ON rb.uid = ags.uid AND rb.reg_date = ags.dt
 ),
-game_ret AS (
+date_bounds AS (
+    -- 5. 动态计算留存所需的分区裁剪边界（最大边界只需 +7 天，精准斩断冗余 IO）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
-        )
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_deduped AS (
+    -- 6. 基础人群流
+    SELECT uid, risk_group, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM user_profile
+
+    UNION ALL
+
+    -- 7. 登录留存流（刚性裁剪分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.risk_group, 0 AS is_reg,
+        DATEDIFF(l.login_date, g.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN user_profile g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, g.reg_date) IN (1, 7)
+    GROUP BY g.uid, g.risk_group, login_days_diff
+
+    UNION ALL
+
+    -- 8. 游戏留存流（刚性裁剪分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.risk_group, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, g.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN user_profile g ON a.app_id = 1880053 AND a.uid = g.uid
+    WHERE a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(a.dt, g.reg_date) IN (1, 7)
+    GROUP BY g.uid, g.risk_group, game_days_diff
 )
-SELECT
-    CASE
-        WHEN COALESCE(ss.game_count, 0) = 0 THEN '0: 无对局'
-        WHEN ss.max_lose_streak >= 3
-             AND ss.total_diff_money < -10000
-             AND COALESCE(ags.high_multi_losses, 0) > 0
-            THEN 'A: 连败3+×大亏×高倍输'
-        WHEN ss.max_lose_streak >= 3 AND ss.total_diff_money < -10000
-            THEN 'B: 连败3+×大亏'
-        WHEN ss.max_lose_streak >= 3
-            THEN 'C: 连败3+'
-        WHEN ss.total_diff_money < -10000
-            THEN 'D: 大亏'
-        ELSE 'E: 正常'
-    END AS risk_group,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
-    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7
-FROM reg_base rb
-LEFT JOIN silver_stat ss ON rb.uid = ss.uid AND rb.reg_date = ss.reg_date
-LEFT JOIN allgame_stat ags ON rb.uid = ags.uid AND rb.reg_date = ags.reg_date
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-LEFT JOIN game_ret gr ON rb.uid = gr.uid
-GROUP BY 1
-ORDER BY 1;
+-- 🌟 9. 主查询加入超时放宽 HINT
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    risk_group,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 登录留存
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+
+    -- 游戏留存
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+FROM all_events_deduped
+GROUP BY risk_group
+ORDER BY risk_group;
 ```
 
 ### 5.2 首局负 × 地主 × 高倍局
