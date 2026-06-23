@@ -889,77 +889,116 @@ ORDER BY outcome_gdp_group;
 > 使用 `dws_ddz_firstday_game` 和 `dws_crazyddz_daily_game` 获取首局玩法，观察各玩法作为"第一局"时的用户量和留存。
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
-    -- 活跃事实表分区裁剪窗口
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
+    -- 严格卡死在 INTERVAL 1 DAY，物理切断随后 29 天的无效大分区扫描
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
-),
-first_game_ddz AS (
-    SELECT r.uid, r.reg_date, r.app_id,
-           MIN_BY(g.play_mode, g.game_datetime) AS first_play_mode,
-           MIN(g.game_datetime) AS first_game_time
-    FROM reg_base r
-    INNER JOIN tcy_temp.dws_ddz_firstday_game g
-        ON g.app_id = r.app_id AND g.uid = r.uid AND g.dt = r.reg_date
-        AND g.robot != 1 AND g.play_mode IN (1, 2, 3)
-    GROUP BY r.uid, r.reg_date, r.app_id
-),
-first_game_510k AS (
-    SELECT r.uid, r.reg_date, r.app_id,
-           7 AS first_play_mode,
-           MIN(cg.game_datetime) AS first_game_time
-    FROM reg_base r
-    INNER JOIN tcy_temp.dws_crazyddz_daily_game cg
-        ON cg.app_id = r.app_id AND cg.uid = r.uid AND cg.dt = r.reg_date
-        AND cg.robot != 1
-    GROUP BY r.uid, r.reg_date, r.app_id
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_d1_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_d1_date
+    FROM reg_base_raw
 ),
 first_game_union AS (
-    SELECT * FROM first_game_ddz
+    -- 3. 提取经典/不洗牌/癞子的首局时间（下推首日 D0 分区过滤条件）
+    SELECT
+        g.uid, g.dt AS reg_date,
+        MIN_BY(g.play_mode, g.game_datetime) AS first_play_mode,
+        MIN(g.game_datetime) AS first_game_time
+    FROM tcy_temp.dws_ddz_firstday_game g
+    WHERE g.app_id = 1880053
+      AND g.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+      AND g.robot != 1
+      AND g.play_mode IN (1, 2, 3)
+    GROUP BY g.uid, g.dt
+
     UNION ALL
-    SELECT * FROM first_game_510k
+
+    -- 4. 提取 510K 的首局时间（下推首日 D0 分区过滤条件）
+    SELECT
+        cg.uid, cg.dt AS reg_date,
+        7 AS first_play_mode,
+        MIN(cg.start_datetime) AS first_game_time
+    FROM tcy_temp.dws_crazyddz_daily_game cg
+    WHERE cg.app_id = 1880053
+      AND cg.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+      AND cg.robot != 1
+    GROUP BY cg.uid, cg.dt
 ),
--- 去重：如果同用户同时有 ddz 和 510k，取时间最早的
-first_game_dedup AS (
-    SELECT uid, reg_date, app_id,
-           MIN_BY(first_play_mode, first_game_time) AS first_play_mode
-    FROM first_game_union
-    GROUP BY uid, reg_date, app_id
+user_seed_profile AS (
+    -- 5. 🛠️ 标签与人群解耦层：多流交叉去重，锁定"绝对第一局玩法"标签
+    -- 改用标准的 INNER JOIN 彻底剔除无对局行为的注册僵尸用户，减轻后续数据 Shuffle 负担
+    SELECT
+        r.uid, r.reg_date,
+        MIN_BY(u.first_play_mode, u.first_game_time) AS first_play_mode
+    FROM reg_base_raw r
+    INNER JOIN first_game_union u ON r.uid = u.uid AND r.reg_date = u.reg_date
+    GROUP BY r.uid, r.reg_date
+),
+all_events_stream AS (
+    -- 6. 垂直管道第一层：基础注册种子人群首局流（计算两项留存的分母基准）
+    SELECT uid, first_play_mode, 1 AS is_reg, 0 AS is_ret_any, 0 AS is_ret_same
+    FROM user_seed_profile
+
+    UNION ALL
+
+    -- 7. 垂直管道第二层：次日(D1)玩法活跃流（核心行列大合拢）
+    -- 强制开启 D+1 物理分区裁剪，并且只和圈定出的种子用户进行轻量关联
+    -- 🌟 修正别名报错：将 INNER JOIN 后的 user_profile 修正为 user_seed_profile (别名 p)
+    SELECT
+        ma.uid,
+        p.first_play_mode,
+        0 AS is_reg,
+        -- 只要次日在指定玩法中有活跃，即满足"任意玩法次留"
+        1 AS is_ret_any,
+        -- 次日玩的玩法如果命中其首局玩法，则赋予"同玩法次留"标识，在外层用 MAX 压缩
+        MAX(CASE WHEN ma.play_mode = p.first_play_mode THEN 1 ELSE 0 END) AS is_ret_same
+    FROM tcy_temp.dws_app_gamemode_active ma
+    INNER JOIN user_seed_profile p
+        ON ma.app_id = 1880053
+       AND ma.uid = p.uid
+       AND ma.dt = DATE_ADD(p.reg_date, INTERVAL 1 DAY)
+    WHERE ma.play_mode IN (1, 2, 3, 7)
+      AND ma.dt BETWEEN (SELECT min_d1_date FROM date_bounds) AND (SELECT max_d1_date FROM date_bounds)
+    GROUP BY ma.uid, p.first_play_mode
 )
-SELECT
-    CASE fg.first_play_mode
+-- 🌟 8. 主查询单维度聚合输出，内嵌物理 HINT 放宽优化器时限至 15 秒
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    CASE first_play_mode
         WHEN 1 THEN '经典'
         WHEN 2 THEN '不洗牌'
         WHEN 3 THEN '癞子'
         WHEN 7 THEN '510K'
         ELSE '其他'
     END AS first_mode_name,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN ma1.dt IS NOT NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS d1_rate_any_mode,
-    ROUND(COUNT(DISTINCT CASE
-              WHEN ma1.dt IS NOT NULL AND ma1.play_mode = fg.first_play_mode
-              THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS d1_rate_same_mode
-FROM reg_base r
-LEFT JOIN first_game_dedup fg
-    ON fg.uid = r.uid AND fg.reg_date = r.reg_date AND fg.app_id = r.app_id
-LEFT JOIN tcy_temp.dws_app_gamemode_active ma1
-    ON ma1.app_id = r.app_id AND ma1.uid = r.uid
-    AND ma1.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-    AND ma1.play_mode IN (1, 2, 3, 7)
-    AND ma1.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-WHERE fg.first_play_mode IS NOT NULL
-GROUP BY fg.first_play_mode
-ORDER BY fg.first_play_mode;
+
+    -- 分母：首局玩了该玩法的去重总用户数
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 指标 A：任意玩法次留率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_ret_any = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS d1_rate_any_mode,
+
+    -- 指标 B：同玩法次留率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_ret_same = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS d1_rate_same_mode
+FROM all_events_stream
+GROUP BY first_play_mode
+ORDER BY first_play_mode;
 ```
 
 ### 4.2 玩法数量与留存
