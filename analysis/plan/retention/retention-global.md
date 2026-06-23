@@ -1901,18 +1901,21 @@ aggregated_cube AS (
     -- 6. 🛠️ 终极降维打击：利用 GROUPING SETS 替代外层的多个 UNION ALL
     -- 这样可以强制 StarRocks 只扫描一次 user_profile_deduped 管道，在内存中多线程同时切片算好 3 个维度
     SELECT
-        channel_category_name,
-        platform,
-        reg_app_code,
+        -- 用 GROUPING() 判定当前分组键：返回 0 表示该列参与分组（与"原始值为 NULL"区分开，
+        -- 避免 channel_category_name 为空的用户被误判到其它维度）
+        CASE
+            WHEN GROUPING(channel_category_name) = 0 THEN '按渠道'
+            WHEN GROUPING(platform) = 0 THEN '按平台'
+            ELSE '按客户端'
+        END AS dimension,
+        CASE
+            WHEN GROUPING(channel_category_name) = 0 THEN COALESCE(channel_category_name, '(未知渠道)')
+            WHEN GROUPING(platform) = 0 THEN platform
+            ELSE reg_app_code
+        END AS value,
         COUNT(DISTINCT uid) AS total_users,
         ROUND(SUM(CASE WHEN has_login_d1 = 1 AND has_game_d1 = 0 THEN 1 ELSE 0 END) * 100.0
-            / NULLIF(SUM(has_login_d1), 0), 2) AS login_no_game_pct,
-        -- 使用 grouping_id 或组合逻辑生成维度标识标签
-        CASE
-            WHEN channel_category_name IS NOT NULL THEN '按渠道'
-            WHEN platform IS NOT NULL THEN '按平台'
-            ELSE '按客户端'
-        END AS dimension
+            / NULLIF(SUM(has_login_d1), 0), 2) AS login_no_game_pct
     FROM user_profile_deduped
     GROUP BY GROUPING SETS (
         (channel_category_name),
@@ -1923,7 +1926,7 @@ aggregated_cube AS (
 -- 7. 主查询输出与排序，加入 Planner 超时防护 HINT
 SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     dimension,
-    COALESCE(channel_category_name, platform, reg_app_code) AS value,
+    value,
     total_users,
     login_no_game_pct
 FROM aggregated_cube
