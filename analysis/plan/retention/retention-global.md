@@ -2,7 +2,7 @@
 
 > 本文档聚焦**全局层**留存分析，覆盖用户属性视角和投入度视角的核心指标，采用双重留存口径（登录留存 + 游戏留存）。分玩法/分客户端/银子经济/积分玩法的专项分析见对应文档。
 >
-> **分析时间段**：2026-02-10 至 2026-06-15
+> **分析时间段**：2026-03-01 至 2026-06-21
 > **留存口径**：登录留存（基于 `dws_dq_daily_login`）+ 游戏留存（基于 `dws_app_game_active`）
 
 ---
@@ -299,7 +299,7 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
       -- 🌟 以后调整时间只需要改这里
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 date_bounds AS (
     -- 2. 动态计算活跃表的分区裁剪边界（1日留存最小值 ~ 30日留存最大值）
@@ -366,6 +366,7 @@ ORDER BY reg_users DESC;
 
 ```sql
 WITH reg_base AS (
+    -- 1. 核心控制层：全 SQL 唯一需要人工修改注册日期的地方
     SELECT
         uid,
         reg_date,
@@ -377,55 +378,65 @@ WITH reg_base AS (
         app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      -- 🌟 以后调整时间只需要改这里
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-login_ret AS (
+date_bounds AS (
+    -- 2. 动态计算活跃表的分区裁剪边界（最早注册次日 ~ 最晚注册后30天）
     SELECT
-        rb.uid,
-        rb.reg_date,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
-game_ret AS (
+all_events_deduped AS (
+    -- 3. 注册用户流
+    SELECT uid, reg_date, client_lang, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM reg_base
+
+    UNION ALL
+
+    -- 4. 登录活跃流（刚性裁剪分区 + 局部去重）
     SELECT
-        rb.uid,
-        rb.reg_date,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date
+        l.uid, r.reg_date, r.client_lang, 0 AS is_reg,
+        DATEDIFF(l.login_date, r.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN reg_base r ON l.app_id = r.app_id AND l.uid = r.uid
+    WHERE l.app_id = 1880053
+      -- 🌟 静态常量化分区裁剪，绝不走全表扫描
+      AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, r.reg_date) IN (1, 7, 30)
+    GROUP BY l.uid, r.reg_date, r.client_lang, login_days_diff
+
+    UNION ALL
+
+    -- 5. 游戏活跃流（刚性裁剪分区 + 局部去重）
+    SELECT
+        a.uid, r.reg_date, r.client_lang, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, r.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN reg_base r ON a.app_id = r.app_id AND a.uid = r.uid
+    WHERE a.app_id = 1880053
+      -- 🌟 静态常量化分区裁剪
+      AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(a.dt, r.reg_date) IN (1, 7, 30)
+    GROUP BY a.uid, r.reg_date, r.client_lang, game_days_diff
 )
 SELECT
-    rb.client_lang,
-    COUNT(DISTINCT rb.uid) AS reg_users,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
-    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
-    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
-FROM reg_base rb
-LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
-LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
-GROUP BY rb.client_lang
+    client_lang,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
+
+    -- 登录留存率计算
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+
+    -- 游戏留存率计算
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+FROM all_events_deduped
+GROUP BY client_lang
 ORDER BY reg_users DESC;
 ```
 
@@ -442,7 +453,7 @@ WITH reg_base AS (
         app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
       AND r.reg_time IS NOT NULL
 ),
 login_ret AS (
@@ -498,7 +509,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -573,7 +584,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -643,7 +654,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -690,7 +701,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -761,7 +772,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -830,7 +841,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -885,7 +896,7 @@ WITH reg_base AS (
         r.first_day_login_cnt
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 login_ret AS (
     SELECT
@@ -949,7 +960,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -1001,7 +1012,7 @@ WITH first_game AS (
         MIN_BY(g.result_id, g.game_datetime) AS first_game_result
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.dt BETWEEN '2026-03-01' AND '2026-06-21'
       AND g.robot != 1
       AND g.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND g.play_mode IN (1, 2, 3, 5)
@@ -1011,7 +1022,7 @@ reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 login_ret AS (
     SELECT
@@ -1073,7 +1084,7 @@ WITH role_stats AS (
         SUM(CASE WHEN g.role = 1 THEN 1 ELSE 0 END) AS landlord_count
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.dt BETWEEN '2026-03-01' AND '2026-06-21'
       AND g.robot != 1
       AND g.play_mode IN (1, 2, 3)
     GROUP BY g.uid, g.dt
@@ -1082,7 +1093,7 @@ reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 login_ret AS (
     SELECT
@@ -1120,7 +1131,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -1171,7 +1182,7 @@ WITH room_base AS (
         AVG(g.room_base) AS avg_room_base
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.dt BETWEEN '2026-03-01' AND '2026-06-21'
       AND g.robot != 1
       AND g.play_mode IN (1, 2, 3)
     GROUP BY g.uid, g.dt
@@ -1180,7 +1191,7 @@ reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 login_ret AS (
     SELECT
@@ -1246,7 +1257,7 @@ WITH reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 silver_stat AS (
     SELECT
@@ -1337,7 +1348,7 @@ WITH first_game AS (
         MIN_BY(g.magnification, g.game_datetime) AS first_game_magnification
     FROM tcy_temp.dws_ddz_firstday_game g
     WHERE g.app_id = 1880053
-      AND g.dt BETWEEN '2026-02-10' AND '2026-06-15'
+      AND g.dt BETWEEN '2026-03-01' AND '2026-06-21'
       AND g.robot != 1
       AND g.group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
       AND g.play_mode IN (1, 2, 3, 5)
@@ -1347,7 +1358,7 @@ reg_base AS (
     SELECT r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 login_ret AS (
     SELECT
@@ -1391,7 +1402,7 @@ WITH reg_base AS (
         r.first_day_login_cnt
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
     SELECT
@@ -1444,7 +1455,7 @@ WITH reg_base AS (
         r.uid, r.reg_date, r.app_id
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 login_ret AS (
     SELECT
@@ -1518,7 +1529,7 @@ WITH reg_base AS (
         CASE WHEN r.reg_group_id IN (8, 88) THEN 'iOS' ELSE 'Android' END AS platform
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 user_ret AS (
     SELECT
