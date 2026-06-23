@@ -468,42 +468,82 @@ ORDER BY client_lang, login_cnt_group;
 > 使用 `dws_app_silvergame_stat.escape_count` 统计首日逃跑行为。逃跑率高可能反映操作卡顿、闪退导致掉线等客户端问题。
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id, reg_app_code
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id, r.reg_app_code
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
+    -- 🌟 极致分区剪枝：只看次留，上限直接收紧到 INTERVAL 1 DAY，物理抹除随后的无用大分区扫描
     SELECT
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+user_seed_profile AS (
+    -- 3. 🛠️ 双维度与时间常数固化层：在底层将引擎分支与逃跑频次映射死，并将非对局/非逃跑行为安全归 0
+    -- 就地把 D+1 的绝对物理目标日期算出来作为明文常数，杜绝后续高频函数重算
+    SELECT
+        r.uid, r.reg_date, r.app_id,
+        CASE r.reg_app_code
+            WHEN 'zgda' THEN 'Cocos-Lua'
+            WHEN 'zgdx' THEN 'Cocos-Creator'
+            ELSE '其他'
+        END AS client_lang,
+        CASE
+            WHEN s.escape_count IS NULL OR s.escape_count = 0 THEN 'A: 无逃跑'
+            WHEN s.escape_count = 1 THEN 'B: 逃跑1次'
+            WHEN s.escape_count = 2 THEN 'C: 逃跑2次'
+            ELSE 'D: 逃跑3次以上'
+        END AS escape_group,
+        DATE_ADD(r.reg_date, INTERVAL 1 DAY) AS d1_target
+    FROM reg_base_raw r
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat s
+        ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date AND s.game_count > 0
+),
+all_events_stream AS (
+    -- 4. 垂直管道第一层：基础新登人群种子流（双维度分母基准）
+    SELECT
+        uid, client_lang, escape_group, 1 AS is_reg, 0 AS is_d1
+    FROM user_seed_profile
+
+    UNION ALL
+
+    -- 5. 垂直管道第二层：次日大盘独立登录行为流（分子基准）
+    -- 强制开启 D1 静态分区裁剪，并与种子人群 INNER JOIN 继承双维度标签，就地压缩去重
+    SELECT
+        l.uid AS uid,
+        p.client_lang,
+        p.escape_group,
+        0 AS is_reg,
+        1 AS is_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN user_seed_profile p ON l.app_id = p.app_id AND l.uid = p.uid AND l.login_date = p.d1_target
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    GROUP BY l.uid, p.client_lang, p.escape_group
 )
-SELECT
-    CASE r.reg_app_code
-        WHEN 'zgda' THEN 'Cocos-Lua'
-        WHEN 'zgdx' THEN 'Cocos-Creator'
-        ELSE '其他'
-    END AS client_lang,
-    CASE
-        WHEN s.escape_count IS NULL OR s.escape_count = 0 THEN 'A: 无逃跑'
-        WHEN s.escape_count = 1 THEN 'B: 逃跑1次'
-        WHEN s.escape_count = 2 THEN 'C: 逃跑2次'
-        ELSE 'D: 逃跑3次以上'
-    END AS escape_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN s.escape_count IS NOT NULL AND s.escape_count > 0
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS escape_rate_pct,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_app_silvergame_stat s
-    ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date AND s.game_count > 0
-LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-GROUP BY 1, 2
+-- 🌟 6. 主查询：双维度无膨胀矩阵坍缩聚合，内嵌物理 HINT
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    client_lang,
+    escape_group,
+
+    -- 分母：该引擎分支 × 逃跑行为分组下的去重新登总用户数
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 次日大盘任意玩法留存率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_d1 = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS day1_rate
+FROM all_events_stream
+GROUP BY client_lang, escape_group
 ORDER BY client_lang, escape_group;
 ```
 
