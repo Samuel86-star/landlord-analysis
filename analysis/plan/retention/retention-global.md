@@ -935,69 +935,50 @@ WITH reg_base_raw AS (
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
 game_stat AS (
-    -- 2. 聚合所有玩法的高倍局（>24x）输赢数据，并提前打标签
+    -- 2. 聚合固定倍数段并【提前封装标签】，降低后续数据流传输和 GROUP BY 的体积开销
     -- 🌟 表结构已变更：multi_q4_win_count/lose_count 已废弃，改为固定倍数段
     --    高倍 >24x = multi_24_48 + multi_48_96 + multi_96_192 + multi_192_384 + multi_384_plus
     SELECT
         rb.uid, rb.reg_date,
-        SUM(
-            COALESCE(gs.multi_24_48_win, 0) + COALESCE(gs.multi_48_96_win, 0)
-          + COALESCE(gs.multi_96_192_win, 0) + COALESCE(gs.multi_192_384_win, 0)
-          + COALESCE(gs.multi_384_plus_win, 0)
-        ) AS total_high_multi_wins,
-        SUM(
-            COALESCE(gs.multi_24_48_lose, 0) + COALESCE(gs.multi_48_96_lose, 0)
-          + COALESCE(gs.multi_96_192_lose, 0) + COALESCE(gs.multi_192_384_lose, 0)
-          + COALESCE(gs.multi_384_plus_lose, 0)
-        ) AS total_high_multi_losses
+        CASE
+            WHEN SUM(COALESCE(gs.multi_24_48_win, 0) + COALESCE(gs.multi_48_96_win, 0) + COALESCE(gs.multi_96_192_win, 0) + COALESCE(gs.multi_192_384_win, 0) + COALESCE(gs.multi_384_plus_win, 0)) = 0
+             AND SUM(COALESCE(gs.multi_24_48_lose, 0) + COALESCE(gs.multi_48_96_lose, 0) + COALESCE(gs.multi_96_192_lose, 0) + COALESCE(gs.multi_192_384_lose, 0) + COALESCE(gs.multi_384_plus_lose, 0)) = 0
+                THEN 'A: 未经历高倍'
+            WHEN SUM(COALESCE(gs.multi_24_48_win, 0) + COALESCE(gs.multi_48_96_win, 0) + COALESCE(gs.multi_96_192_win, 0) + COALESCE(gs.multi_192_384_win, 0) + COALESCE(gs.multi_384_plus_win, 0)) > 0
+             AND SUM(COALESCE(gs.multi_24_48_lose, 0) + COALESCE(gs.multi_48_96_lose, 0) + COALESCE(gs.multi_96_192_lose, 0) + COALESCE(gs.multi_192_384_lose, 0) + COALESCE(gs.multi_384_plus_lose, 0)) = 0
+                THEN 'B: 仅赢高倍'
+            WHEN SUM(COALESCE(gs.multi_24_48_win, 0) + COALESCE(gs.multi_48_96_win, 0) + COALESCE(gs.multi_96_192_win, 0) + COALESCE(gs.multi_192_384_win, 0) + COALESCE(gs.multi_384_plus_win, 0)) = 0
+             AND SUM(COALESCE(gs.multi_24_48_lose, 0) + COALESCE(gs.multi_48_96_lose, 0) + COALESCE(gs.multi_96_192_lose, 0) + COALESCE(gs.multi_192_384_lose, 0) + COALESCE(gs.multi_384_plus_lose, 0)) > 0
+                THEN 'C: 仅输高倍'
+            ELSE 'D: 有赢有输'
+        END AS high_multi_exp
     FROM reg_base_raw rb
     LEFT JOIN tcy_temp.dws_app_allgame_stat gs
         ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
     GROUP BY rb.uid, rb.reg_date
 ),
 date_bounds AS (
-    -- 3. 动态计算次留所需的分区裁剪边界（因为只看次留，最大边界只需 +1 天，扫描量降到最低）
+    -- 3. 动态计算次留所需的分区裁剪边界（1天动态缩减）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
         DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
-    -- 4. 基础人群流（含高倍输赢聚合 + 打标签）
-    SELECT
-        uid,
-        CASE
-            WHEN COALESCE(total_high_multi_wins, 0) = 0 AND COALESCE(total_high_multi_losses, 0) = 0
-                THEN 'A: 未经历高倍'
-            WHEN total_high_multi_wins > 0 AND COALESCE(total_high_multi_losses, 0) = 0
-                THEN 'B: 仅赢高倍'
-            WHEN COALESCE(total_high_multi_wins, 0) = 0 AND total_high_multi_losses > 0
-                THEN 'C: 仅输高倍'
-            ELSE 'D: 有赢有输'
-        END AS high_multi_exp,
-        1 AS is_reg, 0 AS is_login_d1
+    -- 4. 基础人群流
+    SELECT uid, high_multi_exp, 1 AS is_reg, 0 AS is_login_d1
     FROM game_stat
 
     UNION ALL
 
-    -- 5. 次日登录活跃流（刚性裁剪分区 + 局部去重）
+    -- 5. 次日登录活跃流（🌟 局部去重优化：GROUP BY 只需使用轻量的文本标签字符，大大减轻哈希负担）
     SELECT
-        g.uid,
-        CASE
-            WHEN COALESCE(g.total_high_multi_wins, 0) = 0 AND COALESCE(g.total_high_multi_losses, 0) = 0
-                THEN 'A: 未经历高倍'
-            WHEN g.total_high_multi_wins > 0 AND COALESCE(g.total_high_multi_losses, 0) = 0
-                THEN 'B: 仅赢高倍'
-            WHEN COALESCE(g.total_high_multi_wins, 0) = 0 AND g.total_high_multi_losses > 0
-                THEN 'C: 仅输高倍'
-            ELSE 'D: 有赢有输'
-        END AS high_multi_exp,
-        0 AS is_reg, 1 AS is_login_d1
+        g.uid, g.high_multi_exp, 0 AS is_reg, 1 AS is_login_d1
     FROM tcy_temp.dws_dq_daily_login l
     INNER JOIN game_stat g ON l.app_id = 1880053 AND l.uid = g.uid
     WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
       AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
-    GROUP BY g.uid, g.total_high_multi_wins, g.total_high_multi_losses -- 局部去重
+    GROUP BY g.uid, g.high_multi_exp
 )
 SELECT
     high_multi_exp,
