@@ -167,46 +167,82 @@ ORDER BY client_lang;
 ### 2.2 按客户端版本 x 平台登录留存
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id, reg_app_code, reg_group_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id, r.reg_app_code, r.reg_group_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D30(30留) 的绝对物理裁剪边界
+    -- 针对 30 留场景，上限保留 INTERVAL 30 DAY 以做到严谨的物理分区裁剪
     SELECT
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
         DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+    FROM reg_base_raw
+),
+user_seed_profile AS (
+    -- 3. 🛠️ 双维度与时间常数固化层：在最底层一次性将引擎分支、操作系统标签映射为固定文本
+    -- 🌟 核心提速点：就地把 3 个留存的绝对物理目标日期算出来，杜绝高频函数重算
+    SELECT
+        uid, reg_date, app_id,
+        CASE reg_app_code
+            WHEN 'zgda' THEN 'Cocos-Lua'
+            WHEN 'zgdx' THEN 'Cocos-Creator'
+            ELSE '其他'
+        END AS client_lang,
+        CASE
+            WHEN reg_group_id IN (8, 88) THEN 'iOS'
+            WHEN reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
+            ELSE '其他'
+        END AS platform,
+        DATE_ADD(reg_date, INTERVAL 1 DAY)  AS d1_target,
+        DATE_ADD(reg_date, INTERVAL 6 DAY)  AS d7_target,
+        DATE_ADD(reg_date, INTERVAL 29 DAY) AS d30_target
+    FROM reg_base_raw
+),
+all_events_stream AS (
+    -- 4. 垂直管道第一层：基础新登人群种子流（双维度分母基准）
+    SELECT
+        uid, client_lang, platform, 1 AS is_reg,
+        0 AS is_d1, 0 AS is_d7, 0 AS is_d30
+    FROM user_seed_profile
+
+    UNION ALL
+
+    -- 5. 垂直管道第二层：30天大盘独立登录行为流（各维度分子基准）
+    -- 强制开启 D1-D30 静态大分区裁剪，并和种子人群 INNER JOIN 继承双维度标签，就地打上矩阵命中标记
+    SELECT
+        l.uid,
+        p.client_lang,
+        p.platform,
+        0 AS is_reg,
+        MAX(CASE WHEN l.login_date = p.d1_target  THEN 1 ELSE 0 END) AS is_d1,
+        MAX(CASE WHEN l.login_date = p.d7_target  THEN 1 ELSE 0 END) AS is_d7,
+        MAX(CASE WHEN l.login_date = p.d30_target THEN 1 ELSE 0 END) AS is_d30
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN user_seed_profile p ON l.app_id = p.app_id AND l.uid = p.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    GROUP BY l.uid, p.client_lang, p.platform
 )
-SELECT
-    CASE r.reg_app_code
-        WHEN 'zgda' THEN 'Cocos-Lua'
-        WHEN 'zgdx' THEN 'Cocos-Creator'
-        ELSE '其他'
-    END AS client_lang,
-    CASE
-        WHEN r.reg_group_id IN (8, 88) THEN 'iOS'
-        WHEN r.reg_group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
-        ELSE '其他'
-    END AS platform,
-    COUNT(DISTINCT r.uid) AS reg_users,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 29 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day30_rate
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON l.app_id = r.app_id AND l.uid = r.uid
-    AND l.login_date IN (
-        DATE_ADD(r.reg_date, INTERVAL 1 DAY),
-        DATE_ADD(r.reg_date, INTERVAL 6 DAY),
-        DATE_ADD(r.reg_date, INTERVAL 29 DAY)
-    )
-    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-GROUP BY 1, 2
+-- 🌟 6. 主查询：双维度交叉全生命周期留存漏斗矩阵坍缩，内嵌物理 HINT 放宽优化器时限
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    client_lang,
+    platform,
+
+    -- 分母：该引擎分支 × 操作系统平台下的去重新登总用户数
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
+
+    -- 各阶段分子 / 总分母 = 交叉维度下的留存率
+    ROUND(COUNT(DISTINCT CASE WHEN is_d1 = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS day1_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN is_d7 = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS day7_rate,
+    ROUND(COUNT(DISTINCT CASE WHEN is_d30 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS day30_rate
+FROM all_events_stream
+GROUP BY client_lang, platform
 ORDER BY client_lang, platform;
 ```
 
