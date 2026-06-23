@@ -117,79 +117,153 @@ ROUND(
 
 ```sql
 WITH reg_base AS (
+    -- 1. 注册基础数据（抽取渠道分类，供下游复用）
     SELECT
         uid,
         reg_date,
+        CASE
+            WHEN channel_category_name IN ('OPPO','IOS','vivo','华为','咪咕','官方(非CPS)','荣耀')
+                THEN channel_category_name
+            ELSE '其他'
+        END AS channel,
+        app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-03-01' AND '2026-06-21'
+),
+date_bounds AS (
+    -- 2. 全局活跃日期窗口：最早注册次日 ~ 最晚注册后 30 天
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
+all_events_deduped AS (
+    SELECT uid, reg_date, channel, 1 AS is_reg, 0 AS login_days_diff, 0 AS game_days_diff
+    FROM reg_base
+
+    UNION ALL
+
+    -- 3. 登录活跃数据（按 (uid, reg_date, days_diff) 去重，仅保留目标留存天数）
+    SELECT
+        l.uid, r.reg_date, r.channel, 0 AS is_reg,
+        DATEDIFF(l.login_date, r.reg_date) AS login_days_diff,
+        0 AS game_days_diff
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN reg_base r ON l.app_id = r.app_id AND l.uid = r.uid
+    WHERE l.app_id = 1880053
+      AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(l.login_date, r.reg_date) IN (1, 3, 7, 14, 30)
+    GROUP BY l.uid, r.reg_date, r.channel, login_days_diff
+
+    UNION ALL
+
+    -- 4. 游戏活跃数据（同上策略）
+    SELECT
+        a.uid, r.reg_date, r.channel, 0 AS is_reg, 0 AS login_days_diff,
+        DATEDIFF(a.dt, r.reg_date) AS game_days_diff
+    FROM tcy_temp.dws_app_game_active a
+    INNER JOIN reg_base r ON a.app_id = r.app_id AND a.uid = r.uid
+    WHERE a.app_id = 1880053
+      AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND DATEDIFF(a.dt, r.reg_date) IN (1, 3, 7, 14, 30)
+    GROUP BY a.uid, r.reg_date, r.channel, game_days_diff
+)
+SELECT
+    channel,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
+
+    -- 登录留存
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 3  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d3,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 14 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d14,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+
+    -- 游戏留存
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 3  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d3,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 14 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d14,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+FROM all_events_deduped
+GROUP BY channel
+ORDER BY reg_users DESC;
+```
+
+> **💡 性能说明**：当 uid 基数很大（数百万级）时，`COUNT(DISTINCT uid)` 的精确去重开销较高。此时可改用 StarRocks 的 `BITMAP` 方案加速（利用 Roaring Bitmap 做精确去重，性能可提升数倍）。完整 SQL 如下：
+
+```sql
+WITH reg_base AS (
+    SELECT
         CASE
             WHEN r.channel_category_name IN ('OPPO','IOS','vivo','华为','咪咕','官方(非CPS)','荣耀')
                 THEN r.channel_category_name
             ELSE '其他'
         END AS channel,
-        app_id
+        r.reg_date,
+        r.uid
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+      AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-login_ret AS (
-    SELECT
-        rb.uid,
-        rb.reg_date,
-        rb.channel,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS login_d3,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS login_d7,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS login_d14,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS login_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date, rb.channel
+reg_bitmap AS (
+    SELECT channel, reg_date, BITMAP_UNION(TO_BITMAP(uid)) AS reg_users_bitmap
+    FROM reg_base
+    GROUP BY 1, 2
 ),
-game_ret AS (
+date_bounds AS (
     SELECT
-        rb.uid,
-        rb.reg_date,
-        rb.channel,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS game_d1,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 3 DAY) THEN 1 ELSE 0 END) AS game_d3,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 7 DAY) THEN 1 ELSE 0 END) AS game_d7,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 14 DAY) THEN 1 ELSE 0 END) AS game_d14,
-        MAX(CASE WHEN a.dt = DATE_ADD(rb.reg_date, INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS game_d30
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_game_active a
-        ON a.app_id = rb.app_id AND a.uid = rb.uid
-        AND a.dt IN (
-            DATE_ADD(rb.reg_date, INTERVAL 1 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 3 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 7 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 14 DAY),
-            DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
-        )
-    GROUP BY rb.uid, rb.reg_date, rb.channel
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
+login_bitmap AS (
+    SELECT
+        l.login_date,
+        BITMAP_UNION(TO_BITMAP(l.uid)) AS login_users_bitmap
+    FROM tcy_temp.dws_dq_daily_login l
+    WHERE l.app_id = 1880053
+      AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    GROUP BY 1
+),
+game_bitmap AS (
+    SELECT
+        a.dt AS game_date,
+        BITMAP_UNION(TO_BITMAP(a.uid)) AS game_users_bitmap
+    FROM tcy_temp.dws_app_game_active a
+    WHERE a.app_id = 1880053
+      AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    GROUP BY 1
 )
 SELECT
     rb.channel,
-    COUNT(DISTINCT rb.uid) AS reg_users,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1,
-    ROUND(SUM(lr.login_d3) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d3,
-    ROUND(SUM(lr.login_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d7,
-    ROUND(SUM(lr.login_d14) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d14,
-    ROUND(SUM(lr.login_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d30,
-    ROUND(SUM(gr.game_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d1,
-    ROUND(SUM(gr.game_d3) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d3,
-    ROUND(SUM(gr.game_d7) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d7,
-    ROUND(SUM(gr.game_d14) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d14,
-    ROUND(SUM(gr.game_d30) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS game_d30
-FROM reg_base rb
-LEFT JOIN login_ret lr ON rb.uid = lr.uid AND rb.reg_date = lr.reg_date
-LEFT JOIN game_ret gr ON rb.uid = gr.uid AND rb.reg_date = gr.reg_date
+    BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)) AS reg_users,
+
+    -- 登录留存（注册 bitmap 与目标日登录 bitmap 求交，再按渠道汇总）
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gl1.login_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS login_d1,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gl3.login_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS login_d3,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gl7.login_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS login_d7,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gl14.login_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS login_d14,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gl30.login_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS login_d30,
+
+    -- 游戏留存
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gg1.game_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS game_d1,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gg3.game_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS game_d3,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gg7.game_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS game_d7,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gg14.game_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS game_d14,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(rb.reg_users_bitmap, gg30.game_users_bitmap))) * 100.0 / BITMAP_COUNT(BITMAP_UNION(rb.reg_users_bitmap)), 2) AS game_d30
+FROM reg_bitmap rb
+LEFT JOIN login_bitmap gl1  ON gl1.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+LEFT JOIN login_bitmap gl3  ON gl3.login_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY)
+LEFT JOIN login_bitmap gl7  ON gl7.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+LEFT JOIN login_bitmap gl14 ON gl14.login_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY)
+LEFT JOIN login_bitmap gl30 ON gl30.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+LEFT JOIN game_bitmap gg1   ON gg1.game_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
+LEFT JOIN game_bitmap gg3   ON gg3.game_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY)
+LEFT JOIN game_bitmap gg7   ON gg7.game_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+LEFT JOIN game_bitmap gg14  ON gg14.game_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY)
+LEFT JOIN game_bitmap gg30  ON gg30.game_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
 GROUP BY rb.channel
 ORDER BY reg_users DESC;
 ```

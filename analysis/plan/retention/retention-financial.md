@@ -64,10 +64,10 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     LEFT JOIN tcy_temp.dws_dq_daily_login l
         ON l.app_id = r.app_id AND l.uid = r.uid
-        AND l.login_date > r.reg_date
+        AND l.login_date > r.reg_date AND l.login_date <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date, r.reg_app_code, r.reg_group_id, r.channel_category_name
 )
 SELECT * FROM retention_flags;
@@ -105,7 +105,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -129,6 +129,66 @@ LEFT JOIN silver_stats s ON r.uid = s.uid AND r.reg_date = s.dt
 LEFT JOIN retention_flags rf ON r.uid = rf.uid AND r.reg_date = rf.reg_date
 GROUP BY 1
 ORDER BY 1;
+```
+
+> **💡 BITMAP 加速版**：uid 基数大时，`COUNT(DISTINCT)` 可改用 bitmap —— `seg_bitmap` 按 `(money_group, reg_date)` 预聚合注册 bitmap，活跃按日聚合，`BITMAP_AND` 求交。其余分组查询（银子谷值/峰值等）可同构套用：
+
+```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+seg AS (
+    -- 分组维度：首日净输赢（无对局用户 s.* 为 NULL，归 'Z: 无对局'）
+    SELECT r.uid, r.reg_date,
+        CASE
+            WHEN s.game_count IS NULL OR s.game_count = 0 THEN 'Z: 无对局'
+            WHEN s.total_diff_money < -50000 THEN 'A: 巨亏(<-5万)'
+            WHEN s.total_diff_money < -10000 THEN 'B: 大亏(-5万~-1万)'
+            WHEN s.total_diff_money < 0      THEN 'C: 小亏(-1万~0)'
+            WHEN s.total_diff_money < 10000  THEN 'D: 小赚(0~1万)'
+            WHEN s.total_diff_money < 50000  THEN 'E: 大赚(1万~5万)'
+            ELSE                                  'F: 巨赚(>5万)'
+        END AS money_group
+    FROM reg_base r
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat s
+        ON s.uid = r.uid AND s.app_id = r.app_id AND s.dt = r.reg_date
+),
+seg_bitmap AS (
+    SELECT money_group, reg_date, BITMAP_UNION(TO_BITMAP(uid)) AS reg_users_bitmap
+    FROM seg
+    GROUP BY 1, 2
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
+game_bitmap AS (
+    SELECT a.dt AS game_date, BITMAP_UNION(TO_BITMAP(a.uid)) AS game_users_bitmap
+    FROM tcy_temp.dws_app_game_active a
+    WHERE a.app_id = 1880053
+      AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    GROUP BY 1
+)
+SELECT
+    sb.money_group,
+    BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)) AS user_count,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(sb.reg_users_bitmap, g1.game_users_bitmap))) * 100.0
+          / BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)), 2) AS day1_rate,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(sb.reg_users_bitmap, g7.game_users_bitmap))) * 100.0
+          / BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)), 2) AS day7_rate,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(sb.reg_users_bitmap, g30.game_users_bitmap))) * 100.0
+          / BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)), 2) AS day30_rate
+FROM seg_bitmap sb
+LEFT JOIN game_bitmap g1  ON g1.game_date = DATE_ADD(sb.reg_date, INTERVAL 1 DAY)
+LEFT JOIN game_bitmap g7  ON g7.game_date = DATE_ADD(sb.reg_date, INTERVAL 6 DAY)
+LEFT JOIN game_bitmap g30 ON g30.game_date = DATE_ADD(sb.reg_date, INTERVAL 29 DAY)
+GROUP BY sb.money_group
+ORDER BY sb.money_group;
 ```
 
 ### 2.2 按银子谷值分组（破产信号）
@@ -155,7 +215,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -201,7 +261,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -246,7 +306,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -301,7 +361,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -381,7 +441,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -439,7 +499,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -486,7 +546,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -532,7 +592,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -586,7 +646,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -636,7 +696,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -684,7 +744,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -754,7 +814,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -802,7 +862,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -864,7 +924,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT
@@ -921,7 +981,7 @@ retention_flags AS (
     FROM reg_users r
     LEFT JOIN tcy_temp.dws_app_game_active a
         ON r.uid = a.uid AND a.app_id = r.app_id
-        AND a.dt > r.reg_date
+        AND a.dt > r.reg_date AND a.dt <= DATE_ADD(r.reg_date, INTERVAL 30 DAY)
     GROUP BY r.uid, r.reg_date
 )
 SELECT

@@ -77,6 +77,13 @@ WITH reg_base AS (
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口：最早注册次日 ~ 最晚注册后 30 天
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
 score_reg AS (
     -- 首日有积分玩法对局的注册用户
     SELECT r.uid, r.reg_date, r.app_id, r.reg_app_code, r.reg_group_id, r.channel_category_name,
@@ -88,6 +95,8 @@ score_reg AS (
         ON s.uid = r.uid AND s.dt = r.reg_date
 )
 ```
+
+> 各查询在 JOIN `dws_app_game_active` 等活跃事实表时，建议补 `AND <日期列> BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)` 做分区裁剪，避免扫描注册窗口之外的历史分区。完整 bitmap 写法（含 date_bounds）见 §2.2。
 
 ---
 
@@ -137,6 +146,12 @@ WITH user_segment AS (
         ON s.uid = r.uid AND s.dt = r.reg_date
     LEFT JOIN tcy_temp.dws_app_silvergame_stat si
         ON si.uid = r.uid AND si.dt = r.reg_date
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     user_segment,
@@ -158,8 +173,71 @@ LEFT JOIN tcy_temp.dws_app_game_active a
         DATE_ADD(u.reg_date, INTERVAL 6 DAY),
         DATE_ADD(u.reg_date, INTERVAL 29 DAY)
     )
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY user_segment
 ORDER BY user_segment;
+```
+
+> **💡 BITMAP 加速版**：uid 基数大时改用 bitmap —— `seg_bitmap` 按 `(user_segment, reg_date)` 预聚合，活跃按日聚合，`BITMAP_AND` 求交。其余分组查询（首日对局数/胜率等）可同构套用：
+
+```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+seg AS (
+    -- 分组维度：首日是否参与积分/银子玩法
+    SELECT r.uid, r.reg_date,
+        CASE
+            WHEN s.uid IS NOT NULL AND si.uid IS NOT NULL THEN 'C: 双玩法'
+            WHEN s.uid IS NOT NULL THEN 'B: 仅积分'
+            WHEN si.uid IS NOT NULL THEN 'A: 仅银子'
+            ELSE 'Z: 无对局'
+        END AS user_segment
+    FROM reg_base r
+    LEFT JOIN tcy_temp.dws_app_scoregame_stat s
+        ON s.uid = r.uid AND s.app_id = r.app_id AND s.dt = r.reg_date
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat si
+        ON si.uid = r.uid AND si.app_id = r.app_id AND si.dt = r.reg_date
+),
+seg_bitmap AS (
+    SELECT user_segment, reg_date, BITMAP_UNION(TO_BITMAP(uid)) AS reg_users_bitmap
+    FROM seg
+    GROUP BY 1, 2
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
+game_bitmap AS (
+    SELECT a.dt AS game_date, BITMAP_UNION(TO_BITMAP(a.uid)) AS game_users_bitmap
+    FROM tcy_temp.dws_app_game_active a
+    WHERE a.app_id = 1880053
+      AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+    GROUP BY 1
+)
+SELECT
+    sb.user_segment,
+    BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)) AS user_count,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(sb.reg_users_bitmap, g1.game_users_bitmap))) * 100.0
+          / BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)), 2) AS day1_rate,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(sb.reg_users_bitmap, g4.game_users_bitmap))) * 100.0
+          / BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)), 2) AS day4_rate,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(sb.reg_users_bitmap, g7.game_users_bitmap))) * 100.0
+          / BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)), 2) AS day7_rate,
+    ROUND(SUM(BITMAP_COUNT(BITMAP_AND(sb.reg_users_bitmap, g30.game_users_bitmap))) * 100.0
+          / BITMAP_COUNT(BITMAP_UNION(sb.reg_users_bitmap)), 2) AS day30_rate
+FROM seg_bitmap sb
+LEFT JOIN game_bitmap g1  ON g1.game_date = DATE_ADD(sb.reg_date, INTERVAL 1 DAY)
+LEFT JOIN game_bitmap g4  ON g4.game_date = DATE_ADD(sb.reg_date, INTERVAL 3 DAY)
+LEFT JOIN game_bitmap g7  ON g7.game_date = DATE_ADD(sb.reg_date, INTERVAL 6 DAY)
+LEFT JOIN game_bitmap g30 ON g30.game_date = DATE_ADD(sb.reg_date, INTERVAL 29 DAY)
+GROUP BY sb.user_segment
+ORDER BY sb.user_segment;
 ```
 
 ### 2.3 积分玩法人群体特征（渠道、平台、客户端分布）
@@ -226,6 +304,12 @@ WITH score_firstday AS (
     INNER JOIN tcy_temp.dws_ddz_firstday_game g
         ON g.uid = r.uid AND g.dt = r.reg_date
         AND g.robot != 1 AND g.play_mode IN (4, 5, 6)
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE play_mode
@@ -243,6 +327,7 @@ FROM score_firstday s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = s.uid AND a.app_id = s.app_id
     AND a.dt IN (DATE_ADD(s.reg_date, INTERVAL 1 DAY), DATE_ADD(s.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY play_mode
 ORDER BY play_mode;
 ```
@@ -283,6 +368,7 @@ LEFT JOIN tcy_temp.dws_app_game_active a
         DATE_ADD(r.reg_date, INTERVAL 3 DAY),
         DATE_ADD(r.reg_date, INTERVAL 6 DAY)
     )
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -313,6 +399,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -343,6 +430,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -373,6 +461,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -414,6 +503,7 @@ LEFT JOIN tcy_temp.dws_app_game_active a
         DATE_ADD(r.reg_date, INTERVAL 3 DAY),
         DATE_ADD(r.reg_date, INTERVAL 6 DAY)
     )
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -445,6 +535,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -476,6 +567,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -495,6 +587,12 @@ WITH score_first_game AS (
         ON g.uid = r.uid AND g.dt = r.reg_date
         AND g.robot != 1 AND g.play_mode IN (4, 5, 6)
     GROUP BY r.uid, r.reg_date, r.app_id
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE f.first_mode
@@ -522,6 +620,7 @@ FROM score_first_game f
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = f.uid AND a.app_id = f.app_id
     AND a.dt IN (DATE_ADD(f.reg_date, INTERVAL 1 DAY), DATE_ADD(f.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2, 3
 ORDER BY play_mode, first_result, first_role;
 ```
@@ -552,6 +651,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -587,6 +687,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -616,6 +717,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 
 UNION ALL
@@ -640,6 +742,7 @@ INNER JOIN tcy_temp.dws_app_silvergame_stat si
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY game_type, escape_group;
 ```
@@ -670,6 +773,7 @@ INNER JOIN tcy_temp.dws_app_scoregame_stat s
 LEFT JOIN tcy_temp.dws_app_game_active a
     ON a.uid = r.uid AND a.app_id = r.app_id
     AND a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -696,6 +800,12 @@ WITH user_cohort AS (
         ON s.uid = r.uid AND s.dt = r.reg_date
     LEFT JOIN tcy_temp.dws_app_silvergame_stat si
         ON si.uid = r.uid AND si.dt = r.reg_date
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     cohort_type,
@@ -720,6 +830,7 @@ LEFT JOIN tcy_temp.dws_app_game_active a
         DATE_ADD(c.reg_date, INTERVAL 13 DAY),
         DATE_ADD(c.reg_date, INTERVAL 29 DAY)
     )
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE cohort_type IN ('仅积分', '仅银子', '双玩法')
 GROUP BY cohort_type
 ORDER BY cohort_type;
@@ -790,6 +901,12 @@ WITH user_path AS (
         AND si_w1.dt BETWEEN DATE_ADD(r.reg_date, INTERVAL 1 DAY) AND DATE_ADD(r.reg_date, INTERVAL 6 DAY)
     WHERE r.reg_date <= '2026-06-08'
     GROUP BY r.uid, r.reg_date, r.app_id, s.uid, si.uid
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE
@@ -812,6 +929,7 @@ LEFT JOIN tcy_temp.dws_app_game_active a
         DATE_ADD(u.reg_date, INTERVAL 6 DAY),
         DATE_ADD(u.reg_date, INTERVAL 29 DAY)
     )
+    AND a.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE user_path IN ('A: 积分入门→银子转化', 'B: 积分入门→未转化')
 GROUP BY user_path
 ORDER BY user_path;

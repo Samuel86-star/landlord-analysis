@@ -55,6 +55,25 @@ END AS platform
 - 游戏留存口径使用 `dws_app_game_active`（任意玩法有对局即活跃）
 - 游戏行为指标使用 `dws_app_silvergame_stat`（替代已下线的 `dws_ddz_app_game_stat`）
 
+> **💡 性能建议（适用全文 SQL）**：本文 SQL 直接 `FROM dws_dq_app_daily_reg r` + `LEFT JOIN` 活跃事实表，JOIN 上的 `login_date IN (DATE_ADD(...))` / `dt IN (DATE_ADD(...))` 是 per-row 计算。建议先抽 `reg_base` + `date_bounds` CTE，再在活跃 JOIN 上追加 `AND <日期列> BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)` 做分区裁剪。通用模板：
+>
+> ```sql
+> WITH reg_base AS (
+>     SELECT uid, reg_date, app_id, reg_app_code, reg_group_id
+>     FROM tcy_temp.dws_dq_app_daily_reg
+>     WHERE app_id = 1880053
+>       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+> ),
+> date_bounds AS (
+>     SELECT
+>         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+>         DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+>     FROM reg_base
+> )
+> ```
+>
+> §2.1 给出完整示范，其余 SQL 同构套用。
+
 ---
 
 ## 二、版本留存对比
@@ -64,6 +83,18 @@ END AS platform
 ### 2.1 按客户端版本登录留存
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -83,7 +114,7 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day14_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 29 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day30_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (
@@ -94,8 +125,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
         DATE_ADD(r.reg_date, INTERVAL 13 DAY),
         DATE_ADD(r.reg_date, INTERVAL 29 DAY)
     )
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY client_lang;
 ```
@@ -103,6 +133,18 @@ ORDER BY client_lang;
 ### 2.2 按客户端版本 x 平台登录留存
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code, reg_group_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -121,7 +163,7 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 29 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day30_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (
@@ -129,8 +171,7 @@ LEFT JOIN tcy_temp.dws_dq_daily_login l
         DATE_ADD(r.reg_date, INTERVAL 6 DAY),
         DATE_ADD(r.reg_date, INTERVAL 29 DAY)
     )
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY client_lang, platform;
 ```
@@ -138,6 +179,18 @@ ORDER BY client_lang, platform;
 ### 2.3 按客户端版本游戏留存（使用 dws_app_game_active）
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -151,7 +204,7 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS game_day7_rate,
     ROUND(COUNT(DISTINCT CASE WHEN ga.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY) AND ga.is_game_active = 1
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS game_day30_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_game_active ga
     ON ga.app_id = r.app_id AND ga.uid = r.uid
     AND ga.dt IN (
@@ -159,8 +212,7 @@ LEFT JOIN tcy_temp.dws_app_game_active ga
         DATE_ADD(r.reg_date, INTERVAL 6 DAY),
         DATE_ADD(r.reg_date, INTERVAL 29 DAY)
     )
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND ga.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY client_lang;
 ```
@@ -204,6 +256,18 @@ ORDER BY client_lang, login_cnt_group;
 > 验证：多次登录组的留存是否显著低于单次登录组？如果是，则稳定性问题直接影响用户留存。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code, first_day_login_cnt
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -222,12 +286,11 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY client_lang, login_cnt_group;
 ```
@@ -237,6 +300,18 @@ ORDER BY client_lang, login_cnt_group;
 > 使用 `dws_app_silvergame_stat.escape_count` 统计首日逃跑行为。逃跑率高可能反映操作卡顿、闪退导致掉线等客户端问题。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -254,13 +329,12 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS escape_rate_pct,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date AND s.game_count > 0
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY client_lang, escape_group;
 ```
@@ -270,6 +344,18 @@ ORDER BY client_lang, escape_group;
 > 使用 `dws_app_silvergame_stat.avg_game_seconds` 分析平均对局时长。异常短的对局（<30s）可能反映闪退或断线，异常长的对局可能反映网络卡顿导致超时。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -287,13 +373,12 @@ SELECT
     ROUND(AVG(s.avg_game_seconds), 1) AS avg_duration_seconds,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 INNER JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date AND s.game_count > 0
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY client_lang, duration_group;
 ```
@@ -303,6 +388,18 @@ ORDER BY client_lang, duration_group;
 > "注册后无对局"可能是稳定性问题的极端表现（闪退导致无法进入游戏）。计算各版本 x 平台组合中当日 game_count = 0 或无游戏活跃记录的用户比例。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code, reg_group_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -323,15 +420,14 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS no_silvergame_pct,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_game_active ga
     ON ga.app_id = r.app_id AND ga.uid = r.uid AND ga.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY client_lang, platform;
 ```
@@ -345,6 +441,18 @@ ORDER BY client_lang, platform;
 > **核心问题**：用户注册时使用 A 版本，但首次登录时是否切换到了 B 版本？版本切换率高可能意味着用户主动卸载 / 更新了客户端，或渠道分发了错误的包体。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -361,14 +469,13 @@ SELECT
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day7_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_dq_daily_login login1
     ON login1.app_id = r.app_id AND login1.uid = r.uid AND login1.login_date = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY reg_client_lang, switch_status;
 ```
@@ -378,6 +485,18 @@ ORDER BY reg_client_lang, switch_status;
 > 使用 `dws_app_silvergame_stat.game_count` 分析两个客户端版本的首日对局参与度差异。如果某版本 "0局" 占比显著更高，说明该版本可能存在稳定性或兼容性问题。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -395,13 +514,12 @@ SELECT
     ROUND(COUNT(DISTINCT r.uid) * 100.0 / SUM(COUNT(DISTINCT r.uid)) OVER (PARTITION BY r.reg_app_code), 2) AS pct_in_client,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY client_lang, game_count_group;
 ```

@@ -12,6 +12,25 @@
 > - `dws_app_allgame_stat` — 全玩法体验分析（倍数 / 炸弹 / 胜率）
 > - `dws_ddz_firstday_game` — 经典斗地主首日对局明细
 > - `dws_ddz_daily_game` — 经典斗地主全量对局明细（含机器人标识）
+>
+> **💡 性能建议（适用全文 SQL）**：本文 SQL 多为直接 `FROM dws_dq_app_daily_reg r` + `LEFT JOIN` 活跃事实表，JOIN 上的 `login_date IN (DATE_ADD(...))` 是 per-row 计算。建议先抽 `reg_base` + `date_bounds` CTE，再在活跃 JOIN 上追加 `AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)` 做分区裁剪。通用模板：
+>
+> ```sql
+> WITH reg_base AS (
+>     SELECT uid, reg_date, app_id, channel_category_name
+>     FROM tcy_temp.dws_dq_app_daily_reg
+>     WHERE app_id = 1880053
+>       AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+> ),
+> date_bounds AS (
+>     SELECT
+>         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+>         DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+>     FROM reg_base
+> )
+> ```
+>
+> Q3.3 给出完整示范，其余 SQL 同构套用。
 
 ---
 
@@ -228,13 +247,23 @@ ORDER BY 1, 2, 3;
 > **假设**：如果某些渠道的 "1-3 局即走" 占比显著高于大盘，则"渠道流量不匹配"是关键流失原因，而非产品体验问题。
 
 ```sql
-WITH reg_with_channel AS (
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, channel_category_name
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
+reg_with_channel AS (
     SELECT r.uid, r.reg_date, r.app_id,
         CASE WHEN r.channel_category_name IN ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀')
              THEN r.channel_category_name ELSE '其他' END AS channel
-    FROM tcy_temp.dws_dq_app_daily_reg r
-    WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+    FROM reg_base r
 ),
 game_bucket AS (
     SELECT rc.channel, rc.uid, rc.reg_date, rc.app_id,
@@ -261,6 +290,7 @@ FROM game_bucket gb
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = gb.app_id AND l.uid = gb.uid
     AND l.login_date = DATE_ADD(gb.reg_date, INTERVAL 1 DAY)
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY channel, game_count_group
 ORDER BY channel, game_count_group;
 ```
@@ -276,6 +306,18 @@ ORDER BY channel, game_count_group;
 > **假设**：首日登录 >=3 次的用户中，游戏参与率（有对局比例）可能低于单次登录用户。如果某客户端版本的参与率显著更低，则稳定性问题更严重。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code, first_day_login_cnt
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -295,13 +337,12 @@ SELECT
     ROUND(COUNT(DISTINCT CASE WHEN s.game_count IS NOT NULL AND s.game_count > 0
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS silvergame_pct,
     ROUND(AVG(COALESCE(s.game_count, 0)), 1) AS avg_games
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_game_active ga
     ON ga.app_id = r.app_id AND ga.uid = r.uid AND ga.dt = r.reg_date
+    AND ga.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
 GROUP BY 1, 2
 ORDER BY client_lang, login_cnt_group;
 ```
@@ -346,6 +387,19 @@ ORDER BY client_lang, platform, login_cnt_group;
 > **假设**：如果用户多次登录（>=3）但游戏参与度极低（0-1局），说明崩溃发生在进入游戏前或对局中，稳定性问题直接导致了低游戏参与。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, reg_app_code, reg_group_id, first_day_login_cnt
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+      AND first_day_login_cnt >= 3
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE r.reg_app_code
         WHEN 'zgda' THEN 'Cocos-Lua'
@@ -366,15 +420,13 @@ SELECT
     COUNT(DISTINCT r.uid) AS user_count,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
-  AND r.first_day_login_cnt >= 3
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2, 3
 ORDER BY client_lang, platform, game_count_group;
 ```
@@ -390,6 +442,18 @@ ORDER BY client_lang, platform, game_count_group;
 > **假设**：部分渠道（如买量渠道）用户可能对斗地主游戏本身不感兴趣，注册后根本不进入游戏。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, channel_category_name
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE WHEN r.channel_category_name IN ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀')
          THEN r.channel_category_name ELSE '其他' END AS channel,
@@ -403,16 +467,16 @@ SELECT
     ROUND(AVG(COALESCE(s.game_count, 0)), 1) AS avg_games,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_game_active ga
     ON ga.app_id = r.app_id AND ga.uid = r.uid AND ga.dt = r.reg_date
+    AND ga.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY no_silvergame_pct DESC;
 ```
@@ -422,6 +486,18 @@ ORDER BY no_silvergame_pct DESC;
 > **假设**：某些渠道的"注册即走"（login_cnt=1）比例更高。如果某渠道的 login_cnt=1 占比异常高，说明渠道流量本身质量较低（非目标用户）。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, channel_category_name, first_day_login_cnt
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE WHEN r.channel_category_name IN ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀')
          THEN r.channel_category_name ELSE '其他' END AS channel,
@@ -437,12 +513,11 @@ SELECT
           SUM(COUNT(DISTINCT r.uid)) OVER (PARTITION BY r.channel_category_name), 2) AS pct_in_channel,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day1_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY channel, login_cnt_group;
 ```
@@ -452,6 +527,18 @@ ORDER BY channel, login_cnt_group;
 > **假设**：高质量渠道用户即使首日对局数少，留存也应高于低质渠道的同对局数组。如果某渠道在相同 game_count 组内留存显著偏低，说明渠道用户匹配度差。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id, channel_category_name
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE WHEN r.channel_category_name IN ('OPPO', 'IOS', 'vivo', '华为', '咪咕', '官方(非CPS)', '荣耀')
          THEN r.channel_category_name ELSE '其他' END AS channel,
@@ -467,14 +554,13 @@ SELECT
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day7_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1, 2
 ORDER BY channel, game_count_group;
 ```
@@ -492,6 +578,18 @@ ORDER BY channel, game_count_group;
 > **逻辑**：使用 `dws_app_silvergame_stat` 的 `money_valley`（首日银子谷值），与固定破产线 1000 比较。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE
         WHEN s.game_count IS NULL OR s.game_count = 0 THEN 'C: 无对局'
@@ -505,15 +603,14 @@ SELECT
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day7_rate,
     ROUND(AVG(s.money_valley), 0) AS avg_money_valley,
     1000 AS bankruptcy_threshold
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN tcy_temp.dws_app_silvergame_stat s
     ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
-  AND s.game_count > 0
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+WHERE s.game_count > 0
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -577,15 +674,25 @@ ORDER BY 1;
 > **假设**：破产后部分用户可能领取救济金继续游戏，部分可能直接退出。领取救济金的用户留存是否高于未领取的？
 
 ```sql
-WITH bankrupt_users AS (
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
+bankrupt_users AS (
     SELECT r.uid, r.reg_date, r.app_id,
            s.money_valley, s.game_count
-    FROM tcy_temp.dws_dq_app_daily_reg r
+    FROM reg_base r
     INNER JOIN tcy_temp.dws_app_silvergame_stat s
         ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
-    WHERE r.app_id = 1880053
-      AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
-      AND s.money_valley <= 1000
+    WHERE s.money_valley <= 1000
       AND s.game_count > 0
 ),
 bankrupt_timing AS (
@@ -618,6 +725,7 @@ FROM post_bankrupt_play pb
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = 1880053 AND l.uid = pb.uid
     AND l.login_date = DATE_ADD(pb.reg_date, INTERVAL 1 DAY)
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -633,6 +741,18 @@ ORDER BY 1;
 > **假设**：经历了 Q4 高倍输局的用户，留存率显著低于未经历用户。multi_q4_losses >= 1 即触发高危信号。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE
         WHEN a.multi_q4_losses IS NULL OR a.multi_q4_losses = 0 THEN 'A: 未经历高倍输局'
@@ -647,14 +767,13 @@ SELECT
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day7_rate,
     ROUND(AVG(a.multi_q4_losses), 1) AS avg_q4_losses,
     ROUND(AVG(a.avg_multi), 1) AS avg_multi
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 INNER JOIN tcy_temp.dws_app_allgame_stat a
     ON a.app_id = r.app_id AND a.uid = r.uid AND a.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```
@@ -664,6 +783,18 @@ ORDER BY 1;
 > **假设**：癞子玩法（play_mode=3）天然高倍，高倍输局发生率更高。验证不同玩法中高倍输局对留存的影响差异。
 
 ```sql
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+)
 SELECT
     CASE a.play_mode
         WHEN 1 THEN '经典'
@@ -682,15 +813,14 @@ SELECT
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day7_rate,
     ROUND(AVG(a.avg_multi), 1) AS avg_multi,
     ROUND(AVG(a.bomb_0_games + a.bomb_1_games + a.bomb_2_games + a.bomb_3plus_games), 1) AS avg_bomb_games
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 INNER JOIN tcy_temp.dws_app_allgame_stat a
     ON a.app_id = r.app_id AND a.uid = r.uid AND a.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
-  AND a.play_mode IN (1, 2, 3)
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+WHERE a.play_mode IN (1, 2, 3)
 GROUP BY 1, 2
 ORDER BY play_mode_name, q4_loss_flag;
 ```
@@ -700,7 +830,19 @@ ORDER BY play_mode_name, q4_loss_flag;
 > **假设**：如果用户首局即遭遇高倍（Q4 倍数范围）且输了，其留存率可能极低（<5%）。这是最严重的高危信号组合。
 
 ```sql
-WITH first_game_multi AS (
+WITH reg_base AS (
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+),
+date_bounds AS (
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
+),
+first_game_multi AS (
     SELECT g.uid, g.dt, g.app_id,
            g.magnification, g.result_id, g.play_mode,
            ROW_NUMBER() OVER (PARTITION BY g.uid, g.dt ORDER BY g.game_datetime) AS rn
@@ -730,14 +872,13 @@ SELECT
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day1_rate,
     ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 6 DAY)
               THEN r.uid END) * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2) AS day7_rate
-FROM tcy_temp.dws_dq_app_daily_reg r
+FROM reg_base r
 LEFT JOIN high_multi_first_loss hm
     ON hm.app_id = r.app_id AND hm.uid = r.uid AND hm.dt = r.reg_date
 LEFT JOIN tcy_temp.dws_dq_daily_login l
     ON l.app_id = r.app_id AND l.uid = r.uid
     AND l.login_date IN (DATE_ADD(r.reg_date, INTERVAL 1 DAY), DATE_ADD(r.reg_date, INTERVAL 6 DAY))
-WHERE r.app_id = 1880053
-  AND r.reg_date BETWEEN '2026-02-10' AND '2026-05-10'
+    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY 1
 ORDER BY 1;
 ```

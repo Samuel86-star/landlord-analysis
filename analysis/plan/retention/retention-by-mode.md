@@ -45,6 +45,21 @@ CASE
 END AS play_mode
 ```
 
+> **💡 性能建议（适用全文 SQL）**：JOIN `dws_app_gamemode_active` / `dws_app_game_active` 等活跃事实表时，建议补一个 `date_bounds` CTE 显式给出活跃日期窗口，避免扫描注册窗口之外的历史分区。模板：
+>
+> ```sql
+> date_bounds AS (
+>     SELECT
+>         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+>         DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+>     FROM reg_base
+> )
+> -- 然后在活跃 JOIN 上追加：
+> --   AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+> ```
+>
+> §2.1 给出完整示范，其余 SQL 同构套用。
+
 ---
 
 ## 二、玩法留存对比
@@ -59,6 +74,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
 -- 注册当天各玩法参与情况（通过首日对局表获取玩法归属）
 reg_mode AS (
@@ -87,7 +109,7 @@ reg_mode_all AS (
     UNION ALL
     SELECT * FROM reg_mode_510k WHERE played_flag > 0
 ),
--- 同玩法留存判定
+-- 同玩法留存判定（活跃表加 date_bounds 分区裁剪）
 mode_retention AS (
     SELECT rm.*,
            ma.dt AS ret_dt
@@ -95,6 +117,7 @@ mode_retention AS (
     LEFT JOIN tcy_temp.dws_app_gamemode_active ma
         ON ma.app_id = rm.app_id AND ma.uid = rm.uid
         AND ma.dt = DATE_ADD(rm.reg_date, INTERVAL 1 DAY)
+        AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
         AND ma.play_mode = rm.play_mode
 )
 SELECT
@@ -121,6 +144,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
 reg_mode AS (
     SELECT r.uid, r.reg_date, r.app_id, g.play_mode
@@ -153,10 +183,12 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma1
     ON ma1.app_id = rm.app_id AND ma1.uid = rm.uid
     AND ma1.dt = DATE_ADD(rm.reg_date, INTERVAL 1 DAY)
     AND ma1.play_mode = rm.play_mode
+    AND ma1.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 LEFT JOIN tcy_temp.dws_app_gamemode_active ma7
     ON ma7.app_id = rm.app_id AND ma7.uid = rm.uid
     AND ma7.dt = DATE_ADD(rm.reg_date, INTERVAL 6 DAY)
     AND ma7.play_mode = rm.play_mode
+    AND ma7.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY rm.play_mode
 ORDER BY rm.play_mode;
 ```
@@ -177,6 +209,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE st.play_mode
@@ -203,6 +242,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma
     ON ma.app_id = r.app_id AND ma.uid = r.uid
     AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
     AND ma.play_mode = st.play_mode
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE st.play_mode IS NOT NULL
 GROUP BY st.play_mode, multi_group
 ORDER BY st.play_mode, multi_group;
@@ -218,6 +258,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE st.play_mode
@@ -244,6 +291,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma
     ON ma.app_id = r.app_id AND ma.uid = r.uid
     AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
     AND ma.play_mode = st.play_mode
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE st.play_mode IS NOT NULL
 GROUP BY st.play_mode, winrate_group
 ORDER BY st.play_mode, winrate_group;
@@ -259,6 +307,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE st.play_mode
@@ -286,6 +341,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma
     ON ma.app_id = r.app_id AND ma.uid = r.uid
     AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
     AND ma.play_mode = st.play_mode
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE st.play_mode IS NOT NULL
 GROUP BY st.play_mode, game_count_group
 ORDER BY st.play_mode, game_count_group;
@@ -301,6 +357,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
 bomb_class AS (
     SELECT r.uid, r.reg_date, r.app_id, st.play_mode,
@@ -333,6 +396,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma
     ON ma.app_id = bc.app_id AND ma.uid = bc.uid
     AND ma.dt = DATE_ADD(bc.reg_date, INTERVAL 1 DAY)
     AND ma.play_mode = bc.play_mode
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY bc.play_mode, bc.bomb_level
 ORDER BY bc.play_mode, bc.bomb_level;
 ```
@@ -349,6 +413,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
 quartile AS (
     SELECT r.uid, r.reg_date, r.app_id, st.play_mode,
@@ -385,6 +456,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma
     ON ma.app_id = q.app_id AND ma.uid = q.uid
     AND ma.dt = DATE_ADD(q.reg_date, INTERVAL 1 DAY)
     AND ma.play_mode = q.play_mode
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY q.play_mode, q.max_quartile_level
 ORDER BY q.play_mode, q.max_quartile_level;
 ```
@@ -401,6 +473,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE
@@ -421,6 +500,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma
     ON ma.app_id = r.app_id AND ma.uid = r.uid
     AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
     AND ma.play_mode = 7
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE st.play_mode IS NOT NULL
 GROUP BY settle_rounds_group
 ORDER BY settle_rounds_group;
@@ -436,6 +516,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 )
 SELECT
     CASE
@@ -458,6 +545,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma
     ON ma.app_id = r.app_id AND ma.uid = r.uid
     AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
     AND ma.play_mode = 7
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE st.play_mode IS NOT NULL
 GROUP BY outcome_gdp_group
 ORDER BY outcome_gdp_group;
@@ -477,6 +565,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
 first_game_ddz AS (
     SELECT r.uid, r.reg_date, r.app_id,
@@ -532,6 +627,7 @@ LEFT JOIN tcy_temp.dws_app_gamemode_active ma1
     ON ma1.app_id = r.app_id AND ma1.uid = r.uid
     AND ma1.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
     AND ma1.play_mode IN (1, 2, 3, 7)
+    AND ma1.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 WHERE fg.first_play_mode IS NOT NULL
 GROUP BY fg.first_play_mode
 ORDER BY fg.first_play_mode;
@@ -547,6 +643,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
 mode_count AS (
     SELECT r.uid, r.reg_date, r.app_id,
@@ -573,6 +676,7 @@ FROM mode_count mc
 LEFT JOIN tcy_temp.dws_app_game_active ma
     ON ma.app_id = mc.app_id AND ma.uid = mc.uid
     AND ma.dt = DATE_ADD(mc.reg_date, INTERVAL 1 DAY)
+    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
 GROUP BY mc.mode_count
 ORDER BY mc.mode_count;
 ```
@@ -587,6 +691,13 @@ WITH reg_base AS (
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+date_bounds AS (
+    -- 活跃事实表分区裁剪窗口
+    SELECT
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+    FROM reg_base
 ),
 reg_mode_pairs AS (
     -- 注册当天各玩法参与标记
@@ -614,6 +725,7 @@ cross_retention AS (
         ON ma.app_id = rm.app_id AND ma.uid = rm.uid
         AND ma.dt = DATE_ADD(rm.reg_date, INTERVAL 1 DAY)
         AND ma.play_mode IN (1, 2, 3, 7)
+        AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
     GROUP BY rm.play_mode, ma.play_mode
 )
 SELECT
