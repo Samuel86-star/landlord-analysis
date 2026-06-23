@@ -107,25 +107,37 @@ score_reg AS (
 > 核心问题：新增用户中有多少人在首日体验了积分玩法？与银子玩法相比，积分玩法的吸引力如何？
 
 ```sql
+WITH reg_base AS (
+    -- 1. 基础人群与分区裁剪
+    SELECT uid, reg_date, app_id
+    FROM tcy_temp.dws_dq_app_daily_reg
+    WHERE app_id = 1880053
+      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+),
+user_behavior_tags AS (
+    -- 2. 标签固化层：提前判定用户在两场地的活跃状态 (0 或 1)
+    -- 利用 LEFT JOIN + GROUP BY 确保每个 uid 只有一行结果，消除关联带来的膨胀
+    SELECT
+        r.uid,
+        CASE WHEN s.uid IS NOT NULL THEN 1 ELSE 0 END AS is_score,
+        CASE WHEN si.uid IS NOT NULL THEN 1 ELSE 0 END AS is_silver
+    FROM reg_base r
+    LEFT JOIN tcy_temp.dws_app_scoregame_stat s
+        ON s.uid = r.uid AND s.dt = r.reg_date AND s.app_id = r.app_id
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat si
+        ON si.uid = r.uid AND si.dt = r.reg_date AND si.app_id = r.app_id
+)
+-- 3. 极速矩阵聚合：无需再次去重，直接加和求平均
 SELECT
-    COUNT(DISTINCT r.uid) AS total_reg,
-    ROUND(COUNT(DISTINCT CASE WHEN s.uid IS NOT NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS score_game_participation_pct,
-    ROUND(COUNT(DISTINCT CASE WHEN si.uid IS NOT NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS silver_game_participation_pct,
-    ROUND(COUNT(DISTINCT CASE WHEN s.uid IS NOT NULL AND si.uid IS NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS score_only_pct,
-    ROUND(COUNT(DISTINCT CASE WHEN si.uid IS NOT NULL AND s.uid IS NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS silver_only_pct,
-    ROUND(COUNT(DISTINCT CASE WHEN s.uid IS NOT NULL AND si.uid IS NOT NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS both_pct,
-    ROUND(COUNT(DISTINCT CASE WHEN s.uid IS NULL AND si.uid IS NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS no_game_pct
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_app_scoregame_stat s
-    ON s.uid = r.uid AND s.dt = r.reg_date
-LEFT JOIN tcy_temp.dws_app_silvergame_stat si
-    ON si.uid = r.uid AND si.dt = r.reg_date;
+    COUNT(*) AS total_reg,
+    ROUND(SUM(is_score) * 100.0 / COUNT(*), 2) AS score_game_participation_pct,
+    ROUND(SUM(is_silver) * 100.0 / COUNT(*), 2) AS silver_game_participation_pct,
+    -- 逻辑重组，利用标签直接判定各分区占比
+    ROUND(SUM(CASE WHEN is_score = 1 AND is_silver = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS score_only_pct,
+    ROUND(SUM(is_silver = 1 AND is_score = 0) * 100.0 / COUNT(*), 2) AS silver_only_pct,
+    ROUND(SUM(CASE WHEN is_score = 1 AND is_silver = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS both_pct,
+    ROUND(SUM(CASE WHEN is_score = 0 AND is_silver = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS no_game_pct
+FROM user_behavior_tags;
 ```
 
 ### 2.2 积分用户 vs 银子用户 vs 双玩法用户留存对比
