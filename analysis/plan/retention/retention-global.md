@@ -1681,47 +1681,74 @@ ORDER BY first_game_risk;
 注册当天登录多次但未进行任何对局，可能是客户端问题（崩溃/卡死）导致无法进入游戏。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 注册基础数据
     SELECT
         r.uid, r.reg_date, r.app_id,
         r.first_day_login_cnt
     FROM tcy_temp.dws_dq_app_daily_reg r
     WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
       AND r.reg_date BETWEEN '2026-03-01' AND '2026-06-21'
 ),
-game_stat AS (
+game_stat_raw AS (
+    -- 2. 抽取银子事实表（下推分区过滤，提前完成关键聚合）
+    SELECT
+        gs.uid, gs.dt,
+        SUM(gs.game_count) AS total_game_count
+    FROM tcy_temp.dws_app_silvergame_stat gs
+    WHERE gs.app_id = 1880053
+      AND gs.dt BETWEEN '2026-03-01' AND '2026-06-21'
+    GROUP BY gs.uid, gs.dt
+),
+user_profile AS (
+    -- 3. 🛠️ 标签解耦层：横向轻量合拢，将多表交叉条件在最底层锁死为固定文本
+    -- 强制阻断复杂多列交叉逻辑传入后方大表，避免 Planner 搜索空间膨胀
     SELECT
         rb.uid, rb.reg_date,
-        COALESCE(gs.game_count, 0) AS game_count
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_app_silvergame_stat gs
-        ON gs.app_id = rb.app_id AND gs.uid = rb.uid AND gs.dt = rb.reg_date
+        CASE
+            WHEN COALESCE(gs.total_game_count, 0) = 0 AND rb.first_day_login_cnt >= 3 THEN 'A: 0局×登录3+次(崩溃)'
+            WHEN COALESCE(gs.total_game_count, 0) = 0 AND rb.first_day_login_cnt = 2  THEN 'B: 0局×登录2次'
+            WHEN COALESCE(gs.total_game_count, 0) = 0                                 THEN 'C: 0局×登录1次'
+            WHEN COALESCE(gs.total_game_count, 0) > 0 AND rb.first_day_login_cnt >= 3 THEN 'D: 有对局×高频登录'
+            ELSE 'E: 有对局×正常登录'
+        END AS crash_risk_group
+    FROM reg_base_raw rb
+    LEFT JOIN game_stat_raw gs ON rb.uid = gs.uid AND rb.reg_date = gs.dt
 ),
-login_ret AS (
+date_bounds AS (
+    -- 4. 动态计算次留所需的分区裁剪边界（最大边界只需 +1 天，从物理上隔离无效的大历史分区）
     SELECT
-        rb.uid,
-        MAX(CASE WHEN l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY) THEN 1 ELSE 0 END) AS login_d1
-    FROM reg_base rb
-    LEFT JOIN tcy_temp.dws_dq_daily_login l
-        ON l.app_id = rb.app_id AND l.uid = rb.uid
-        AND l.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
-    GROUP BY rb.uid
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_act_date
+    FROM reg_base_raw
+),
+all_events_deduped AS (
+    -- 5. 基础全量用户行为流
+    SELECT uid, crash_risk_group, 1 AS is_reg, 0 AS is_login_d1
+    FROM user_profile
+
+    UNION ALL
+
+    -- 6. 次日登录活跃流（刚性裁剪分区 + 局部轻量去重）
+    SELECT
+        g.uid, g.crash_risk_group, 0 AS is_reg, 1 AS is_login_d1
+    FROM tcy_temp.dws_dq_daily_login l
+    INNER JOIN user_profile g ON l.app_id = 1880053 AND l.uid = g.uid
+    WHERE l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
+      AND l.login_date = DATE_ADD(g.reg_date, INTERVAL 1 DAY)
+    GROUP BY g.uid, g.crash_risk_group
 )
-SELECT
-    CASE
-        WHEN gs.game_count = 0 AND rb.first_day_login_cnt >= 3 THEN 'A: 0局×登录3+次(崩溃)'
-        WHEN gs.game_count = 0 AND rb.first_day_login_cnt = 2 THEN 'B: 0局×登录2次'
-        WHEN gs.game_count = 0 THEN 'C: 0局×登录1次'
-        WHEN gs.game_count > 0 AND rb.first_day_login_cnt >= 3 THEN 'D: 有对局×高频登录'
-        ELSE 'E: 有对局×正常登录'
-    END AS crash_risk_group,
-    COUNT(DISTINCT rb.uid) AS user_count,
-    ROUND(SUM(lr.login_d1) * 100.0 / COUNT(DISTINCT rb.uid), 2) AS login_d1
-FROM reg_base rb
-LEFT JOIN game_stat gs ON rb.uid = gs.uid AND rb.reg_date = gs.reg_date
-LEFT JOIN login_ret lr ON rb.uid = lr.uid
-GROUP BY 1
-ORDER BY 1;
+-- 🌟 7. 主查询加入超时放宽 HINT，赋予优化器 15秒 的执行计划准备时间
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    crash_risk_group,
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 次留计算
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+FROM all_events_deduped
+GROUP BY crash_risk_group
+ORDER BY crash_risk_group;
 ```
 
 ---
