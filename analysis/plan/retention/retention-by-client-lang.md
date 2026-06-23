@@ -809,43 +809,53 @@ ORDER BY 1, 2;
 > 使用 `dws_app_silvergame_stat.game_count` 分析两个客户端版本的首日对局参与度差异。如果某版本 "0局" 占比显著更高，说明该版本可能存在稳定性或兼容性问题。
 
 ```sql
-WITH reg_base AS (
+WITH reg_base_raw AS (
+    -- 1. 基础数据提取：限定范围
     SELECT uid, reg_date, app_id, reg_app_code
     FROM tcy_temp.dws_dq_app_daily_reg
     WHERE app_id = 1880053
       AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
-date_bounds AS (
+user_seed_profile AS (
+    -- 2. 标签固化与矩阵压缩：彻底消灭多表 JOIN 膨胀
+    -- 在底层算好分组标签，并将次留日期固化为静态字段
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        r.uid, r.reg_date, r.app_id,
+        CASE r.reg_app_code WHEN 'zgda' THEN 'Cocos-Lua' WHEN 'zgdx' THEN 'Cocos-Creator' ELSE '其他' END AS client_lang,
+        CASE
+            WHEN s.game_count IS NULL OR s.game_count = 0 THEN 'A: 0局'
+            WHEN s.game_count = 1 THEN 'B: 1局'
+            WHEN s.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
+            WHEN s.game_count BETWEEN 6 AND 10 THEN 'D: 6-10局'
+            ELSE 'E: 10局以上'
+        END AS game_count_group,
+        DATE_ADD(r.reg_date, INTERVAL 1 DAY) AS d1_target
+    FROM reg_base_raw r
+    LEFT JOIN tcy_temp.dws_app_silvergame_stat s
+        ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
+),
+client_total_counts AS (
+    -- 3. 轻量级分母预计算：仅3行数据，后续 JOIN 直接走 Broadcast 广播
+    SELECT client_lang, COUNT(DISTINCT uid) AS total_users
+    FROM user_seed_profile
+    GROUP BY client_lang
 )
-SELECT
-    CASE r.reg_app_code
-        WHEN 'zgda' THEN 'Cocos-Lua'
-        WHEN 'zgdx' THEN 'Cocos-Creator'
-        ELSE '其他'
-    END AS client_lang,
-    CASE
-        WHEN s.game_count IS NULL OR s.game_count = 0 THEN 'A: 0局'
-        WHEN s.game_count = 1 THEN 'B: 1局'
-        WHEN s.game_count BETWEEN 2 AND 5 THEN 'C: 2-5局'
-        WHEN s.game_count BETWEEN 6 AND 10 THEN 'D: 6-10局'
-        ELSE 'E: 10局以上'
-    END AS game_count_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT r.uid) * 100.0 / SUM(COUNT(DISTINCT r.uid)) OVER (PARTITION BY r.reg_app_code), 2) AS pct_in_client,
-    ROUND(COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-              THEN r.uid END) * 100.0 / COUNT(DISTINCT r.uid), 2) AS day1_rate
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_app_silvergame_stat s
-    ON s.app_id = r.app_id AND s.uid = r.uid AND s.dt = r.reg_date
+-- 4. 主查询：矩阵坍缩聚合
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    p.client_lang,
+    p.game_count_group,
+    COUNT(DISTINCT p.uid) AS user_count,
+    -- 通过 Broadcast Join 的总人数作为分母，替代 Window Function
+    ROUND(COUNT(DISTINCT p.uid) * 100.0 / c.total_users, 2) AS pct_in_client,
+    -- 次日登录判断
+    ROUND(COUNT(DISTINCT CASE WHEN l.login_date IS NOT NULL THEN p.uid END) * 100.0
+          / NULLIF(COUNT(DISTINCT p.uid), 0), 2) AS day1_rate
+FROM user_seed_profile p
+INNER JOIN client_total_counts c ON p.client_lang = c.client_lang
 LEFT JOIN tcy_temp.dws_dq_daily_login l
-    ON l.app_id = r.app_id AND l.uid = r.uid AND l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-    AND l.login_date BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-GROUP BY 1, 2
-ORDER BY client_lang, game_count_group;
+    ON l.app_id = p.app_id AND l.uid = p.uid AND l.login_date = p.d1_target
+GROUP BY p.client_lang, p.game_count_group, c.total_users
+ORDER BY p.client_lang, p.game_count_group;
 ```
 
 ---
