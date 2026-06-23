@@ -729,40 +729,74 @@ ORDER BY play_mode, max_quartile_level;
 #### 3.6.1 510K 平均结算轮次分组留存
 
 ```sql
-WITH reg_base AS (
-    SELECT uid, reg_date, app_id
-    FROM tcy_temp.dws_dq_app_daily_reg
-    WHERE app_id = 1880053
-      AND reg_date BETWEEN '2026-02-10' AND '2026-06-15'
+WITH reg_base_raw AS (
+    -- 1. 注册基础人群
+    SELECT r.uid, r.reg_date, r.app_id
+    FROM tcy_temp.dws_dq_app_daily_reg r
+    WHERE r.app_id = 1880053
+      -- 🌟 全局唯一人工维护的时间窗口
+      AND r.reg_date BETWEEN '2026-02-10' AND '2026-06-15'
 ),
 date_bounds AS (
-    -- 活跃事实表分区裁剪窗口
+    -- 2. 统一时间调度：精准产出 D0(首日) 和 D1(次留) 的绝对物理裁剪边界
     SELECT
-        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
-    FROM reg_base
+        MIN(reg_date) AS min_reg_date,
+        MAX(reg_date) AS max_reg_date,
+        DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_d1_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_d1_date
+    FROM reg_base_raw
+),
+user_profile AS (
+    -- 3. 🛠️ 标签解耦层：底层直接 INNER JOIN 锁定 510K（play_mode = 7）首日有行为的新人
+    -- 剔除无对局死代码，在最底层一次性把 510K 的"平均结算轮数区间"转换为轻量文本标签
+    SELECT
+        r.uid, r.reg_date,
+        CASE
+            WHEN st.avg_settle_rounds <= 3  THEN 'A: <=3轮'
+            WHEN st.avg_settle_rounds <= 5  THEN 'B: 4-5轮'
+            WHEN st.avg_settle_rounds <= 8  THEN 'C: 6-8轮'
+            ELSE                                 'D: 8轮+'
+        END AS settle_rounds_group
+    FROM reg_base_raw r
+    INNER JOIN tcy_temp.dws_app_allgame_stat st
+        ON st.app_id = r.app_id AND st.uid = r.uid AND st.dt = r.reg_date
+    WHERE st.play_mode = 7
+      AND st.dt BETWEEN (SELECT min_reg_date FROM date_bounds) AND (SELECT max_reg_date FROM date_bounds)
+),
+all_events_stream AS (
+    -- 4. 垂直管道第一层：510K 新登种子人群基础流（作为计算同玩法留存的分母基准）
+    SELECT uid, settle_rounds_group, 1 AS is_reg, 0 AS is_ret_d1
+    FROM user_profile
+
+    UNION ALL
+
+    -- 5. 垂直管道第二层：次日(D1) 510K 玩法活跃流（作为计算同玩法留存的分子基准）
+    -- 强制开启 D+1 静态分区裁剪，并且只在 510K 种子用户的分组范围内匹配去重
+    SELECT
+        ma.uid, p.settle_rounds_group, 0 AS is_reg, 1 AS is_ret_d1
+    FROM tcy_temp.dws_app_gamemode_active ma
+    INNER JOIN user_profile p
+        ON ma.app_id = 1880053
+       AND ma.uid = p.uid
+       AND ma.dt = DATE_ADD(p.reg_date, INTERVAL 1 DAY)
+    WHERE ma.play_mode = 7
+      AND ma.dt BETWEEN (SELECT min_d1_date FROM date_bounds) AND (SELECT max_d1_date FROM date_bounds)
+    GROUP BY ma.uid, p.settle_rounds_group
 )
-SELECT
-    CASE
-        WHEN st.avg_settle_rounds IS NULL THEN '0: 无对局'
-        WHEN st.avg_settle_rounds <= 3  THEN 'A: <=3轮'
-        WHEN st.avg_settle_rounds <= 5  THEN 'B: 4-5轮'
-        WHEN st.avg_settle_rounds <= 8  THEN 'C: 6-8轮'
-        ELSE                                 'D: 8轮+'
-    END AS settle_rounds_group,
-    COUNT(DISTINCT r.uid) AS user_count,
-    ROUND(COUNT(DISTINCT CASE WHEN ma.dt IS NOT NULL THEN r.uid END) * 100.0
-          / COUNT(DISTINCT r.uid), 2) AS same_mode_d1_rate
-FROM reg_base r
-LEFT JOIN tcy_temp.dws_app_allgame_stat st
-    ON st.app_id = r.app_id AND st.uid = r.uid AND st.dt = r.reg_date
-    AND st.play_mode = 7
-LEFT JOIN tcy_temp.dws_app_gamemode_active ma
-    ON ma.app_id = r.app_id AND ma.uid = r.uid
-    AND ma.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY)
-    AND ma.play_mode = 7
-    AND ma.dt BETWEEN (SELECT min_act_date FROM date_bounds) AND (SELECT max_act_date FROM date_bounds)
-WHERE st.play_mode IS NOT NULL
+-- 🌟 6. 主查询单维度聚合输出，内嵌物理 HINT 放宽优化器时限至 15 秒
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    settle_rounds_group,
+
+    -- 分母：第一天玩了 510K 且属于该轮数分组下的去重总注册人数
+    COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
+
+    -- 分子 / 分母 = 次日 510K 同玩法留存率
+    ROUND(
+        COUNT(DISTINCT CASE WHEN is_ret_d1 = 1 THEN uid END) * 100.0
+        / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0),
+        2
+    ) AS same_mode_d1_rate
+FROM all_events_stream
 GROUP BY settle_rounds_group
 ORDER BY settle_rounds_group;
 ```
