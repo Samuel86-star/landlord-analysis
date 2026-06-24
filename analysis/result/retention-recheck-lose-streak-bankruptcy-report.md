@@ -360,6 +360,62 @@ ORDER BY game_count_bucket, combo_flag;
 
 ---
 
+## 七、首日对局数规律新窗口复核（时效性验证）
+
+**背景**：framework §2.1"首日对局数→留存"原依据 `retention-global-report.md` §3.2，统计窗口为 2026-02-10 ~ 04-16（距今约 2.5 月）。为验证"单调递增"规律是否随产品迭代漂移，用最近窗口重跑。
+**窗口**：2026-05-10 ~ 06-16（n=49,329），D7 全到期，D30 仅 42.5% 到期（05-10~05-24 段，n=20,946）——D30 为部分样本参考值。
+**SQL**：`py/tmp/recheck_gamecount_recent.sql`（桶沿用 global §3.2 口径并加细桶看单调性）。
+
+| 对局段 | 旧窗口 D7 (02-10~04-16) | 新窗口 D7 | 新窗口 D7 n | 新窗口 D30 (部分) | 占比 |
+| ---- | ---- | ---- | ---- | ---- | ---- |
+| 0局 | 15.56 | 1.89 | 5,298 | 1.32 | 10.7% |
+| 1局 | 9.57 | 3.21 | 3,927 | 2.24 | 8.0% |
+| 2-5局 | 16.35 | 5.37 | 12,003 | 3.80 | 24.3% |
+| 6-10局 | 22.08 | 10.51 | 12,099 | 7.22 | 24.5% |
+| 11-20局 | — | 16.34 | 10,525 | 11.67 | 21.3% |
+| 21-50局 | — | 22.79 | 4,994 | 16.42 | 10.1% |
+| 50+局 | — | 29.40 | 483 | 20.09 | 1.0% |
+| 10局+（旧口径） | 18.97(7留) | 16.34~29.40（合并11局+） | — | — | 32.4% |
+
+**结论**：
+
+- **规律形态保持——单调递增未漂移**：新窗口 0局(1.89%)→1局(3.21%)→2-5(5.37%)→6-10(10.51%)→11-20(16.34%)→21-50(22.79%)→50+(29.40%) 严格单调，无最优区间、无疲劳拐点。framework v2.1"单调递增"结论在新窗口成立。
+- **整体留存水平大幅下降**：各桶 D7 较旧窗口降 40-60%（6-10局 22.08%→10.51% 腰斩；0局 15.56%→1.89% 暴跌）。这是产品层面整体恶化，非规律形态变化。
+- **旧窗口反直觉点消失**：旧窗口"1局(9.57%) < 0局(15.56%)"在新窗口变为正常 0局(1.89%) < 1局(3.21%)；旧窗口 0局偏高疑似早期"0局次日再试"行为，新窗口 0局用户次日几乎全流失。
+- **framework 影响**：规律描述无需改动；§2.1 首日对局数行补注新窗口复核结论 + 留存水平下降提示。整体留存骤降是独立警报，需另开报告排查（见独立报告 `retention-drop-investigation-report.md`，待建）。
+
+### 7.1 复核 SQL
+
+```sql
+-- 首日对局数 × D7/D30（混合窗口 2026-05-10~06-16）
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    CASE
+        WHEN g.silver_game_count IS NULL           THEN 'A: 0局'
+        WHEN g.silver_game_count = 1               THEN 'B: 1局'
+        WHEN g.silver_game_count BETWEEN 2 AND 5   THEN 'C: 2-5局'
+        WHEN g.silver_game_count BETWEEN 6 AND 10  THEN 'D: 6-10局'
+        WHEN g.silver_game_count BETWEEN 11 AND 20 THEN 'E: 11-20局'
+        WHEN g.silver_game_count BETWEEN 21 AND 50 THEN 'F: 21-50局'
+        WHEN g.silver_game_count > 50              THEN 'G: 50+局'
+    END AS game_count_bucket,
+    COUNT(*) AS user_count,
+    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) AS pct,
+    ROUND(SUM(rf.d1_game)  * 100.0 / NULLIF(COUNT(rf.d1_game),  0), 2) AS d1_rate,
+    ROUND(SUM(rf.d7_game)  * 100.0 / NULLIF(COUNT(rf.d7_game),  0), 2) AS d7_rate,
+    COUNT(rf.d7_game) AS d7_n,
+    ROUND(SUM(rf.d30_game) * 100.0 / NULLIF(COUNT(rf.d30_game), 0), 2) AS d30_rate,
+    COUNT(rf.d30_game) AS d30_n
+FROM tcy_temp.dws_app_firstday_game_stat g
+LEFT JOIN tcy_temp.dws_app_retention_flag rf
+    ON rf.app_id = g.app_id AND rf.reg_date = g.reg_date AND rf.uid = g.uid
+WHERE g.app_id = 1880053
+  AND g.reg_date BETWEEN '2026-05-10' AND '2026-06-16'
+GROUP BY game_count_bucket
+ORDER BY game_count_bucket;
+```
+
+---
+
 > **创建时间**：2026-06-24
 >
 > **复核窗口**：2026-05-01 ~ 2026-05-15（n=20,476）
