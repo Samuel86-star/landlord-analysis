@@ -158,6 +158,76 @@ SQL: `recheck_1game_profile.sql`。
 
 ---
 
+## 六A、D1 视角：次日流失才是漏斗顶端
+
+> D7 低是 D1 低的后果。本章把分析前移到 D1（次日留存），定位漏斗最顶端的流失。窗口 `2026-05-10~06-08`（n=35,435 已游戏玩家，D1 全到期）。
+
+### 6A.1 D1 基线：已游戏玩家整体次日留存 ~21%
+
+| 对局数 | 占比 | D1 | D7 | D7/D1 |
+| ---- | ---- | ---- | ---- | ---- |
+| 10+局 | 35.4% | 33.46 | 18.69 | 55.9% |
+| 6-10局 | 27.7% | 19.76 | 10.11 | 51.2% |
+| 2-5局 | 27.7% | **14.10** | 5.60 | 39.7% |
+| 1局 | 9.2% | **10.22** | 3.15 | 30.8% |
+
+即便 10+局重度玩家 D1 也仅 33%。**三分之二已游戏玩家次日不回**。1-5局玩家 D1 仅 10-14%，是 D7 低的根因。SQL: `recheck_d1_baseline.sql`。
+
+### 6A.2 D1 流失者画像：85.5% 单次会话，非游戏体验问题
+
+1-5局玩家 D1 留存者(1,717) vs 流失者(11,359) 首日特征对比：
+
+| 特征 | D1 流失者 | D1 留存者 | 差异 |
+| ---- | ---- | ---- | ---- |
+| 单次会话占比 | **85.5%** | 78.3% | 流失者更倾向单次会话 |
+| 银子净变化 | 2132 | 2123 | **几乎相同** |
+| 净亏损占比 | 47.5% | 40.8 | 弱 |
+| 末局后银子 | 4324 | 5158 | 弱 |
+| 平均胜率 | 59.9 | 64.5 | 中(4.6pp) |
+| 平均时长(秒) | 405 | 340 | 见 §6A.3，勿用叙事解读 |
+
+**区分度最大的特征是"单次会话"，不是游戏体验**（银子盈亏几乎无差异）。次日不回来的人，首日就是"来一次就走"。SQL: `recheck_d1_retained_vs_lost.sql`。
+
+### 6A.3 牌力假设证伪（重要：含数据可信度教训）
+
+曾假设"流失者时长更长(405 vs 340s)是因为牌差→出牌纠结→单局拖长"。验证过程暴露两个数据问题，最终证伪该假设：
+
+**问题 1：牌力算法在 2026-06-15 修复过。** 用修复前窗口（05-10~06-08）的 `card_power_final` 得出"34% 首局拿差牌、牌差→timecost长"的结论，**建立在旧算法的坏数据上，作废**。
+
+**问题 2：timecost 均值被长尾脏数据拉高。** 修复后窗口（06-15~06-22）中等牌组(20-40) timecost 均值 336s 看似异常，实为 0.8% 超 600s 的挂机/断线脏数据（max=29513s≈8h）拉高，74.6% 的局其实 <120s。
+
+**修复后窗口（06-15~06-22，n≈2,849 低局玩家）真实结论**：
+
+| 首局牌力档 | 占比 | timecost | D1 |
+| ---- | ---- | ---- | ---- |
+| <20(差) | 4.7% | 145 | 15.56 |
+| 20-40(中) | 6.5% | 336(含脏数据) | 8.70 |
+| 40-50(好) | 17.9% | 153 | 11.76 |
+| ≥50(很好) | **70.9%** | 113 | 13.47 |
+
+- **70.9% 首局拿到"很好的牌"（≥50）**，仅 4.7% 拿差牌——保护机制正常工作（旧算法误把好牌算成差牌）。
+- 牌力与 D1 **无清晰负相关**（差牌 D1 反而最高 15.56）。"牌差→体验差→D1 流失"假设**证伪**。
+- D1 流失主驱动仍是 §6A.2 的"单次会话性质"，与牌力无关。
+
+**教训**：跨窗口比较涉及算法变动的字段（如牌力）前，必须先确认字段定义的时间一致性；timecost 类长尾字段看均值前必须查分布。SQL: `recheck_cardpower_postfix_d1.sql`、`recheck_midcard_anomaly.sql`。
+
+### 6A.4 首日登录次数与 D1（验证"多次会话"预测力）
+
+| 首日登录次数 | 占比 | D1 | D7 |
+| ---- | ---- | ---- | ---- |
+| 1次 | **84.6%** | 12.17 | 4.83 |
+| 2次 | 13.1% | 18.13 | 5.66 |
+| 3次 | 1.2% | 19.21 | 9.93 |
+| 4次 | 1.1% | 20.00 | 3.57 |
+
+登录 2-3 次 D1 确实更高（18-19%），但**这部分人只占 14.3%**。84.6% 的 1-5局玩家首日只登录 1 次——"首日续玩钩子"（让首日内多次打开）影响面有限。对大多数人，首日那一次会话是给产品的全部机会。SQL: `recheck_login_cnt_d1.sql`。
+
+### 6A.5 D1 章节小结
+
+D1 流失（次日不回）是 D7 低的根因，主驱动是**单次会话性质**（85.5% 流失者首日只登录1次），而非游戏体验（银子、胜率、牌力差异都小或被证伪）。首局保护机制让 70.9% 拿好牌、多数赢，但**赢一把保护局不构成召回理由**——这解释了为何"保护到位仍留不住"。可干预方向偏向**次日召回触达（推送）+ 获客质量**，而非首日游戏内容优化。
+
+---
+
 ## 七、综合结论
 
 | 层级 | 事实 | 性质 |
@@ -167,13 +237,15 @@ SQL: `recheck_1game_profile.sql`。
 | 证伪 | 首局体验（94%保护+80%胜）非主因 | 排除假设 |
 | 证伪 | 撤保护断崖非主因（打到第4局 D7 反更高） | 排除假设 |
 | 实测 | 对局时长中位 85s，84% 在 1-2 分钟内 | 基础事实 |
-| 主因 1 | 仅1局玩家 71.9% 是单次1-3分钟会话——试用即走流量 | **非游戏体验** |
+| 主因 1 | 仅1局玩家 71.9% 是单次会话——试用即走流量 | **非游戏体验** |
 | 主因 2 | `<60s/局` 高倍偏好组 D1 高 D7 低——刺激爽快感留不住 | **游戏体验可干预** |
+| **D1 视角** | 已游戏玩家 D1 仅 ~21%；1-5局玩家 D1 流失者 85.5% 单次会话；牌力→D1 假设证伪 | **D1 是漏斗顶端，次日召回优先** |
 
-**两条主因并存**：
+**三条主因并存**：
 
 1. **试用即走流量**（占已游戏者 ~18% 即 2,348 仅1局+单次会话）：归因到渠道/获客/新手引导，**产品体验改动收益有限**。
 2. **高倍偏好留不住**（占 ~3.5%）：归因到匹配/倍数调控，**产品可干预**——新手前几局降低极端倍数概率。
+3. **D1 漏斗顶端流失**（§6A）：已游戏玩家三分之二次日不回，主驱动是单次会话性质（非游戏体验）。首局保护让 70.9% 拿好牌、多数赢，但"赢一把保护局"不构成召回理由。**可干预方向偏向次日召回触达（推送）+ 获客质量**，而非首日游戏内容。
 
 剩余流失（约 50%+ 已游戏玩家的 6-50 局段）的中间梯度按 framework §2.1 "对局数单调递增"规律，关键产品杠杆是**让用户多玩几局**（首日 5 局/10 局节点的任务奖励、续玩钩子）。
 
@@ -455,6 +527,121 @@ INNER JOIN first_game fg
     ON fg.app_id = ut.app_id AND fg.reg_date = ut.reg_date AND fg.uid = ut.uid
 GROUP BY ut.time_group, game_cnt
 ORDER BY ut.time_group, game_cnt;
+```
+
+### 8.9 D1 基线 + D7/D1 衰减率
+
+```sql
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    CASE
+        WHEN g.silver_game_count = 1               THEN '1局'
+        WHEN g.silver_game_count BETWEEN 2 AND 5   THEN '2-5局'
+        WHEN g.silver_game_count BETWEEN 6 AND 10  THEN '6-10局'
+        WHEN g.silver_game_count > 10              THEN '10+局'
+    END AS game_cnt,
+    COUNT(*) AS users,
+    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) AS pct,
+    ROUND(SUM(rf.d1_game) * 100.0 / NULLIF(COUNT(rf.d1_game), 0), 2) AS d1_game,
+    ROUND(SUM(rf.d7_game) * 100.0 / NULLIF(COUNT(rf.d7_game), 0), 2) AS d7_game,
+    ROUND(SUM(rf.d7_game) * 100.0 / NULLIF(SUM(rf.d1_game), 0), 1) AS d7_of_d1
+FROM tcy_temp.dws_app_firstday_game_stat g
+LEFT JOIN tcy_temp.dws_app_retention_flag rf
+    ON rf.app_id = g.app_id AND rf.reg_date = g.reg_date AND rf.uid = g.uid
+WHERE g.app_id = 1880053
+  AND g.reg_date BETWEEN '2026-05-10' AND '2026-06-08'
+  AND g.silver_game_count > 0
+GROUP BY game_cnt
+ORDER BY game_cnt;
+```
+
+### 8.10 D1 留存者 vs 流失者 首日特征对比
+
+```sql
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    rf.d1_game AS is_d1_retained,
+    COUNT(*) AS users,
+    ROUND(AVG(g.first_day_login_cnt), 2) AS avg_login_cnt,
+    ROUND(SUM(CASE WHEN g.first_day_login_cnt = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_single_session,
+    ROUND(AVG(g.silver_total_diff_money), 0) AS avg_silver_diff,
+    ROUND(SUM(CASE WHEN g.silver_total_diff_money < 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 1) AS pct_net_loss,
+    ROUND(AVG(g.silver_end_money), 0) AS avg_end_money,
+    ROUND(AVG(g.silver_win_rate), 1) AS avg_win_rate,
+    ROUND(AVG(g.silver_escape_count), 2) AS avg_escape,
+    ROUND(AVG(g.silver_total_play_seconds), 0) AS avg_play_seconds
+FROM tcy_temp.dws_app_firstday_game_stat g
+LEFT JOIN tcy_temp.dws_app_retention_flag rf
+    ON rf.app_id = g.app_id AND rf.reg_date = g.reg_date AND rf.uid = g.uid
+WHERE g.app_id = 1880053
+  AND g.reg_date BETWEEN '2026-05-10' AND '2026-06-08'
+  AND g.silver_game_count BETWEEN 1 AND 5
+  AND rf.d1_game IS NOT NULL
+GROUP BY rf.d1_game
+ORDER BY is_d1_retained;
+```
+
+### 8.11 牌力 × D1（修复后窗口 06-15~06-22）
+
+> ⚠️ 牌力算法 2026-06-15 修复，本查询仅用修复后窗口。修复前窗口的牌力结论全部作废。
+
+```sql
+WITH first_game AS (
+    SELECT
+        app_id, dt AS reg_date, uid,
+        MIN_BY(card_power_final, game_datetime) AS first_card_power,
+        MIN_BY(timecost,         game_datetime) AS first_timecost,
+        MIN_BY(afk_turn_cnt,     game_datetime) AS first_afk
+    FROM tcy_temp.dws_ddz_firstday_game
+    WHERE app_id = 1880053
+      AND dt BETWEEN '2026-06-15' AND '2026-06-22'
+      AND robot != 1
+      AND play_mode IN (1, 2, 3)
+    GROUP BY app_id, dt, uid
+)
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=30000) */
+    CASE
+        WHEN fg.first_card_power < 20 THEN '01: 牌力<20(差)'
+        WHEN fg.first_card_power < 40 THEN '02: 20-40(中)'
+        WHEN fg.first_card_power < 50 THEN '03: 40-50(好)'
+        ELSE                                '04: >=50(很好)'
+    END AS card_bucket,
+    COUNT(*) AS users,
+    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) AS pct,
+    ROUND(AVG(fg.first_timecost), 0) AS avg_timecost,
+    ROUND(AVG(fg.first_afk), 2)      AS avg_afk,
+    ROUND(SUM(rf.d1_game) * 100.0 / NULLIF(COUNT(rf.d1_game), 0), 2) AS d1_game,
+    COUNT(rf.d1_game) AS d1_n,
+    ROUND(SUM(rf.d7_game) * 100.0 / NULLIF(COUNT(rf.d7_game), 0), 2) AS d7_game,
+    COUNT(rf.d7_game) AS d7_n
+FROM first_game fg
+INNER JOIN tcy_temp.dws_app_firstday_game_stat g
+    ON g.app_id = fg.app_id AND g.reg_date = fg.reg_date AND g.uid = fg.uid
+LEFT JOIN tcy_temp.dws_app_retention_flag rf
+    ON rf.app_id = g.app_id AND rf.reg_date = g.reg_date AND rf.uid = g.uid
+WHERE g.app_id = 1880053
+  AND g.silver_game_count BETWEEN 1 AND 5
+GROUP BY card_bucket
+ORDER BY card_bucket;
+```
+
+### 8.12 首日登录次数 × D1/D7（验证多次会话预测力）
+
+```sql
+SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
+    g.first_day_login_cnt AS login_cnt,
+    COUNT(*) AS users,
+    ROUND(COUNT(*) * 100.0 / NULLIF(SUM(COUNT(*)) OVER(), 0), 1) AS pct,
+    ROUND(SUM(rf.d1_game) * 100.0 / NULLIF(COUNT(rf.d1_game), 0), 2) AS d1_game,
+    ROUND(SUM(rf.d7_game) * 100.0 / NULLIF(COUNT(rf.d7_game), 0), 2) AS d7_game,
+    ROUND(SUM(rf.d7_game) * 100.0 / NULLIF(SUM(rf.d1_game), 0), 1) AS d7_of_d1
+FROM tcy_temp.dws_app_firstday_game_stat g
+LEFT JOIN tcy_temp.dws_app_retention_flag rf
+    ON rf.app_id = g.app_id AND rf.reg_date = g.reg_date AND rf.uid = g.uid
+WHERE g.app_id = 1880053
+  AND g.reg_date BETWEEN '2026-05-10' AND '2026-06-08'
+  AND g.silver_game_count BETWEEN 1 AND 5
+  AND rf.d1_game IS NOT NULL
+GROUP BY g.first_day_login_cnt
+ORDER BY g.first_day_login_cnt;
 ```
 
 ---
