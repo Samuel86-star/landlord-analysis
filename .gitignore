@@ -16,3 +16,6 @@ __pycache__/
 
 # 调度器运行日志（每天每张表的 stdout/stderr，不提交）
 py/logs/
+
+# 分析产出（每次跑会重生成，CSV 在 output/，不提交）
+py/first-classic-beginner/output/

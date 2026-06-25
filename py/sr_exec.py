@@ -69,12 +69,23 @@ class StarRocksClient:
         self.ctx_id = res["data"]["ctx"]["id"]
         return self
 
-    def _submit_and_wait(self, sql):
-        """提交 SQL 异步任务并轮询至完成，返回 task_id。"""
-        res = self.gql(
-            "mutation execSql($cid: ID!, $ctx: ID!, $sql: String!) { result: asyncSqlExecuteQuery(connectionId: $cid, contextId: $ctx, sql: $sql) { id } }",
-            {"cid": self.conn_id, "ctx": self.ctx_id, "sql": sql}
-        )
+    def _submit_and_wait(self, sql, filter=None):
+        """提交 SQL 异步任务并轮询至完成，返回 task_id。
+
+        filter: 可选 CloudBeaver SQLDataFilter dict，如 {"offset": N, "limit": M}，
+                用于分页/限制结果集（突破默认 200 行/页）。见 query_paged。
+        """
+        if filter is not None:
+            res = self.gql(
+                "mutation execSql($cid: ID!, $ctx: ID!, $sql: String!, $filter: SQLDataFilter)"
+                " { result: asyncSqlExecuteQuery(connectionId: $cid, contextId: $ctx, sql: $sql, filter: $filter) { id } }",
+                {"cid": self.conn_id, "ctx": self.ctx_id, "sql": sql, "filter": filter}
+            )
+        else:
+            res = self.gql(
+                "mutation execSql($cid: ID!, $ctx: ID!, $sql: String!) { result: asyncSqlExecuteQuery(connectionId: $cid, contextId: $ctx, sql: $sql) { id } }",
+                {"cid": self.conn_id, "ctx": self.ctx_id, "sql": sql}
+            )
         if "errors" in res:
             raise Exception("SQL execution error: {}".format(res['errors']))
         task_id = res["data"]["result"]["id"]
@@ -160,6 +171,47 @@ class StarRocksClient:
             return pd.DataFrame(rows, columns=columns)
         except ImportError:
             return {"columns": columns, "rows": rows}
+
+    def query_paged(self, sql, page_size=5000):
+        """分页拉取 SQL 全量结果为 pandas DataFrame。
+
+        CloudBeaver 异步查询默认只返回前 200 行（单页硬限制），无法满足把明细
+        拉回 Python 处理的需求（如 hand_cards 解析）。本方法用 SQLDataFilter
+        的 offset/limit 循环分页，拼成单个 DataFrame。
+
+        page_size: 每页行数，默认 5000（实测可正常返回，远超默认 200）。
+        """
+        import pandas as pd
+        frames = []
+        columns = None
+        offset = 0
+        while True:
+            task_id = self._submit_and_wait(
+                sql, filter={"offset": offset, "limit": page_size}
+            )
+            rd = self._verify_status(task_id)
+            if rd is None:
+                raise Exception(
+                    f"query_paged: offset={offset} 查询失败（CloudBeaver r=null，可能 SQL 错误）"
+                )
+            results = rd.get("results", [])
+            if not results:
+                break
+            rs = results[0].get("resultSet")
+            if rs is None:
+                break
+            if columns is None:
+                columns = [c["name"] for c in rs.get("columns", [])]
+            rows = rs.get("rows", [])
+            if not rows:
+                break
+            frames.append(pd.DataFrame(rows, columns=columns))
+            if len(rows) < page_size:
+                break
+            offset += page_size
+        if not frames:
+            return pd.DataFrame()
+        return pd.concat(frames, ignore_index=True)
 
 
 def main():
