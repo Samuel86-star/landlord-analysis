@@ -202,6 +202,82 @@ def module_f(df: pd.DataFrame) -> None:
     print(agg[agg.game_seq == 1][["card_power_bucket", "user_count", "win_rate", "avg_outcome_money"]].to_string(index=False))
 
 
+# ---------- 手牌解析 ----------
+def tokenize_hand_cards(hand_cards: str) -> list[str]:
+    """Parse landlord hand card string into card tokens."""
+    if not isinstance(hand_cards, str) or not hand_cards.strip():
+        return []
+    tokens = []
+    idx = 0
+    while idx < len(hand_cards):
+        token = hand_cards[idx:idx + 2]
+        if token in {"sj", "bj"}:
+            tokens.append(token)
+            idx += 2
+        else:
+            tokens.append(hand_cards[idx])
+            idx += 1
+    return tokens
+
+
+def _parse_king_status(hand_cards):
+    """Classify hand_cards into 无王/单王/王炸."""
+    tokens = tokenize_hand_cards(hand_cards)
+    sj_cnt = tokens.count("sj")
+    bj_cnt = tokens.count("bj")
+    if sj_cnt >= 1 and bj_cnt >= 1:
+        return "王炸"
+    elif sj_cnt >= 1 or bj_cnt >= 1:
+        return "单王"
+    else:
+        return "无王"
+
+
+# ---------- 模块 G：手牌结构 × 牌力 × 胜率 ----------
+def module_g(df: pd.DataFrame) -> None:
+    has_cards = df[df["hand_cards"].notna() & (df["hand_cards"] != "")].copy()
+    if len(has_cards) == 0:
+        print("  [G] no hand_cards data, skip")
+        return
+    print(f"  [G] hand_cards coverage: {len(has_cards)}/{len(df)} = {len(has_cards)*100/len(df):.1f}%")
+
+    # G1: 局序 × 王情况 × 胜率（与 06-25 报告格式对齐）
+    g1 = has_cards.groupby(["game_seq", "king_status"]).agg(
+        n=("uid", "count"),
+        avg_card_power=("card_power", "mean"),
+        avg_card_power_final=("card_power_final", "mean"),
+        win_rate=("result_id", _win_rate),
+        avg_real_magnification=("real_magnification", "mean"),
+    ).round(2).reset_index()
+    _save(g1, "07a_king_status_winrate.csv")
+    print("  [G1] 局序 × 王情况 × 胜率:")
+    print(g1.to_string(index=False))
+
+    # G2: 牌力桶 × 王情况 × 胜率（全 3 局合并）
+    valid = has_cards[has_cards["card_power_bucket"] != "Z: 缺失"].copy()
+    g2 = valid.groupby(["card_power_bucket", "king_status"]).agg(
+        n=("uid", "count"),
+        avg_card_power=("card_power", "mean"),
+        win_rate=("result_id", _win_rate),
+    ).round(2).reset_index()
+    _save(g2, "07b_cardpower_king_winrate.csv")
+    print("  [G2] 牌力桶 × 王情况 × 胜率:")
+    print(g2.to_string(index=False))
+
+    # G3: 牌力桶 × 胜率（不分王情况，简洁版）
+    g3 = valid.groupby("card_power_bucket").agg(
+        n=("uid", "count"),
+        avg_card_power=("card_power", "mean"),
+        avg_card_power_final=("card_power_final", "mean"),
+        win_rate=("result_id", _win_rate),
+        king_bomb_pct=("king_status", lambda s: _pct((s == "王炸").sum(), s.notna().sum())),
+        single_king_pct=("king_status", lambda s: _pct((s == "单王").sum(), s.notna().sum())),
+    ).round(2).reset_index()
+    _save(g3, "07c_cardpower_winrate.csv")
+    print("  [G3] 牌力桶 × 胜率 + 王情况分布:")
+    print(g3.to_string(index=False))
+
+
 def main() -> None:
     df = load_detail()
     print(f"[load] detail shape = {df.shape}")
@@ -228,6 +304,8 @@ def main() -> None:
         np.where(df["card_id"] > 0, "B: 其他牌库配牌", "C: 随机/无牌库"))
     # 持有炸弹标记
     df["has_bomb"] = df["bomb_cnt"] >= 1
+    # 王情况（从 hand_cards 解析）
+    df["king_status"] = df["hand_cards"].map(_parse_king_status)
     print(f"[load] card_power P25/P50/P75 = {p25:.1f}/{p50:.1f}/{p75:.1f}")
 
     print("[A] cohort baseline");        module_a(df)
@@ -236,6 +314,7 @@ def main() -> None:
     print("[D] shuffle mechanism");      module_d(df)
     print("[E] bomb hold (replaces handcard structure)"); module_e(df)
     print("[F] cardpower-result alignment"); module_f(df)
+    print("[G] handcard structure × card_power × win_rate"); module_g(df)
     print("[done] all CSVs ->", OUTPUT)
 
 
