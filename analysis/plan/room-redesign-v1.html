@@ -1,0 +1,559 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>经典斗地主 — 五档房间设计方案</title>
+<style>
+  :root {
+    --bg: #0f1117;
+    --card: #1a1d27;
+    --border: #2a2d3a;
+    --text: #c9d1d9;
+    --muted: #8b949e;
+    --accent: #58a6ff;
+    --green: #3fb950;
+    --red: #f85149;
+    --yellow: #d2991d;
+    --purple: #a371f7;
+    --orange: #db6d28;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    line-height: 1.6;
+    padding: 24px;
+  }
+  .container { max-width: 1400px; margin: 0 auto; }
+  h1 { font-size: 28px; margin-bottom: 8px; }
+  h2 { font-size: 20px; margin: 32px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border); }
+  h3 { font-size: 16px; margin: 20px 0 10px; color: var(--accent); }
+  .subtitle { color: var(--muted); margin-bottom: 24px; }
+
+  /* Cards */
+  .card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 20px;
+  }
+
+  /* Tables */
+  table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  th, td { padding: 8px 12px; text-align: right; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; text-align: center; background: rgba(255,255,255,0.03); }
+  td:first-child, th:first-child { text-align: left; }
+  td:last-child, th:last-child { text-align: center; }
+  .highlight { background: rgba(88,166,255,0.08); }
+  .good { color: var(--green); font-weight: 600; }
+  .bad { color: var(--red); font-weight: 600; }
+  .warn { color: var(--yellow); }
+  .c-new { border-left: 3px solid var(--green); }
+  .c-old { border-left: 3px solid var(--muted); }
+
+  /* Room cards grid */
+  .room-grid {
+    display: grid;
+    grid-template-columns: repeat(5, 1fr);
+    gap: 16px;
+    margin-bottom: 20px;
+  }
+  @media (max-width: 1100px) { .room-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 700px) { .room-grid { grid-template-columns: 1fr; } }
+
+  .room-card {
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 16px;
+    text-align: center;
+    transition: transform 0.2s, box-shadow 0.2s;
+  }
+  .room-card:hover { transform: translateY(-2px); box-shadow: 0 4px 20px rgba(0,0,0,0.3); }
+  .room-card .tier {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+  .room-card .name { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+  .room-card .base { font-size: 32px; font-weight: 800; margin: 8px 0; }
+  .room-card .base span { font-size: 14px; font-weight: 400; color: var(--muted); }
+  .room-card .param { font-size: 13px; color: var(--muted); margin: 2px 0; }
+  .room-card .param strong { color: var(--text); }
+  .room-card .metric {
+    margin-top: 10px;
+    padding: 8px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    font-size: 13px;
+  }
+  .room-card .metric .val { font-size: 18px; font-weight: 700; }
+  .t1 .tier, .t1 .name { color: #8b949e; }
+  .t2 .tier, .t2 .name { color: #3fb950; }
+  .t3 .tier, .t3 .name { color: #58a6ff; }
+  .t4 .tier, .t4 .name { color: #a371f7; }
+  .t5 .tier, .t5 .name { color: #f0883e; }
+
+  /* Chart */
+  .bar-chart { margin: 12px 0; }
+  .bar-row { display: flex; align-items: center; margin: 3px 0; font-size: 12px; }
+  .bar-label { width: 60px; text-align: right; margin-right: 10px; color: var(--muted); flex-shrink: 0; }
+  .bar-track { flex: 1; height: 20px; background: rgba(255,255,255,0.05); border-radius: 3px; position: relative; overflow: hidden; }
+  .bar-fill { height: 100%; border-radius: 3px; transition: width 0.5s; display: flex; align-items: center; padding-left: 6px; font-weight: 600; }
+  .bar-fill.safe { background: rgba(63,185,80,0.4); }
+  .bar-fill.partial { background: rgba(210,153,29,0.4); }
+  .bar-fill.danger { background: rgba(248,81,73,0.4); }
+
+  /* Comparison panels */
+  .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+  @media (max-width: 800px) { .compare-grid { grid-template-columns: 1fr; } }
+
+  /* Tabs */
+  .tabs { display: flex; gap: 4px; margin-bottom: 16px; }
+  .tab {
+    padding: 8px 16px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    transition: all 0.2s;
+  }
+  .tab:hover { color: var(--text); border-color: var(--accent); }
+  .tab.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+  /* Slider */
+  input[type=range] { width: 100%; margin: 8px 0; accent-color: var(--accent); }
+  .slider-label { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+
+  .note {
+    padding: 12px;
+    background: rgba(88,166,255,0.06);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 6px 6px 0;
+    font-size: 13px;
+    margin: 12px 0;
+  }
+  .note-red { border-left-color: var(--red); background: rgba(248,81,73,0.06); }
+  .note-green { border-left-color: var(--green); background: rgba(63,185,80,0.06); }
+
+  .badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+  }
+  .badge-good { background: rgba(63,185,80,0.15); color: var(--green); }
+  .badge-bad { background: rgba(248,81,73,0.15); color: var(--red); }
+  .badge-warn { background: rgba(210,153,29,0.15); color: var(--yellow); }
+
+  .flex-between { display: flex; justify-content: space-between; align-items: center; }
+  .gap-sm { gap: 8px; }
+  .gap-md { gap: 16px; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>经典斗地主 — 五档房间重设计方案</h1>
+<p class="subtitle">基于近 30 天（2026-06-15 ~ 07-14）线上 7 房全量数据 · 分析框架见 <code>analysis/plan/room-magnification-affordability.md</code></p>
+
+<!-- ====== SECTION: 五档总览 ====== -->
+<h2>一、五档房间总览</h2>
+
+<div class="room-grid" id="roomCards"></div>
+
+<!-- ====== SECTION: 设计逻辑 ====== -->
+<h2>二、设计逻辑</h2>
+
+<div class="card">
+  <h3>核心公式：地主可扛倍数</h3>
+  <p style="font-size:14px; margin-bottom:12px;">
+    地主是支付瓶颈（需同时付 2 个农民），任何对局的理论倍数超过「可扛倍数」即发生破产截断。
+  </p>
+  <div style="background:rgba(255,255,255,0.03); padding:16px; border-radius:8px; text-align:center; font-size:18px; font-family:monospace; margin-bottom:12px;">
+    地主可扛倍数 = (玩家携银 − 服务费) / (2 × 底分)
+  </div>
+  <p style="font-size:13px; color:var(--muted);">
+    设计约束：每间房的<strong>下限可扛 ≥ P50 理论倍数（~12×）</strong>——按下限进场的玩家，过半对局不受截断。
+  </p>
+</div>
+
+<div class="card">
+  <h3>设计原则</h3>
+  <table>
+    <tr><th style="width:40px;">#</th><th>原则</th><th>含义</th></tr>
+    <tr><td>1</td><td>下限扛 P50</td><td>任何按下限进场的玩家，≤12× 的对局不截断</td></tr>
+    <tr><td>2</td><td>P50 扛 P75</td><td>房间中位玩家在 75% 的对局中零压降</td></tr>
+    <tr><td>3</td><td>上限不锁死</td><td>天花板足够高，有钱就能足额结算</td></tr>
+    <tr><td>4</td><td>费率一致</td><td>服务费 ≈ 1.5-1.8× 底分，维持当前体系</td></tr>
+    <tr><td>5</td><td>逐级拉开</td><td>底分/下限形成清晰梯度，玩家自然分流</td></tr>
+  </table>
+</div>
+
+<!-- ====== SECTION: Interactive Tool ====== -->
+<h2>三、交互推演：输入携银看能扛多少倍</h2>
+
+<div class="card">
+  <div class="flex-between gap-md" style="flex-wrap:wrap;">
+    <div style="flex:1; min-width:200px;">
+      <label style="font-size:13px; color:var(--muted);">玩家携银</label>
+      <input type="range" id="balanceSlider" min="1000" max="500000" value="50000" step="1000"
+             style="width:100%; margin:8px 0;">
+      <div class="slider-label"><span>1,000</span><span>500,000</span></div>
+      <div style="text-align:center; font-size:28px; font-weight:700; margin:8px 0;" id="balanceDisplay">50,000</div>
+    </div>
+    <div style="flex:1; min-width:200px;">
+      <label style="font-size:13px; color:var(--muted);">当前理论倍数</label>
+      <input type="range" id="magSlider" min="3" max="192" value="24" step="3"
+             style="width:100%; margin:8px 0;">
+      <div class="slider-label"><span>3×</span><span>192×</span></div>
+      <div style="text-align:center; font-size:28px; font-weight:700; margin:8px 0;" id="magDisplay">24×</div>
+    </div>
+  </div>
+
+  <div id="affordabilityResult" style="margin-top:16px;"></div>
+</div>
+
+<!-- ====== SECTION: 当前 vs 新方案对比 ====== -->
+<h2>四、新旧方案对比</h2>
+
+<div class="tabs" id="compareTab">
+  <div class="tab active" onclick="switchCompareTab('coverage')">扛倍数覆盖</div>
+  <div class="tab" onclick="switchCompareTab('realization')">兑现率</div>
+  <div class="tab" onclick="switchCompareTab('params')">参数对照</div>
+</div>
+
+<div class="compare-grid">
+  <div class="card">
+    <h3 style="color:var(--muted);">当前七房</h3>
+    <div id="currentView"></div>
+  </div>
+  <div class="card" style="border-color: rgba(63,185,80,0.3);">
+    <h3 style="color:var(--green);">新五档</h3>
+    <div id="proposedView"></div>
+  </div>
+</div>
+
+<!-- ====== SECTION: 玩家分流 ====== -->
+<h2>五、当前七房玩家 → 新五档分流</h2>
+
+<div class="card">
+  <table>
+    <tr><th>当前房</th><th>当前底分</th><th>P50 余额</th><th>当前 P50 扛</th><th>当前兑现率</th><th style="color:var(--accent);">→ 新房间</th><th>新 P50 扛</th><th>变化</th></tr>
+    <tr>
+      <td>742</td><td>30</td><td>2,340</td><td>38.7× <span class="badge badge-good">✓</span></td><td>0.78</td>
+      <td style="color:var(--accent);">1 新手场</td><td style="font-weight:700;">209×</td><td style="color:var(--green);">↑ 5.4×</td>
+    </tr>
+    <tr style="background:rgba(248,81,73,0.05);">
+      <td>420</td><td>110</td><td>2,341</td><td class="bad">10.1× ✗</td><td class="bad">0.38</td>
+      <td style="color:var(--accent);">1 新手场</td><td style="font-weight:700;">209×</td><td style="color:var(--green);">↑ 20.7×</td>
+    </tr>
+    <tr>
+      <td>4484/12074</td><td>250</td><td>11,299</td><td>21.9× <span class="badge badge-warn">~</span></td><td>0.50</td>
+      <td style="color:var(--accent);">2 初级场</td><td style="font-weight:700;">43×</td><td style="color:var(--green);">↑ 2.0×</td>
+    </tr>
+    <tr>
+      <td>6314</td><td>500</td><td>18,958</td><td>18.2× <span class="badge badge-warn">~</span></td><td>0.58</td>
+      <td style="color:var(--accent);">3 中级场</td><td style="font-weight:700;">25×</td><td style="color:var(--green);">↑ 1.4×</td>
+    </tr>
+    <tr style="background:rgba(248,81,73,0.05);">
+      <td>11168</td><td>1,200</td><td>29,335</td><td class="bad">11.5× ✗</td><td class="bad">0.59</td>
+      <td style="color:var(--accent);">3 中级场 / 4 高级场</td><td style="font-weight:700;">25× / 24×</td><td style="color:var(--green);">↑ 2.1×</td>
+    </tr>
+    <tr style="background:rgba(248,81,73,0.05);">
+      <td>10336</td><td>2,500</td><td>89,905</td><td>17.2× <span class="bad">+ 上限锁 59×</span></td><td>0.73</td>
+      <td style="color:var(--accent);">4 高级场 / 5 顶级场</td><td style="font-weight:700;">24×/24×</td><td style="color:var(--green);">↑ 1.4× + 解锁上限</td>
+    </tr>
+    <tr>
+      <td>16445</td><td>4,000</td><td>202,881</td><td>24.5× <span class="badge badge-good">✓</span></td><td>0.91</td>
+      <td style="color:var(--accent);">5 顶级场</td><td style="font-weight:700;">24×</td><td style="color:var(--muted);">持平，解锁上限</td>
+    </tr>
+  </table>
+
+  <div class="note note-green" style="margin-top:12px;">
+    <strong>消灭了两个灾难房间：</strong>110 底分（兑现率 0.38）和 1,200 底分（兑现率 0.59）的 P50 扛均低于 P50 理论。
+    新方案每档的扛下限 ≥ 12×，从根本上消除了"进房就注定被截断"的情况。
+  </div>
+</div>
+
+<!-- ====== SECTION: 覆盖率 ====== -->
+<h2>六、新五档理论倍数覆盖率</h2>
+
+<div class="card">
+  <p style="font-size:13px; color:var(--muted); margin-bottom:12px;">
+    横轴为地主理论倍数分位，颜色表示该分位在新方案中的覆盖情况。
+    绿 = 所有按下限入场的玩家都能扛 · 黄 = P50 玩家能扛 · 红 = 仅 P75+ 玩家能扛。
+  </p>
+  <div id="coverageChart"></div>
+</div>
+
+</div>
+
+<script>
+// ========== DATA ==========
+const rooms = [
+  { id:1, name:'新手场', tier:'TIER 1', base:30, lower:1000, upper:10000, fee:20,
+    cls:'t1', players:129083, p50balance:12569, color:'#8b949e' },
+  { id:2, name:'初级场', tier:'TIER 2', base:200, lower:5500, upper:50000, fee:300,
+    cls:'t2', players:97401, p50balance:17505, color:'#3fb950' },
+  { id:3, name:'中级场', tier:'TIER 3', base:400, lower:12000, upper:120000, fee:600,
+    cls:'t3', players:67192, p50balance:20732, color:'#58a6ff' },
+  { id:4, name:'高级场', tier:'TIER 4', base:1200, lower:40000, upper:500000, fee:1800,
+    cls:'t4', players:12905, p50balance:60112, color:'#a371f7' },
+  { id:5, name:'顶级场', tier:'TIER 5', base:2500, lower:100000, upper:999999999, fee:4000,
+    cls:'t5', players:2958, p50balance:126461, color:'#f0883e' },
+];
+
+const theoryPct = [
+  {label:'P25', val:6}, {label:'P35', val:12}, {label:'P50', val:12},
+  {label:'P75', val:24}, {label:'P85', val:48}, {label:'P90', val:48},
+  {label:'P95', val:96}, {label:'P99', val:192},
+];
+
+function afford(balance, fee, base) {
+  return (balance - fee) / (2 * base);
+}
+
+function fmt(n) {
+  if (n >= 1e8) return (n/1e8).toFixed(1)+'亿';
+  if (n >= 1e4) return (n/1e4).toFixed(1)+'万';
+  return n.toLocaleString();
+}
+
+function fmtX(n) {
+  if (n >= 1000) return Math.round(n) + '×';
+  return n.toFixed(1) + '×';
+}
+
+// ========== RENDER ROOM CARDS ==========
+const grid = document.getElementById('roomCards');
+rooms.forEach(r => {
+  const loAff = afford(r.lower, r.fee, r.base);
+  const p50Aff = afford(r.p50balance, r.fee, r.base);
+  const upStr = r.upper >= 9e8 ? '无上限' : fmt(r.upper);
+  grid.innerHTML += `
+    <div class="room-card ${r.cls}">
+      <div class="tier">${r.tier}</div>
+      <div class="name">${r.name}</div>
+      <div class="base">${r.base}<span> 底分</span></div>
+      <div class="param">下限 <strong>${fmt(r.lower)}</strong> · 上限 <strong>${upStr}</strong></div>
+      <div class="param">服务费 <strong>${fmt(r.fee)}</strong> · 容纳 <strong>${fmt(r.players)}人</strong></div>
+      <div class="metric">
+        <div style="color:var(--muted); font-size:11px;">地主扛（下限 / P50 / 上限）</div>
+        <div class="val">${fmtX(loAff)} / ${fmtX(p50Aff)} / ${r.upper>=9e8?'∞':fmtX(afford(r.upper,r.fee,r.base))}</div>
+      </div>
+      <div class="metric" style="margin-top:4px;">
+        <div style="color:var(--muted); font-size:11px;">P50 玩家余额</div>
+        <div class="val">${fmt(r.p50balance)}</div>
+      </div>
+    </div>`;
+});
+
+// ========== SLIDER INTERACTION ==========
+const balSlider = document.getElementById('balanceSlider');
+const magSlider = document.getElementById('magSlider');
+const balDisplay = document.getElementById('balanceDisplay');
+const magDisplay = document.getElementById('magDisplay');
+const resultDiv = document.getElementById('affordabilityResult');
+
+function updateAffordability() {
+  const bal = parseInt(balSlider.value);
+  const mag = parseInt(magSlider.value);
+  balDisplay.textContent = fmt(bal);
+  magDisplay.textContent = mag + '×';
+
+  let html = '<table><tr><th>房间</th><th>底分</th><th>能否进场</th><th>可扛倍数</th><th>' + mag + '× 能否扛</th><th>地主需付</th></tr>';
+  rooms.forEach(r => {
+    const canEnter = bal >= r.lower;
+    const aff = afford(bal, r.fee, r.base);
+    const canAfford = aff >= mag;
+    const needPay = mag * 2 * r.base;
+    const needPayStr = needPay >= 1e4 ? fmt(needPay) : needPay.toLocaleString();
+    html += `<tr class="${canAfford ? 'highlight' : ''}">
+      <td style="color:${r.color}; font-weight:600;">${r.name}</td>
+      <td>${r.base}</td>
+      <td>${canEnter ? '<span class="good">✓ 可进</span>' : '<span class="bad">✗ 余额不足</span>'}</td>
+      <td style="font-weight:600;">${fmtX(aff)}</td>
+      <td>${canAfford ? '<span class="good">✓</span>' : '<span class="bad">✗ 差额 ' + fmt(needPay - (bal - r.fee)) + '</span>'}</td>
+      <td>${needPayStr}</td>
+    </tr>`;
+  });
+  html += '</table>';
+
+  // Also show recommended room
+  const eligible = rooms.filter(r => bal >= r.lower);
+  const best = eligible.length > 0 ? eligible[eligible.length-1] : null;
+  if (best) {
+    const bestAff = afford(bal, best.fee, best.base);
+    html += `<div class="note note-green" style="margin-top:12px;">
+      <strong>推荐房间：${best.name}</strong> — 底分 ${best.base}，可扛 ${fmtX(bestAff)}，${bestAff >= mag ? '完全覆盖 ' + mag + '×' : '仍有 ' + (mag - bestAff).toFixed(0) + '× 缺口'}
+    </div>`;
+  }
+
+  resultDiv.innerHTML = html;
+}
+
+balSlider.addEventListener('input', updateAffordability);
+magSlider.addEventListener('input', updateAffordability);
+updateAffordability();
+
+// ========== COMPARISON TABS ==========
+let compareMode = 'coverage';
+function switchCompareTab(mode) {
+  compareMode = mode;
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  event.target.classList.add('active');
+  renderCompare();
+}
+
+// Current 7 rooms data
+const currentRooms = [
+  { name:'742 (30底分)', base:30, lower:1000, upper:2499, fee:20, p50bal:2340, realization:0.78, ratioExcl192:0.78 },
+  { name:'420 (110底分)', base:110, lower:1000, upper:2499, fee:125, p50bal:2341, realization:0.23, ratioExcl192:0.38 },
+  { name:'4484/12074 (250底分)', base:250, lower:2500, upper:20000, fee:350, p50bal:11299, realization:0.33, ratioExcl192:0.50 },
+  { name:'6314 (500底分)', base:500, lower:6000, upper:50000, fee:750, p50bal:18958, realization:0.37, ratioExcl192:0.58 },
+  { name:'11168 (1200底分)', base:1200, lower:15000, upper:120000, fee:1800, p50bal:29335, realization:0.34, ratioExcl192:0.59 },
+  { name:'10336 (2500底分)', base:2500, lower:50000, upper:300000, fee:4000, p50bal:89905, realization:0.61, ratioExcl192:0.73 },
+  { name:'16445 (4000底分)', base:4000, lower:130000, upper:2e9, fee:7200, p50bal:202881, realization:0.81, ratioExcl192:0.91 },
+];
+
+function renderCompare() {
+  const currDiv = document.getElementById('currentView');
+  const propDiv = document.getElementById('proposedView');
+
+  if (compareMode === 'coverage') {
+    currDiv.innerHTML = renderCoverageBars(currentRooms);
+    propDiv.innerHTML = renderCoverageBars(rooms);
+  } else if (compareMode === 'realization') {
+    currDiv.innerHTML = renderRealization(currentRooms);
+    propDiv.innerHTML = renderRealization(rooms);
+  } else if (compareMode === 'params') {
+    currDiv.innerHTML = renderParamsTable(currentRooms, false);
+    propDiv.innerHTML = renderParamsTable(rooms, true);
+  }
+}
+
+function renderCoverageBars(roomList) {
+  let html = '';
+  roomList.forEach(r => {
+    const loAff = afford(r.lower, r.fee, r.base);
+    const p50Aff = afford(r.p50bal||0, r.fee, r.base);
+    html += `<div style="margin-bottom:12px;">
+      <div style="font-size:13px; font-weight:600; margin-bottom:4px;">${r.name}</div>`;
+    theoryPct.forEach(t => {
+      const coveredByLower = loAff >= t.val;
+      const coveredByP50 = p50Aff >= t.val;
+      let cls = 'danger';
+      if (coveredByLower) cls = 'safe';
+      else if (coveredByP50) cls = 'partial';
+      // Calculate bar width - proportional to how much is covered
+      const pct = Math.min(100, (loAff / t.val * 60) + (p50Aff / t.val * 30));
+      html += `<div class="bar-row">
+        <div class="bar-label">${t.label} ${t.val}×</div>
+        <div class="bar-track">
+          <div class="bar-fill ${cls}" style="width:${coveredByLower ? 100 : coveredByP50 ? 65 : 30}%">
+            ${coveredByLower ? '✓下限扛' : coveredByP50 ? '~P50扛' : '✗'}
+          </div>
+        </div>
+      </div>`;
+    });
+    html += '</div>';
+  });
+  return html;
+}
+
+function renderRealization(roomList) {
+  const isProposed = roomList === rooms;
+  let html = '<table><tr><th>房间</th><th>' + (isProposed ? '预估兑现率' : '整体兑现率') + '</th><th>去192+兑现率</th><th>依据</th></tr>';
+  roomList.forEach(r => {
+    let real, ratioEx, basis;
+    if (isProposed) {
+      const loAff = afford(r.lower, r.fee, r.base);
+      const p50Aff = afford(r.p50balance, r.fee, r.base);
+      const upAff = r.upper >= 9e8 ? 999 : afford(r.upper, r.fee, r.base);
+      // Estimate: base 0.65 + coverage bonus
+      let est = 0.65;
+      if (loAff >= 12) est += 0.05;
+      if (p50Aff >= 36) est += 0.10; else if (p50Aff >= 24) est += 0.05;
+      if (upAff >= 96) est += 0.05;
+      real = est;
+      ratioEx = Math.min(0.95, est + 0.1);
+      if (loAff >= 12 && p50Aff >= 36) basis = '下限+P50全覆';
+      else if (loAff >= 12) basis = '下限覆P50';
+      else basis = '部分覆盖';
+    } else {
+      real = r.realization;
+      ratioEx = r.ratioExcl192;
+      basis = r.ratioExcl192 >= 0.8 ? '健康' : r.ratioExcl192 >= 0.6 ? '一般' : '差';
+    }
+    const cls = real >= 0.8 ? 'good' : real >= 0.6 ? 'warn' : 'bad';
+    const cls2 = ratioEx >= 0.8 ? 'good' : ratioEx >= 0.6 ? 'warn' : 'bad';
+    html += `<tr><td>${r.name}</td><td class="${cls}">${real.toFixed(2)}</td><td class="${cls2}">${ratioEx.toFixed(2)}</td><td style="font-size:12px; color:var(--muted)">${basis}</td></tr>`;
+  });
+  html += '</table>';
+  if (isProposed) {
+    html += '<div class="note" style="margin-top:12px; font-size:12px;">预估模型：基础 0.65 + 扛下限覆P50(+0.05) + P50扛覆P75(+0.10)/覆P50-P75(+0.05) + 上限不锁(+0.05)。实际兑现率需上线后观测。</div>';
+  }
+  return html;
+}
+
+function renderParamsTable(roomList, isNew) {
+  let html = '<table><tr><th>底分</th><th>下限</th><th>上限</th><th>服务费</th><th>扛下限</th><th>扛上限</th></tr>';
+  roomList.forEach(r => {
+    const loAff = afford(r.lower, r.fee, r.base);
+    const upAff = r.upper >= 9e8 ? '∞' : fmtX(afford(r.upper, r.fee, r.base));
+    html += `<tr>
+      <td>${r.base}</td><td>${fmt(r.lower)}</td><td>${r.upper >= 9e8 ? '无上限' : fmt(r.upper)}</td>
+      <td>${r.fee}</td><td>${fmtX(loAff)}</td><td>${upAff}</td>
+    </tr>`;
+  });
+  html += '</table>';
+  return html;
+}
+
+renderCompare();
+
+// ========== COVERAGE CHART ==========
+function renderCoverageChart() {
+  const div = document.getElementById('coverageChart');
+  let html = '<table><tr><th>分位</th><th>理论倍数</th>';
+  rooms.forEach(r => { html += `<th style="color:${r.color}">${r.name}</th>`; });
+  html += '</tr>';
+
+  theoryPct.forEach(t => {
+    html += `<tr><td>${t.label}</td><td style="font-weight:600;">${t.val}×</td>`;
+    rooms.forEach(r => {
+      const loAff = afford(r.lower, r.fee, r.base);
+      const p50Aff = afford(r.p50balance, r.fee, r.base);
+      if (loAff >= t.val) {
+        html += `<td style="background:rgba(63,185,80,0.15);"><span class="good">✓</span></td>`;
+      } else if (p50Aff >= t.val) {
+        html += `<td style="background:rgba(210,153,29,0.1);"><span class="warn">P50</span></td>`;
+      } else {
+        html += `<td style="background:rgba(248,81,73,0.08);"><span class="bad">✗</span></td>`;
+      }
+    });
+    html += '</tr>';
+  });
+  html += '</table>';
+
+  html += '<div class="note" style="margin-top:12px;">';
+  html += '<span class="badge badge-good">✓</span> 按下限进场的所有玩家都能扛 ';
+  html += '<span class="badge badge-warn" style="margin-left:8px;">P50</span> 中位玩家能扛 ';
+  html += '<span class="badge badge-bad" style="margin-left:8px;">✗</span> 仅 P75+ 高净值玩家能扛';
+  html += '</div>';
+
+  div.innerHTML = html;
+}
+renderCoverageChart();
+</script>
+
+</body>
+</html>

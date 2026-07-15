@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>经典斗地主 — 七档房间设计方案（扛指标单调递增）</title>
+<style>
+  :root { --bg:#0f1117; --card:#1a1d27; --border:#2a2d3a; --text:#c9d1d9; --muted:#8b949e; --accent:#58a6ff; --green:#3fb950; --red:#f85149; --yellow:#d2991d; --purple:#a371f7; --orange:#f0883e; --teal:#39d2c0; --pink:#db61a2; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background:var(--bg); color:var(--text); line-height:1.6; padding:24px; }
+  .container { max-width:1600px; margin:0 auto; }
+  h1 { font-size:28px; margin-bottom:4px; }
+  h2 { font-size:20px; margin:36px 0 16px; padding-bottom:8px; border-bottom:1px solid var(--border); }
+  h3 { font-size:15px; margin:20px 0 10px; }
+  .subtitle { color:var(--muted); margin-bottom:24px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:8px; padding:20px; margin-bottom:20px; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { padding:7px 10px; text-align:right; border-bottom:1px solid var(--border); }
+  th { color:var(--muted); font-weight:600; text-align:center; background:rgba(255,255,255,0.03); font-size:11px; }
+  td:first-child, th:first-child { text-align:left; }
+  .good { color:var(--green); font-weight:600; }
+  .bad { color:var(--red); font-weight:600; }
+  .warn { color:var(--yellow); }
+  .muted { color:var(--muted); }
+
+  .room-grid { display:grid; grid-template-columns:repeat(7, 1fr); gap:10px; margin-bottom:20px; }
+  @media (max-width:1500px) { .room-grid { grid-template-columns:repeat(4, 1fr); } }
+  @media (max-width:900px) { .room-grid { grid-template-columns:repeat(2, 1fr); } }
+  @media (max-width:500px) { .room-grid { grid-template-columns:1fr; } }
+
+  .room-card { background:var(--card); border-radius:10px; padding:12px; text-align:center; transition:transform 0.15s; border-top:3px solid var(--border); }
+  .room-card:hover { transform:translateY(-2px); box-shadow:0 4px 20px rgba(0,0,0,0.3); }
+  .room-card .tier { font-size:11px; letter-spacing:1px; margin-bottom:2px; }
+  .room-card .name { font-size:16px; font-weight:700; margin-bottom:1px; }
+  .room-card .base { font-size:26px; font-weight:800; margin:5px 0; }
+  .room-card .base span { font-size:12px; font-weight:400; color:var(--muted); }
+  .room-card .param { font-size:11px; color:var(--muted); margin:1px 0; }
+  .room-card .param strong { color:var(--text); }
+  .room-card .metric { margin-top:5px; padding:6px; background:rgba(255,255,255,0.03); border-radius:5px; font-size:11px; }
+  .room-card .metric .val { font-size:15px; font-weight:700; }
+  .t1 { border-top-color:#8b949e; } .t1 .tier,.t1 .name { color:#8b949e; }
+  .t2 { border-top-color:#3fb950; } .t2 .tier,.t2 .name { color:#3fb950; }
+  .t3 { border-top-color:#58a6ff; } .t3 .tier,.t3 .name { color:#58a6ff; }
+  .t4 { border-top-color:#39d2c0; } .t4 .tier,.t4 .name { color:#39d2c0; }
+  .t5 { border-top-color:#a371f7; } .t5 .tier,.t5 .name { color:#a371f7; }
+  .t6 { border-top-color:#f0883e; } .t6 .tier,.t6 .name { color:#f0883e; }
+  .t7 { border-top-color:#db61a2; } .t7 .tier,.t7 .name { color:#db61a2; }
+
+  .bar-row { display:flex; align-items:center; margin:2px 0; font-size:11px; }
+  .bar-label { width:50px; text-align:right; margin-right:8px; color:var(--muted); flex-shrink:0; }
+  .bar-track { flex:1; height:16px; background:rgba(255,255,255,0.05); border-radius:3px; overflow:hidden; }
+  .bar-fill { height:100%; border-radius:3px; display:flex; align-items:center; padding-left:6px; font-weight:600; font-size:10px; }
+  .bar-fill.safe { background:rgba(63,185,80,0.35); }
+  .bar-fill.edge { background:rgba(210,153,29,0.35); }
+  .bar-fill.danger { background:rgba(248,81,73,0.35); }
+
+  .compare-grid { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:800px) { .compare-grid { grid-template-columns:1fr; } }
+
+  .tabs { display:flex; gap:4px; margin-bottom:14px; flex-wrap:wrap; }
+  .tab { padding:7px 14px; background:var(--card); border:1px solid var(--border); border-radius:6px; cursor:pointer; color:var(--muted); font-size:12px; transition:all 0.2s; }
+  .tab:hover { color:var(--text); border-color:var(--accent); }
+  .tab.active { background:var(--accent); color:#fff; border-color:var(--accent); }
+
+  input[type=range] { width:100%; margin:6px 0; accent-color:var(--accent); }
+  .slider-label { display:flex; justify-content:space-between; font-size:11px; color:var(--muted); }
+
+  .note { padding:10px 14px; border-left:3px solid var(--accent); border-radius:0 6px 6px 0; font-size:12px; margin:10px 0; background:rgba(88,166,255,0.06); }
+  .note-red { border-left-color:var(--red); background:rgba(248,81,73,0.06); }
+  .note-green { border-left-color:var(--green); background:rgba(63,185,80,0.06); }
+
+  .badge { display:inline-block; padding:1px 7px; border-radius:9px; font-size:10px; font-weight:600; }
+  .badge-good { background:rgba(63,185,80,0.15); color:var(--green); }
+  .badge-bad { background:rgba(248,81,73,0.15); color:var(--red); }
+  .badge-warn { background:rgba(210,153,29,0.15); color:var(--yellow); }
+
+  .flex-between { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; }
+  .gap-md { gap:16px; }
+  .tag { font-size:11px; color:var(--accent); }
+  .progression { display:flex; align-items:center; gap:6px; flex-wrap:wrap; font-size:12px; margin:8px 0; }
+  .progression span { color:var(--muted); }
+  .progression .arrow { color:var(--accent); font-weight:700; }
+</style>
+</head>
+<body>
+<div class="container">
+
+<h1>经典斗地主 — 七档房间设计方案</h1>
+<p class="subtitle">硬约束：扛下限↗ · P50扛↗ · 服务费率↗ · 基于近30天线上全量数据</p>
+
+<!-- ====== 七档总览 ====== -->
+<h2>一、七档房间总览</h2>
+<div class="room-grid" id="roomCards"></div>
+
+<div class="card">
+  <div class="progression">
+    <strong style="color:var(--green);">扛下限</strong>
+    <span>16.0</span><span class="arrow">→</span><span>22.2</span><span class="arrow">→</span><span>24.0</span><span class="arrow">→</span><span>28.6</span><span class="arrow">→</span><span>32.7</span><span class="arrow">→</span><span>39.3</span><span class="arrow">→</span><span style="color:var(--pink); font-weight:700;">70.7</span>
+  </div>
+  <div class="progression">
+    <strong style="color:var(--accent);">P50扛</strong>
+    <span>38.3</span><span class="arrow">→</span><span>46.3</span><span class="arrow">→</span><span>51.7</span><span class="arrow">→</span><span>57.3</span><span class="arrow">→</span><span>74.3</span><span class="arrow">→</span><span>100.7</span><span class="arrow">→</span><span style="color:var(--pink); font-weight:700;">106.4</span>
+  </div>
+  <div class="progression">
+    <strong style="color:var(--yellow);">服务费率</strong>
+    <span>6.1%</span><span class="arrow">→</span><span>7.2%</span><span class="arrow">→</span><span>8.4%</span><span class="arrow">→</span><span>9.4%</span><span class="arrow">→</span><span>10.1%</span><span class="arrow">→</span><span>11.4%</span><span class="arrow">→</span><span style="color:var(--pink); font-weight:700;">11.9%</span>
+  </div>
+</div>
+
+<!-- ====== 设计约束 ====== -->
+<h2>二、设计说明</h2>
+
+<div class="card">
+  <h3>约束条件</h3>
+  <table>
+    <tr><th style="width:30px;">#</th><th>约束</th><th>量化标准</th></tr>
+    <tr><td>1</td><td>扛下限单调递增</td><td>每升一级，按下限进场的扛倍数必须更高</td></tr>
+    <tr><td>2</td><td>P50扛单调递增</td><td>每升一级，中位玩家的扛倍数必须更高 → 升级有实在好处</td></tr>
+    <tr><td>3</td><td>服务费率单调递增</td><td>更高等级 = 更好服务 = 更高费率，6-12% 区间</td></tr>
+    <tr><td>4</td><td>上限分层覆盖</td><td>48× / 48× / 96× / 192× / 192× / 384× / 无上限</td></tr>
+    <tr><td>5</td><td>兑现率 ≥ 0.80</td><td>P50扛 ≥ 30×</td></tr>
+  </table>
+</div>
+
+<div class="card">
+  <h3>核心公式</h3>
+  <div style="background:rgba(255,255,255,0.03); padding:12px; border-radius:8px; font-size:14px; font-family:monospace; margin:6px 0;">
+    地主扛 = (携银 − 服务费) / (2 × 底分)<br>
+    Vavg = 底分 × 农民平均倍数 × 三斗系数<br>
+    费率 = 服务费 / Vavg
+  </div>
+</div>
+
+<!-- ====== 参数对照 ====== -->
+<h2>三、七档参数对照</h2>
+<div class="card" id="paramTable"></div>
+
+<!-- ====== 交互推演 ====== -->
+<h2>四、交互推演</h2>
+<div class="card">
+  <div class="flex-between gap-md">
+    <div style="flex:1; min-width:180px;">
+      <label style="font-size:12px; color:var(--muted);">玩家携银</label>
+      <input type="range" id="balSlider" min="1000" max="500000" value="50000" step="1000">
+      <div class="slider-label"><span>1,000</span><span>500,000</span></div>
+      <div style="text-align:center; font-size:26px; font-weight:700; margin:6px 0;" id="balDisplay">50,000</div>
+    </div>
+    <div style="flex:1; min-width:180px;">
+      <label style="font-size:12px; color:var(--muted);">当前理论倍数</label>
+      <input type="range" id="magSlider" min="3" max="384" value="24" step="3">
+      <div class="slider-label"><span>3×</span><span>384×</span></div>
+      <div style="text-align:center; font-size:26px; font-weight:700; margin:6px 0;" id="magDisplay">24×</div>
+    </div>
+  </div>
+  <div id="affordResult" style="margin-top:14px;"></div>
+</div>
+
+<!-- ====== 覆盖率矩阵 ====== -->
+<h2>五、理论倍数覆盖率矩阵</h2>
+<div class="card">
+  <p style="font-size:12px; color:var(--muted); margin-bottom:8px;">
+    <span class="badge badge-good">✓</span> 下限扛 · <span class="badge badge-warn">P50</span> 中位扛 · <span class="badge badge-bad">✗</span> 仅高净值扛
+  </p>
+  <div id="coverageMatrix"></div>
+</div>
+
+<!-- ====== 玩家分流 ====== -->
+<h2>六、当前七房 → 新七档分流</h2>
+<div class="card" id="migrationTable"></div>
+
+</div>
+
+<script>
+// ========== ROOM DATA ==========
+const rooms = [
+  { id:1, name:'新手场', tier:'TIER 1', base:30,   lower:1000,   upper:3000,    fee:40,   cls:'t1', p50bal:2340,   farmerAvg:21.7, color:'#8b949e', cover:'48×',  players:22118,  source:'30/110底分' },
+  { id:2, name:'初级场', tier:'TIER 2', base:120,  lower:5500,   upper:15000,   fee:180,  cls:'t2', p50bal:11299,  farmerAvg:20.8, color:'#3fb950', cover:'48×',  players:120747, source:'250底分' },
+  { id:3, name:'中级场', tier:'TIER 3', base:180,  lower:9000,   upper:40000,   fee:350,  cls:'t3', p50bal:18958,  farmerAvg:23.2, color:'#58a6ff', cover:'96×',  players:43407,  source:'500底分' },
+  { id:4, name:'进阶级', tier:'TIER 4', base:250,  lower:15000,  upper:100000,  fee:700,  cls:'t4', p50bal:29335,  farmerAvg:29.7, color:'#39d2c0', cover:'192×', players:29457,  source:'1200底分' },
+  { id:5, name:'高级场', tier:'TIER 5', base:600,  lower:40000,  upper:250000,  fee:800,  cls:'t5', p50bal:89905,  farmerAvg:13.2, color:'#a371f7', cover:'192×', players:3166,   source:'2500底分' },
+  { id:6, name:'顶级场', tier:'TIER 6', base:1000, lower:80000,  upper:800000,  fee:1400, cls:'t6', p50bal:202881, farmerAvg:12.3, color:'#f0883e', cover:'384×', players:1065,   source:'4000底分' },
+  { id:7, name:'至尊场', tier:'TIER 7', base:1400, lower:200000, upper:999999999,fee:2000, cls:'t7', p50bal:299985, farmerAvg:12.0, color:'#db61a2', cover:'∞',    players:659,    source:'≥20万余额' },
+];
+
+const theoryPct = [
+  {label:'P25',val:6},{label:'P35',val:12},{label:'P50',val:12},
+  {label:'P75',val:24},{label:'P85',val:48},{label:'P90',val:48},
+  {label:'P95',val:96},{label:'P99',val:192},
+];
+
+function afford(bal,fee,base) { return (bal-fee)/(2*base); }
+function fmt(n) { if(n>=1e8) return (n/1e8).toFixed(1)+'亿'; if(n>=1e4) return (n/1e4).toFixed(1)+'万'; return n.toLocaleString(); }
+function fmtX(n) { if(n>=1000) return Math.round(n)+'×'; return n.toFixed(1)+'×'; }
+
+// ====== ROOM CARDS ======
+document.getElementById('roomCards').innerHTML = rooms.map(r => {
+  const lo = afford(r.lower,r.fee,r.base), p50 = afford(r.p50bal,r.fee,r.base);
+  const up = r.upper>=9e8 ? '∞' : fmtX(afford(r.upper,r.fee,r.base));
+  const rate = (r.fee/(r.base*r.farmerAvg)*100);
+  const estReal = p50 >= 100 ? 0.90 : p50 >= 50 ? 0.85 : p50 >= 35 ? 0.82 : 0.80;
+  return `<div class="room-card ${r.cls}">
+    <div class="tier">${r.tier}</div><div class="name">${r.name}</div>
+    <div class="base">${r.base}<span> 底分</span></div>
+    <div class="param">下限 <strong>${fmt(r.lower)}</strong> · 上限 <strong>${r.upper>=9e8?'无上限':fmt(r.upper)}</strong></div>
+    <div class="param">服务费 <strong>${fmt(r.fee)}</strong> · 覆盖 <strong>${r.cover}</strong></div>
+    <div class="param" style="font-size:10px;">${r.source} · ${fmt(r.players)}人</div>
+    <div class="metric">
+      <div style="color:var(--muted); font-size:10px;">扛下限 / P50扛 / 扛上限</div>
+      <div class="val">${fmtX(lo)} / ${fmtX(p50)} / ${up}</div>
+    </div>
+    <div class="metric" style="margin-top:3px;">
+      <div style="color:var(--muted); font-size:10px;">P50余额 · 费率 · 兑现率</div>
+      <div class="val">${fmt(r.p50bal)} · <span style="color:var(--yellow);">${rate.toFixed(1)}%</span> · <span class="good">${estReal.toFixed(2)}</span></div>
+    </div>
+  </div>`;
+}).join('');
+
+// ====== PARAM TABLE ======
+document.getElementById('paramTable').innerHTML = (() => {
+  let h = '<table><tr><th>#</th><th>名称</th><th>底分</th><th>下限</th><th>上限</th><th>服务费</th><th>扛下限</th><th>P50扛</th><th>扛上限</th><th>费率</th><th>覆盖</th><th>兑现率</th></tr>';
+  rooms.forEach((r,i) => {
+    const lo = afford(r.lower,r.fee,r.base), p50 = afford(r.p50bal,r.fee,r.base);
+    const up = r.upper>=9e8 ? '∞' : fmtX(afford(r.upper,r.fee,r.base));
+    const rate = (r.fee/(r.base*r.farmerAvg)*100);
+    const estReal = p50 >= 100 ? 0.90 : p50 >= 50 ? 0.85 : p50 >= 35 ? 0.82 : 0.80;
+    h += `<tr>
+      <td style="color:${r.color}; font-weight:700;">${i+1}</td>
+      <td style="font-weight:600;">${r.name}</td>
+      <td>${r.base}</td><td>${fmt(r.lower)}</td><td>${r.upper>=9e8?'无上限':fmt(r.upper)}</td>
+      <td>${fmt(r.fee)}</td><td>${fmtX(lo)}</td><td style="font-weight:600;">${fmtX(p50)}</td><td>${up}</td>
+      <td style="color:var(--yellow);">${rate.toFixed(1)}%</td><td>${r.cover}</td>
+      <td class="good">${estReal.toFixed(2)}</td></tr>`;
+  });
+  return h+'</table>';
+})();
+
+// ====== SLIDER ======
+const balS=document.getElementById('balSlider'), magS=document.getElementById('magSlider');
+function updSlider() {
+  const bal=+balS.value, mag=+magS.value;
+  document.getElementById('balDisplay').textContent=fmt(bal);
+  document.getElementById('magDisplay').textContent=mag+'×';
+  let h='<table><tr><th>房间</th><th>底分</th><th>进场</th><th>可扛</th><th>'+mag+'×扛？</th><th>地主需付</th></tr>';
+  rooms.forEach(r=>{
+    const can=bal>=r.lower, aff=afford(bal,r.fee,r.base), ok=aff>=mag, need=mag*2*r.base;
+    h+=`<tr><td style="color:${r.color};font-weight:600;">${r.name}</td><td>${r.base}</td>
+      <td>${can?'<span class="good">✓</span>':r.lower-bal>0?'<span class="bad">✗ 差'+fmt(r.lower-bal)+'</span>':'<span class="bad">✗</span>'}</td>
+      <td style="font-weight:600;">${fmtX(aff)}</td>
+      <td>${ok?'<span class="good">✓</span>':'<span class="bad">✗ 差'+fmt(need-(bal-r.fee))+'</span>'}</td>
+      <td>${fmt(need)}</td></tr>`;
+  });
+  h+='</table>';
+  const ok=rooms.filter(r=>bal>=r.lower);
+  if(ok.length){ const b=ok[ok.length-1]; h+=`<div class="note note-green">推荐 <strong>${b.name}</strong>（底分 ${b.base}），可扛 ${fmtX(afford(bal,b.fee,b.base))}，上限覆盖 ${b.cover}</div>`; }
+  document.getElementById('affordResult').innerHTML=h;
+}
+balS.addEventListener('input',updSlider); magS.addEventListener('input',updSlider); updSlider();
+
+// ====== COVERAGE MATRIX ======
+(function(){
+  let h='<table><tr><th>分位</th><th>理论</th>';
+  rooms.forEach(r=>h+=`<th style="color:${r.color}">${r.name}<br><span style="font-weight:400;font-size:10px;">${r.base}底分</span></th>`);
+  h+='</tr>';
+  theoryPct.forEach(t=>{
+    h+=`<tr><td>${t.label}</td><td style="font-weight:600;">${t.val}×</td>`;
+    rooms.forEach(r=>{
+      const lo=afford(r.lower,r.fee,r.base), p50=afford(r.p50bal,r.fee,r.base);
+      h+=lo>=t.val?`<td style="background:rgba(63,185,80,0.12);"><span class="good">✓</span></td>`:
+          p50>=t.val?`<td style="background:rgba(210,153,29,0.1);"><span class="warn">P50</span></td>`:
+          `<td style="background:rgba(248,81,73,0.07);"><span class="bad">✗</span></td>`;
+    });
+    h+='</tr>';
+  });
+  h+='</table><div style="margin-top:12px;font-size:12px;display:flex;gap:10px;flex-wrap:wrap;">';
+  rooms.forEach(r=>{
+    const lo=afford(r.lower,r.fee,r.base), p50=afford(r.p50bal,r.fee,r.base);
+    const covLo=theoryPct.filter(t=>lo>=t.val), covP50=theoryPct.filter(t=>p50>=t.val);
+    const rate=(r.fee/(r.base*r.farmerAvg)*100);
+    h+=`<div style="flex:1;min-width:120px;padding:8px;background:rgba(255,255,255,0.02);border-radius:6px;">
+      <div style="font-weight:600;color:${r.color};margin-bottom:3px;">${r.name}</div>
+      <div style="font-size:10px;color:var(--muted);">下限→<strong style="color:var(--text);">${covLo.length?covLo[covLo.length-1].label:'—'}(${covLo.length?covLo[covLo.length-1].val:'—'}×)</strong></div>
+      <div style="font-size:10px;color:var(--muted);">P50→<strong style="color:var(--text);">${covP50.length?covP50[covP50.length-1].label:'—'}(${covP50.length?covP50[covP50.length-1].val:'—'}×)</strong></div>
+      <div style="font-size:10px;color:var(--muted);">费率<strong style="color:var(--yellow);">${rate.toFixed(1)}%</strong></div>
+    </div>`;
+  });
+  h+='</div>';
+  document.getElementById('coverageMatrix').innerHTML=h;
+})();
+
+// ====== MIGRATION TABLE ======
+(function(){
+  const curRooms = [
+    { name:'742 (30底分)',    base:30,   p50bal:2340,  farmerAvg:21.7, fee:20,  r192:0.78 },
+    { name:'420 (110底分)',   base:110,  p50bal:2341,  farmerAvg:23.6, fee:125, r192:0.38 },
+    { name:'4484/12074 (250)',base:250,  p50bal:11299, farmerAvg:20.8, fee:350, r192:0.50 },
+    { name:'6314 (500底分)',  base:500,  p50bal:18958, farmerAvg:23.2, fee:750, r192:0.58 },
+    { name:'11168 (1200底分)',base:1200, p50bal:29335, farmerAvg:29.7, fee:1800,r192:0.59 },
+    { name:'10336 (2500底分)',base:2500, p50bal:89905, farmerAvg:13.2, fee:4000,r192:0.73 },
+    { name:'16445 (4000底分)',base:4000, p50bal:202881,farmerAvg:12.3, fee:7200,r192:0.91 },
+  ];
+  const map = [
+    [curRooms[0], rooms[0]], [curRooms[1], rooms[0]],
+    [curRooms[2], rooms[1]], [curRooms[3], rooms[2]],
+    [curRooms[4], rooms[3]], [curRooms[5], rooms[4]],
+    [curRooms[6], rooms[5]],
+  ];
+  let h='<table><tr><th>当前房</th><th>底分</th><th>P50余额</th><th>当前P50扛</th><th>当前兑现率</th><th style="color:var(--accent);">→ 新房间</th><th>新底分</th><th>新P50扛</th><th>新兑现率</th></tr>';
+  map.forEach(([cur, nxt]) => {
+    const curAff = afford(cur.p50bal, cur.fee, cur.base);
+    const nxtAff = afford(cur.p50bal, nxt.fee, nxt.base);
+    const cls = curAff>=35?'good':curAff>=18?'warn':'bad';
+    const estReal = nxtAff >= 100 ? 0.90 : nxtAff >= 50 ? 0.85 : nxtAff >= 35 ? 0.82 : 0.80;
+    h += `<tr>
+      <td>${cur.name}</td><td>${cur.base}</td><td>${fmt(cur.p50bal)}</td>
+      <td class="${cls}">${fmtX(curAff)}</td>
+      <td class="${cur.r192>=0.7?'good':cur.r192>=0.5?'warn':'bad'}">${cur.r192.toFixed(2)}</td>
+      <td style="color:var(--accent);font-weight:600;">→ ${nxt.name}</td>
+      <td>${nxt.base}</td>
+      <td class="good">${fmtX(nxtAff)}</td>
+      <td class="good">${estReal.toFixed(2)}</td></tr>`;
+  });
+  // Room 7 - new players from >=200K tier
+  h += `<tr style="background:rgba(219,97,162,0.06);">
+    <td style="color:var(--pink);">— 新增 —</td><td>—</td><td>≥20万</td>
+    <td>—</td><td>—</td>
+    <td style="color:var(--accent);font-weight:600;">→ ${rooms[6].name}</td>
+    <td>${rooms[6].base}</td>
+    <td class="good">${fmtX(afford(rooms[6].p50bal, rooms[6].fee, rooms[6].base))}</td>
+    <td class="good">0.92</td></tr>`;
+  h += '</table>';
+  document.getElementById('migrationTable').innerHTML = h;
+})();
+</script>
+</body>
+</html>
