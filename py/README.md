@@ -15,6 +15,35 @@ py/
 └── logs/                        # 调度器运行日志（.gitignore 排除，自动生成）
 ```
 
+## 跨平台：macOS 用户
+
+下方命令均为 Windows / PowerShell 写法。macOS 做两处适配即可直接用：
+
+**1. 配置 `py` 命令（一次性）**：macOS 没有 Windows 的 Python Launcher，把下面这段加进 `~/.zshrc`——它会自动丢掉 `-3` 版本参数，并把（被引号包裹的）反斜杠路径转为正斜杠：
+
+```zsh
+py() {
+    local args=()
+    for arg in "$@"; do
+        [[ "$arg" == -[0-9]* ]] && continue   # 丢弃 -3 / -2 等 Windows 版本选择参数
+        args+=("${arg//\\//}")                 # Windows 路径分隔符 \ -> Unix /
+    done
+    uv run python "${args[@]}"
+}
+```
+
+`source ~/.zshrc` 生效。项目根有 uv 管理的 `.venv/`，`uv run python` 会自动复用该环境。
+
+**2. 路径用 `./` 不是 `.\`**：zsh 会把不加引号的 `.\` 里的反斜杠当转义符吃掉（`.\daily_backfill.py` → `.daily_backfill.py`，文件找不到），必须用正斜杠。`-3` 保留即可，函数会自动丢弃：
+
+```bash
+# 两条日常命令的 macOS 写法（.\  →  ./）
+py -3 -u ./daily_backfill.py --start 20260715 --end 20260715
+py -3 -u ./daily_retention.py
+```
+
+> 其余命令同理：把 `.\` 换成 `./` 即可直接复制粘贴。务必在 `py/` 目录下执行（脚本靠同目录 `from sr_exec import ...` 导入）。
+
 ## 日常运维：两条命令
 
 ### 每天初始化数据：daily_backfill.py
@@ -162,8 +191,9 @@ py -3 -u .\sr_exec.py -f check_data.sql
 ## 环境要求
 
 - Windows + PowerShell + Python 3（用 `py -3` 调用，不要直接用 `python`）
+- macOS：见上方「跨平台：macOS 用户」，配置 `py` 函数 + 路径改用 `./`
 - 能直连 `flowops.tcy365.net:7788`（内网，无需代理）
-- 已安装 `requests` 和 `pandas`：`py -3 -m pip install requests pandas`
+- 已安装 `requests` 和 `pandas`：`py -3 -m pip install requests pandas`（macOS 用 `uv pip install requests pandas`）
 - DDL 操作（CREATE/ALTER/DROP）禁止走脚本，必须在 CloudBeaver 网页端手动执行（详见根目录 [CLAUDE.md](../CLAUDE.md)）
 
 ## 相关文档
