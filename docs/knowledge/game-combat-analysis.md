@@ -93,7 +93,7 @@ ORDER BY d.dt, d.channel;
 - 局数：`COUNT(DISTINCT resultguid)`；人均局：`COUNT(*) / COUNT(DISTINCT uid)`。
 - 胜率：`SUM(CASE WHEN result_id=1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)`（⚠️ 新手房异常高，见 [data-gotchas.md](data-gotchas.md) §2）。
 - 银子净盈亏：`SUM(end_money - start_money)`；单局输赢（不含费）：`AVG(game_outcome_money)`。
-- 时长：`AVG(timecost)`（ddz）/ `AVG(time_cost)`（srddz / crazyddz）。
+- 时长：`AVG(timecost)`（ddz）/ `AVG(time_cost)`（srddz / crazyddz）。ddz 单局实测 **AVG ≈ 88s、中位 85s**（勿凭常识猜对局耗时）。
 - 新手保护占比（ddz）：`SUM(CASE WHEN shuffle_type=201 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)`——DWS 已是独立列，无需解析 JSON。
 
 ## 五、执行查询
@@ -105,3 +105,17 @@ py -3 -u .\py\sr_exec.py -f <query.sql>
 ```
 
 临时 SQL 放 `py/tmp/`（已 gitignore）；沉淀分析放 `analysis/plan/`，结论放 `analysis/result/`。
+
+**sr_exec 执行坑**：
+
+- `PERCENTILE` 经 sr_exec 会静默失败（返回空/错乱）——改用 `ROW_NUMBER()` 窗口或 `SUM/CASE` 累计手动算分位值。
+- 列名 `role` 是保留字，须加反引号（`` `role` ``）。
+- DWS 数据动态回填、早期 dt 会漂移，跑历史窗口前先 `COUNT(*)` 对齐天数；口径"去掉 192+"实际即 `≤96`。
+
+## 六、倍数(magnification)口径与费率基准
+
+- **理论倍数 vs 实际倍数**：做倍数分布/费率分析一律用理论 `magnification`（全倍率链）；`real_magnification` 是破产截断后的实现值，偏低、不可用。
+- **角色差异**：同局 magnification 地主行 = 2M、农民行 = M（地主赔两边）。统计农民倍数用 `WHERE role=2`，别混入地主翻倍行。
+- **≤48 部分贡献均值是费率甜点基准**：`Σ(magnification WHERE mag≤48) / 总局数`（非条件子集均值）。≤48 跨房稳定（约 11.5–12.7），覆盖 ~87% 对局，算出费率正好落 6–12% 目标区间。用 ≤24 偏高（12–16%）、用全部均值偏低（4–6%，被尾部带飞）。详见 [房间费率方法论](../../room-design/classic/00-framework.md)。
+- **`compute_all` 截断公式曾多乘 2**，致高估；正确判定用 `start_money < magnification × 底分`。
+- **极端高倍非脏数据**：magnification 最大可达 **98304**，是不洗牌(play_mode=2)玩法的真实现象；倍数统计须按 play_mode 分层或用中位数，勿当异常剔除。
