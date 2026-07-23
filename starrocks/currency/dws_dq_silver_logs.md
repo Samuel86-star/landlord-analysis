@@ -111,7 +111,7 @@ PROPERTIES (
 ```
 
 ### 数据导入 SQL
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_dq_silver_logs.py`](../../py/batch_insert_dq_silver_logs.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_dq_silver_logs.py`](../../ops/py/batch_insert_dq_silver_logs.py)
 
 > **依赖**：tcy_dwd.dwd_silver_si、dq_channel_category_map 等维表 对应日期需先回填。
 

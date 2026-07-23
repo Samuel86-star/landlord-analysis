@@ -4,12 +4,12 @@
 >
 > - **时间窗口**：注册与对局均为 `2026-06-18 ~ 2026-06-24`（7 日固定窗口，不向 06-25 追踪）
 > - **Cohort**：首次经典斗地主对局发生在经典玩法初级房 `4484` 或 `12074`、且发生在注册当日的玩家（robot != 1，play_mode 1-6）
-> - **数据来源**：`tcy_temp.dws_ddz_daily_game`、`tcy_temp.dws_dq_app_daily_reg`（经 `py/sr_exec.py` 的 `query_paged` 分页拉取，共 21,025 行明细）
+> - **数据来源**：`tcy_temp.dws_ddz_daily_game`、`tcy_temp.dws_dq_app_daily_reg`（经 `ops/py/sr_exec.py` 的 `query_paged` 分页拉取，共 21,025 行明细）
 > - **牌力可信前提**：`card_power` 算法已于 2026-06-15 修复，本窗口在其后，`card_power` / `card_power_final` 可信
 > - **手牌功能上线时间**：上游"手牌上报"功能 2026-06-25 早上才上线，本报告窗口（06-18~24）**早于上线时点**，故 `extend_content.card_info.hand_cards` / `bottom_cards` 在窗口内 0 覆盖是预期的（已实测 03-15~06-24 全部 0 覆盖，06-25 覆盖 92.5%）。下一版报告将用含 06-25~07-01 的窗口重做手牌结构模块
 > - **分析性质**：纯描述性，只呈现可观察事实与机制字段，不做因果推断
 > - **范围调整**：框架原计划第七章"手牌结构解析"因本窗口手牌功能未上线无法落地，改用 `card_power` 节点里表文档未记录的 `bomb_cnt` / `bomb_final`（持有炸弹数）替代分析
-> - **配套产出**：`py/first-classic-beginner/output/*.csv`（各模块聚合结果）
+> - **配套产出**：`ops/py/first-classic-beginner/output/*.csv`（各模块聚合结果）
 
 ---
 
@@ -217,25 +217,25 @@
 
 | 文件 | 用途 | 关键产物 |
 | ---- | ---- | ---- |
-| `py/sr_exec.py` | StarRocks 客户端（含新增 `query_paged`，突破 200 行/页硬限制） | `StarRocksClient.query_paged(sql, page_size=5000)` |
-| `py/first-classic-beginner/sql/01_cohort_first3_detail.sql` | cohort + 前 3 局明细线性 CTE 导出（含 `bomb_cnt`/`bomb_final` 现取） | 21,025 行 × 30 字段 |
-| `py/first-classic-beginner/run_analysis.py` | 主编排：拉数 + 6 模块聚合 + 落 CSV | `output/*.csv` |
-| `py/first-classic-beginner/output/01a_cohort_room.csv` | 首局房间分布 | 2 行 |
-| `py/first-classic-beginner/output/01b_cohort_date.csv` | 首局日期分布 | 7 行 |
-| `py/first-classic-beginner/output/01c_cohort_channel.csv` | 渠道分布 | 16 行 |
-| `py/first-classic-beginner/output/01d_cohort_reachability.csv` | 可达性 | 3 行 |
-| `py/first-classic-beginner/output/02_game_seq_overview.csv` | 局序概览 | 3 行 |
-| `py/first-classic-beginner/output/03_card_power_distribution.csv` | 牌力分布 | 12 行 |
-| `py/first-classic-beginner/output/03b_card_power_by_role.csv` | 牌力分角色 | 24 行 |
-| `py/first-classic-beginner/output/04_shuffle_mechanism.csv` | 配牌机制 | 6 行 |
-| `py/first-classic-beginner/output/04b_shuffle_times.csv` | 重洗次数分布 | 6 行 |
-| `py/first-classic-beginner/output/05a_bomb_hold_overview.csv` | 持有炸弹概览 | 3 行 |
-| `py/first-classic-beginner/output/05b_bomb_cnt_dist.csv` | bomb_cnt 分布 | 5 行 |
-| `py/first-classic-beginner/output/05c_bomb_by_role.csv` | 持有炸弹分角色 | 6 行 |
-| `py/first-classic-beginner/output/06_cardpower_result.csv` | 牌力-胜负对齐 | 12 行 |
-| `py/first-classic-beginner/output/06b_cardpower_result_by_role.csv` | 牌力-胜负分角色 | 24 行 |
-| `py/first-classic-beginner/output/06c_cardpower_result_by_protect.csv` | 第 1 局新手保护 vs 非保护 | 8 行 |
-| `py/first-classic-beginner/output/00_first3_detail_raw.csv` | 原始明细（备查） | 21,025 行 |
+| `ops/py/sr_exec.py` | StarRocks 客户端（含新增 `query_paged`，突破 200 行/页硬限制） | `StarRocksClient.query_paged(sql, page_size=5000)` |
+| `ops/py/first-classic-beginner/sql/01_cohort_first3_detail.sql` | cohort + 前 3 局明细线性 CTE 导出（含 `bomb_cnt`/`bomb_final` 现取） | 21,025 行 × 30 字段 |
+| `ops/py/first-classic-beginner/run_analysis.py` | 主编排：拉数 + 6 模块聚合 + 落 CSV | `output/*.csv` |
+| `ops/py/first-classic-beginner/output/01a_cohort_room.csv` | 首局房间分布 | 2 行 |
+| `ops/py/first-classic-beginner/output/01b_cohort_date.csv` | 首局日期分布 | 7 行 |
+| `ops/py/first-classic-beginner/output/01c_cohort_channel.csv` | 渠道分布 | 16 行 |
+| `ops/py/first-classic-beginner/output/01d_cohort_reachability.csv` | 可达性 | 3 行 |
+| `ops/py/first-classic-beginner/output/02_game_seq_overview.csv` | 局序概览 | 3 行 |
+| `ops/py/first-classic-beginner/output/03_card_power_distribution.csv` | 牌力分布 | 12 行 |
+| `ops/py/first-classic-beginner/output/03b_card_power_by_role.csv` | 牌力分角色 | 24 行 |
+| `ops/py/first-classic-beginner/output/04_shuffle_mechanism.csv` | 配牌机制 | 6 行 |
+| `ops/py/first-classic-beginner/output/04b_shuffle_times.csv` | 重洗次数分布 | 6 行 |
+| `ops/py/first-classic-beginner/output/05a_bomb_hold_overview.csv` | 持有炸弹概览 | 3 行 |
+| `ops/py/first-classic-beginner/output/05b_bomb_cnt_dist.csv` | bomb_cnt 分布 | 5 行 |
+| `ops/py/first-classic-beginner/output/05c_bomb_by_role.csv` | 持有炸弹分角色 | 6 行 |
+| `ops/py/first-classic-beginner/output/06_cardpower_result.csv` | 牌力-胜负对齐 | 12 行 |
+| `ops/py/first-classic-beginner/output/06b_cardpower_result_by_role.csv` | 牌力-胜负分角色 | 24 行 |
+| `ops/py/first-classic-beginner/output/06c_cardpower_result_by_protect.csv` | 第 1 局新手保护 vs 非保护 | 8 行 |
+| `ops/py/first-classic-beginner/output/00_first3_detail_raw.csv` | 原始明细（备查） | 21,025 行 |
 
 **一键复跑**：
 

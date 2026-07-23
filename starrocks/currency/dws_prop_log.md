@@ -104,7 +104,7 @@ PROPERTIES (
 ```
 
 ### 数据导入 SQL
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_prop_log.py`](../../py/batch_insert_prop_log.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_prop_log.py`](../../ops/py/batch_insert_prop_log.py)
 
 > **依赖**：hive_catalog_cdh5.dwd.fact_gtpl_prop_detail 对应日期需先回填。
 

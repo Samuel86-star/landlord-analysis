@@ -18,8 +18,8 @@
 | app_code | 客户端 | 平台（group_id） | 备注 |
 | -------- | ------ | ---------------- | ---- |
 | `zgda` | Cocos-Lua | 多平台 | `group_id=1` 为内部测试号（需剔除，见 [data-gotchas.md](data-gotchas.md) §8） |
-| `zgdx` | Cocos-Creator | 安卓 + iOS（8,88） | iOS 端对局 2026-07-13 起才有 |
-| `zgde` | 新包体 | 56（非 iOS / 非标准安卓，平台待确认） | 2026-06-30 起放量 |
+| `zgdx` | Cocos-Creator | 安卓 + iOS（8,88） | — |
+| `zgde` | 新包体 | 56（非 iOS / 非标准安卓，平台待确认） | — |
 
 > app_code 会随包体迭代增减；遇到没见过的 app_code，用下文「平台分桶」SQL 自查 group_id 分布。
 

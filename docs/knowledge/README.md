@@ -10,6 +10,7 @@
 2. **不知道房间/玩法属于哪张表**：room_id 1124 在哪？→ [game-combat-analysis.md](game-combat-analysis.md) 的「房间定位法」
 3. **DAU/活跃口径每次重推**：用哪个表、哪些字段、怎么分桶？→ [dau-active-cohort.md](dau-active-cohort.md)
 4. **结果解读反复求证**：胜率 93% 正常吗？`robot=0` 说明没机器人吗？→ [data-gotchas.md](data-gotchas.md)
+5. **StarRocks 性能/运维排查**：查询慢、磁盘涨？→ [starrocks-ops.md](starrocks-ops.md)
 
 ## 精准加载路由
 
@@ -21,9 +22,12 @@
 | DAU / 日活 / 活跃 / 渗透 / 人群 / 注册 | [dau-active-cohort.md](dau-active-cohort.md) | DAU 与人群口径 + 模板 SQL |
 | 对局 / 房间 / 战绩 / 胜率 / game_id / room_id | [game-combat-analysis.md](game-combat-analysis.md) | 对局表矩阵 + 分析 recipe |
 | 解读结果 / 排查异常 / 反直觉 | [data-gotchas.md](data-gotchas.md) | robot、胜率、符号等陷阱 |
+| StarRocks 运维 / 性能 / 读写放大 | [starrocks-ops.md](starrocks-ops.md) | 读写放大排查 SQL + 调优锦囊 |
+| 留存分析 SQL | [../lessons/retention-sql-pattern.md](../lessons/retention-sql-pattern.md) | CTE 骨架、矩阵坍缩、分区裁剪 |
+| 疑难排查案例 | [../lessons/troubleshooting.md](../lessons/troubleshooting.md) | strict mode 回滚、INSERT 0 行 |
 
 ## 维护约定
 
 - 发现新陷阱 / 新渠道 / 新表 → 更新对应文件，并在本 README 路由表补关键词。
 - 字段是否下线以 [SQL_STYLE.md](../../SQL_STYLE.md) 第八节为准，本库只放业务口径。
-- 沉淀的分析方案进 `analysis/plan/`，结论进 `analysis/result/`；本库只放"可复用知识"，不放一次性结论。
+- 沉淀的分析方案进 `docs/analysis/plan/`，结论进 `docs/analysis/result/`；本库只放"可复用知识"，不放一次性结论。

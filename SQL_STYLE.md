@@ -2,9 +2,9 @@
 
 > 本规范面向 StarRocks 上的**查询与分析 SQL（SELECT）**编写，沉淀自 retention 目录全篇重构经验。AI 在本项目编写 SQL 时必须参照本规范。
 >
-> **适用范围**：仅查询 SQL。**DDL（CREATE/ALTER/DROP TABLE）一律禁止**，须由用户在 CloudBeaver 手动执行；回填 INSERT 规范见 [py/README.md](py/README.md)。
+> **适用范围**：仅查询 SQL。**DDL（CREATE/ALTER/DROP TABLE）一律禁止**，须由用户在 CloudBeaver 手动执行；回填 INSERT 规范见 [ops/py/README.md](ops/py/README.md)。
 >
-> 项目 SQL 基础约定（别名、CTE、JOIN 检查、StarRocks 优化、代码审查）见 [CLAUDE.md](CLAUDE.md) 的「SQL 编写规范」一节；留存业务专项口径见 [lessons/retention-sql-pattern.md](lessons/retention-sql-pattern.md)。
+> 项目 SQL 基础约定（别名、CTE、JOIN 检查、StarRocks 优化、代码审查）见 [CLAUDE.md](CLAUDE.md) 的「SQL 编写规范」一节；留存业务专项口径见 [docs/lessons/retention-sql-pattern.md](docs/lessons/retention-sql-pattern.md)。
 
 ---
 
@@ -267,4 +267,4 @@ WHEN s.max_win_streak <= 4 THEN 'D: 3-4连胜'
 
 ---
 
-> 相关文档：[CLAUDE.md](CLAUDE.md)（项目协作指南，含 SQL 基础约定）、[lessons/retention-sql-pattern.md](lessons/retention-sql-pattern.md)（留存业务专项口径）、[lessons/starrocks.md](lessons/starrocks.md)（读/写放大排查）。
+> 相关文档：[CLAUDE.md](CLAUDE.md)（项目协作指南，含 SQL 基础约定）、[docs/lessons/retention-sql-pattern.md](docs/lessons/retention-sql-pattern.md)（留存业务专项口径）、[docs/knowledge/starrocks-ops.md](docs/knowledge/starrocks-ops.md)（读/写放大排查）。

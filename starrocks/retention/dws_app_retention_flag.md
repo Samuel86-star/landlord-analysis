@@ -102,7 +102,7 @@ PROPERTIES (
 
 ### 增量数据导入
 
-按 reg_date `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_retention_flag.py`](../../py/batch_insert_retention_flag.py)
+按 reg_date `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_retention_flag.py`](../../ops/py/batch_insert_retention_flag.py)
 
 > **依赖**：`dws_dq_app_daily_reg`、`dws_app_game_active`、`dws_dq_daily_login` 在 reg_date 当天和 reg_date+N 天的数据需已回填。
 
@@ -239,4 +239,4 @@ tcy_temp.dws_app_firstday_game_stat  （首日游戏指标）
 
 > **文档版本**：v1.0
 > **创建时间**：2026-06-18
-> **设计来源**：[analysis/plan/retention/20260615/discussion-log.md](../../analysis/plan/retention/20260615/discussion-log.md) 讨论的"首日指标 + 留存 flag"拆分方案
+> **设计来源**：[analysis/plan/retention/20260615/discussion-log.md](../../docs/analysis/plan/retention/20260615/discussion-log.md) 讨论的"首日指标 + 留存 flag"拆分方案

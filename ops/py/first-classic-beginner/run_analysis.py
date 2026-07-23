@@ -9,7 +9,7 @@
 的「持有炸弹分析」替代。
 
 用法:
-    py -3 -u py/first-classic-beginner/run_analysis.py
+    py -3 -u ops/py/first-classic-beginner/run_analysis.py
 """
 import sys
 from pathlib import Path

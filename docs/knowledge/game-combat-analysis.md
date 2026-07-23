@@ -42,11 +42,11 @@ WHERE game_id=53 AND room_id IN (<ids>) AND dt BETWEEN '<start>' AND '<end>'
 GROUP BY 1,2,3 ORDER BY 1,2;
 ```
 
-> **房间等级 / 玩法一律查 `tcy_temp.dq_game_room_config`（字段 `game_rule` + `room_level`），不要用底分(room_base)或事实表 `play_mode` 反推。** 经典(game_id=53) 的 room_level 为 7 档 ladder：练习房 / 新手房 / 初级房 / 中级房 / 高级房 / 大师房 / 宗师房（字母前缀 A-G 是各玩法 ladder 内序号，语义看中文名）。
+> **房间等级 / 玩法一律查 `tcy_temp.dq_game_room_config`（字段 `game_rule` + `room_level`），不要用底分(room_base)或事实表 `play_mode` 反推。** 经典(game_id=53) 的 room_level 为 7 档 ladder：练习房 / 新手房 / 初级房 / 中级房 / 高级房 / 大师房 / 宗师房。
 >
-> 已知：**1124 / 1125 / 1126 ∈ game_id 53**，room_level 均为 **A:练习房**（**不是"新手房"**），`game_rule` 分别为 经典 / 不洗牌 / 癞子（三玩法各一个练习房）。它们在事实表里 `play_mode=0` 只是练习房的日志标记，并非"其他玩法"。经典玩法的**主力练习房是 742**（play_mode=1、底分 30、约 46 万局/月），1124-1126 合计仅 ~1 万局/月。
+> 1124/1125/1126 的 room_level 均为 **练习房**（game_rule 分别 经典/不洗牌/癞子）。练习房分两种——**rigged 配牌房**（1124-1126，`play_mode=0`，1真人+2机器人）、**低额练习房**（742，`play_mode=1`，正常 3 人 PvP）。详见 [data-gotchas.md](data-gotchas.md) §1。
 >
-> **练习房 = "1 真人 + 2 机器人" 纯陪练房**：过滤 `robot!=1` 后 `COUNT(*)`（真人对局人次）恒等于 `COUNT(DISTINCT resultguid)`（局数），即每局恰好 1 真人，对手全是机器人。故练习房真人胜率 85%+、账户净盈亏为正（系统送银子）是**设计预期，非异常**——做胜率/牌力分析时练习房须单独标注，勿与正常房混算。线上另有真正的"新手房"档（room_level=B，经典对应 room 420）。详见 [练习房规模分析报告](../../analysis/result/beginner-room-zgde-zgdx-scale-report.md)（6/30~7/14）。
+> 线上另有真正的"新手房"档（room_level=B，经典对应 room 420）——与练习房是不同的 room_level。详见 [dq_game_room_config](../../starrocks/config/dq_game_room_config.md)。
 
 ## 三、Recipe：房间对局 × 对应渠道 DAU 渗透率（DWS，可直接套用）
 
@@ -93,29 +93,30 @@ ORDER BY d.dt, d.channel;
 - 局数：`COUNT(DISTINCT resultguid)`；人均局：`COUNT(*) / COUNT(DISTINCT uid)`。
 - 胜率：`SUM(CASE WHEN result_id=1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)`（⚠️ 新手房异常高，见 [data-gotchas.md](data-gotchas.md) §2）。
 - 银子净盈亏：`SUM(end_money - start_money)`；单局输赢（不含费）：`AVG(game_outcome_money)`。
-- 时长：`AVG(timecost)`（ddz）/ `AVG(time_cost)`（srddz / crazyddz）。ddz 单局实测 **AVG ≈ 88s、中位 85s**（勿凭常识猜对局耗时）。
+- 时长：`AVG(timecost)`（ddz）/ `AVG(time_cost)`（srddz / crazyddz）。ddz 经典对局参考量级约 80–90 秒（随房间/玩法变化，以实际查询为准）。
 - 新手保护占比（ddz）：`SUM(CASE WHEN shuffle_type=201 THEN 1 ELSE 0 END) * 100.0 / COUNT(*)`——DWS 已是独立列，无需解析 JSON。
 
 ## 五、执行查询
 
-SELECT 走 `py/sr_exec.py`（DDL 禁走脚本）：
+SELECT 走 `ops/py/sr_exec.py`（DDL 禁走脚本）：
 
 ```powershell
-py -3 -u .\py\sr_exec.py -f <query.sql>
+py -3 -u .\ops\py\sr_exec.py -f <query.sql>
 ```
 
-临时 SQL 放 `py/tmp/`（已 gitignore）；沉淀分析放 `analysis/plan/`，结论放 `analysis/result/`。
+临时 SQL 放 `ops/py/tmp/`（已 gitignore）；沉淀分析放 `docs/analysis/plan/`，结论放 `docs/analysis/result/`。
 
 **sr_exec 执行坑**：
 
 - `PERCENTILE` 经 sr_exec 会静默失败（返回空/错乱）——改用 `ROW_NUMBER()` 窗口或 `SUM/CASE` 累计手动算分位值。
 - 列名 `role` 是保留字，须加反引号（`` `role` ``）。
 - DWS 数据动态回填、早期 dt 会漂移，跑历史窗口前先 `COUNT(*)` 对齐天数；口径"去掉 192+"实际即 `≤96`。
+- **INSERT 报 `OK` 但实际 0 行**：SR strict mode 下因数据质量（字段超长/类型不匹配）过滤脏行触发整批回滚时，CloudBeaver GraphQL 层 `statusMessage=Executed` **不可信**。诊断路径：① 在 CloudBeaver 网页端重跑同一句 INSERT 拿真实报错 → ② 报错含 `job_id`，查 `SELECT tracking_log FROM information_schema.load_tracking_logs WHERE job_id=YYY` 定位被过滤的行及原因 → ③ `SELECT COUNT(*)` 复核落盘行数。
 
 ## 六、倍数(magnification)口径与费率基准
 
 - **理论倍数 vs 实际倍数**：做倍数分布/费率分析一律用理论 `magnification`（全倍率链）；`real_magnification` 是破产截断后的实现值，偏低、不可用。
 - **角色差异**：同局 magnification 地主行 = 2M、农民行 = M（地主赔两边）。统计农民倍数用 `WHERE role=2`，别混入地主翻倍行。
-- **≤48 部分贡献均值是费率甜点基准**：`Σ(magnification WHERE mag≤48) / 总局数`（非条件子集均值）。≤48 跨房稳定（约 11.5–12.7），覆盖 ~87% 对局，算出费率正好落 6–12% 目标区间。用 ≤24 偏高（12–16%）、用全部均值偏低（4–6%，被尾部带飞）。详见 [房间费率方法论](../../room-design/classic/00-framework.md)。
+- **≤48 部分贡献均值是费率甜点基准**：`Σ(magnification WHERE mag≤48) / 总局数`（非条件子集均值）。用 ≤24 会偏高、用全部均值会被尾部带飞；≤48 跨房稳定且覆盖大多数对局。详见 [房间费率方法论](../../room-design/classic/00-framework.md)。
 - **`compute_all` 截断公式曾多乘 2**，致高估；正确判定用 `start_money < magnification × 底分`。
-- **极端高倍非脏数据**：magnification 最大可达 **98304**，是不洗牌(play_mode=2)玩法的真实现象；倍数统计须按 play_mode 分层或用中位数，勿当异常剔除。
+- **极端高倍非脏数据**：magnification 在不洗牌(play_mode=2)玩法下可达极高值；倍数统计须按 play_mode 分层或用中位数，勿当异常剔除。

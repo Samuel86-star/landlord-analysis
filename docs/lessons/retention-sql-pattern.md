@@ -255,4 +255,4 @@ WHEN s.max_win_streak <= 4 THEN 'D: 3-4连胜'
 
 ---
 
-> 相关文档：[retention-global.md](../analysis/plan/retention/retention-global.md)（全局层，范式起源）、[lessons/starrocks.md](starrocks.md)（读/写放大排查）、[lessons/troubleshooting.md](troubleshooting.md)（回填/查询疑难排查）。
+> 相关文档：[retention-global.md](../analysis/plan/retention/retention-global.md)（全局层，范式起源）、[starrocks-ops.md](../knowledge/starrocks-ops.md)（读/写放大排查）、[troubleshooting.md](troubleshooting.md)（回填/查询疑难排查）。

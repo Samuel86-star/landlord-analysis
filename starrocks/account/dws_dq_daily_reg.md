@@ -69,7 +69,7 @@ PROPERTIES (
 
 ### 增量数据导入
 
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_daily_reg.py](../../py/batch_insert_daily_reg.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_daily_reg.py](../../ops/py/batch_insert_daily_reg.py)
 
 ```powershell
 # 单天

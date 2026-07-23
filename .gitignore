@@ -8,14 +8,14 @@
 CLAUDE.local.md
 
 # 临时工作区（脚本执行生成的临时 SQL、草稿等，不提交到仓库）
-py/tmp/
+ops/py/tmp/
 
 # Python 字节码缓存
 __pycache__/
 *.pyc
 
 # 调度器运行日志（每天每张表的 stdout/stderr，不提交）
-py/logs/
+ops/py/logs/
 
 # 分析产出（每次跑会重生成，CSV 在 output/，不提交）
-py/first-classic-beginner/output/
+ops/py/first-classic-beginner/output/

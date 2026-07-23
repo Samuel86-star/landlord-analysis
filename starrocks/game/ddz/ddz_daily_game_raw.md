@@ -296,7 +296,7 @@ PROPERTIES (
 ```
 
 ## 更新SQL
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_ddz_daily_game_raw.py`](../../../py/batch_insert_ddz_daily_game_raw.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_ddz_daily_game_raw.py`](../../../ops/py/batch_insert_ddz_daily_game_raw.py)
 
 > **依赖**：hive_catalog_cdh5.dwd.fact_game_combatgains 对应日期需先回填。
 

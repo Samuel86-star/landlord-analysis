@@ -72,7 +72,7 @@
 ## 文档目录结构
 
 ```text
-analysis/            # 数据分析工作区
+docs/analysis/            # 数据分析工作区
   plan/              # 分析方案（分析思路和 SQL 查询）
   result/            # 分析结论（结合 plan 产出的结论性报告）
 starrocks/           # StarRocks 数仓能力
@@ -81,7 +81,7 @@ starrocks/           # StarRocks 数仓能力
   currency/          # 货币域（银子、积分等）
   config/            # 配置表（道具、渠道、货币配置等）
   retention/         # 留存域（首日指标、留存 flag）
-py/                  # 回填脚本集（调度器 + 单表脚本 + 工具，详见 py/README.md）
+ops/py/                  # 回填脚本集（调度器 + 单表脚本 + 工具，详见 ops/py/README.md）
   daily_backfill.py  # 每日初始化调度器（15 张表）
   daily_retention.py # 留存回扫调度器（35 天）
   README.md          # ← 脚本使用说明，团队入口
@@ -91,7 +91,7 @@ lessons/             # 经验总结（starrocks 技术排查 / troubleshooting�
 requirements/        # 研发需求文档
 ```
 
-> **日常运维入口**：[py/README.md](py/README.md) —— 两条命令完成每天数据回填（`daily_backfill.py` 初始化当天 + `daily_retention.py` 刷留存）。
+> **日常运维入口**：[ops/py/README.md](ops/py/README.md) —— 两条命令完成每天数据回填（`daily_backfill.py` 初始化当天 + `daily_retention.py` 刷留存）。
 
 ---
 
@@ -107,5 +107,5 @@ requirements/        # 研发需求文档
 
 ## DDL 操作规范
 
-- **禁止通过 sr_exec.py 执行 DDL**：建表（CREATE TABLE）、改表（ALTER TABLE）、删表（DROP TABLE）等 DDL 操作一律不通过 `py/sr_exec.py` 或任何脚本执行
+- **禁止通过 sr_exec.py 执行 DDL**：建表（CREATE TABLE）、改表（ALTER TABLE）、删表（DROP TABLE）等 DDL 操作一律不通过 `ops/py/sr_exec.py` 或任何脚本执行
 - DDL 操作必须由用户在 CloudBeaver 网页端手动执行 

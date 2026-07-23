@@ -125,7 +125,7 @@ PROPERTIES (
 
 ## 数据SQL
 
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_daily_login.py](../../py/batch_insert_daily_login.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_daily_login.py](../../ops/py/batch_insert_daily_login.py)
 
 ```powershell
 # 单天

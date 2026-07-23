@@ -9,7 +9,7 @@
 > - **数据来源**：`tcy_temp.dws_ddz_daily_game` + `tcy_temp.dws_dq_app_daily_reg`（cohort 过滤）+ `tcy_temp.ddz_daily_game_raw`（仅 N 拆解分析），3,564 行前 4 局明细
 > - **手牌可信前提**："手牌上报"功能 **2026-06-25 早上才上线**（user 2026-06-26 确认），本报告窗口是功能上线**当天**，92.5% 覆盖
 > - **分析性质**：纯描述性，不做因果推断；本报告是 v1.0/v1.1 大报告（06-18~24 cohort）之外的"功能上线日专项"姊妹篇
-> - **配套产出**：本 md（`py/first-classic-beginner/output/06-25_cohort/` 暂无，下一次复跑时落 CSV）
+> - **配套产出**：本 md（`ops/py/first-classic-beginner/output/06-25_cohort/` 暂无，下一次复跑时落 CSV）
 
 ---
 
@@ -327,8 +327,8 @@ magnification = 3 × bomb_bet × (grab_landlord_bet / 3) × complete_victory_bet
 | ---- | ---- |
 | 本 md | 06-25 注册 cohort 前 4 局手牌-倍数-胜率三维度分析 |
 | `analysis/result/first-classic-beginner-handcards-report.md`（v1.1） | 06-18~24 cohort 7,529 玩家主报告（手牌缺失的姊妹篇） |
-| `py/sr_exec.py` | StarRocks 客户端（含 `query_paged`） |
-| `py/first-classic-beginner/run_analysis.py` | v1.0/v1.1 主报告编排 |
+| `ops/py/sr_exec.py` | StarRocks 客户端（含 `query_paged`） |
+| `ops/py/first-classic-beginner/run_analysis.py` | v1.0/v1.1 主报告编排 |
 
 **正式复跑窗口建议**：07-01 后用 06-25~07-01 7 天 cohort 重做本报告，将本 md 升级为 v1.0（去"功能上线日专项"前缀）。
 

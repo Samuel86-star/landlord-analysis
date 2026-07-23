@@ -31,7 +31,7 @@ GROUP BY 1, 2, 3;
 
 `tcy_temp.dws_dq_app_daily_reg`：注册宽表，粒度 uid × reg_date。常用字段 `reg_app_code`、`reg_group_id`、`first_day_login_cnt`。
 
-- 留存 / cohort 分析以本表为分母基础人群，模板见 [SQL_STYLE.md](../../SQL_STYLE.md) 与 [lessons/retention-sql-pattern.md](../../lessons/retention-sql-pattern.md)。
+- 留存 / cohort 分析以本表为分母基础人群，模板见 [SQL_STYLE.md](../../SQL_STYLE.md) 与 [docs/lessons/retention-sql-pattern.md](../lessons/retention-sql-pattern.md)。
 
 ## 四、游戏活跃
 

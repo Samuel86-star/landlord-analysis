@@ -163,7 +163,7 @@ PROPERTIES (
 
 ### 增量数据导入
 
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_app_silvergame_stat.py`](../../py/batch_insert_app_silvergame_stat.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_app_silvergame_stat.py`](../../ops/py/batch_insert_app_silvergame_stat.py)
 
 > **依赖**：dws_ddz_daily_game、dws_crazyddz_daily_game 对应日期需先回填。
 

@@ -96,7 +96,7 @@ PROPERTIES (
 
 ### 增量数据导入
 
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_app_daily_reg.py](../../py/batch_insert_app_daily_reg.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[py/batch_insert_app_daily_reg.py](../../ops/py/batch_insert_app_daily_reg.py)
 
 > **依赖**：本表依赖 `dws_dq_daily_reg`、`dws_dq_daily_login`，对应日期需先回填。
 

@@ -1,4 +1,4 @@
-# py/ 目录使用说明
+# ops/py/ 目录使用说明
 
 > 本目录是 StarRocks 数仓回填脚本集，按"调度器 + 单表脚本 + 工具"三层组织。日常运维只需要记住两个调度器命令。
 
@@ -42,7 +42,7 @@ py -3 -u ./daily_backfill.py --start 20260715 --end 20260715
 py -3 -u ./daily_retention.py
 ```
 
-> 其余命令同理：把 `.\` 换成 `./` 即可直接复制粘贴。务必在 `py/` 目录下执行（脚本靠同目录 `from sr_exec import ...` 导入）。
+> 其余命令同理：把 `.\` 换成 `./` 即可直接复制粘贴。务必在 `ops/py/` 目录下执行（脚本靠同目录 `from sr_exec import ...` 导入）。
 
 ## 日常运维：两条命令
 
@@ -72,7 +72,7 @@ py -3 -u .\daily_backfill.py --start 20260617 --end 20260617 --dry-run
 
 特性：
 - **失败即停**：某张表失败立刻停下来报错，提示从哪一层用 `--layer N` 续跑（避免下游空跑）
-- **0 行警告**：行数为 0 的表打 `⚠️ WARNING` 并汇总到结尾，需人工确认（见 [troubleshooting.md](../lessons/troubleshooting.md)）
+- **0 行警告**：行数为 0 的表打 `⚠️ WARNING` 并汇总到结尾，需人工确认（见 [troubleshooting.md](../docs/lessons/troubleshooting.md)）
 - **日志**：每天写 `logs/backfill_YYYY-MM-DD.log`，含每张表完整 stdout 便于回溯
 - **幂等**：每张表是 `DELETE + INSERT`，重跑同一天不会重复
 
@@ -182,7 +182,7 @@ py -3 -u .\sr_exec.py -f check_data.sql
 
 | 症状 | 排查 |
 | ---- | ---- |
-| 脚本报 OK 但目标表 0 行 | strict mode 静默回滚，看 [troubleshooting.md](../lessons/troubleshooting.md) 第 1 节 |
+| 脚本报 OK 但目标表 0 行 | strict mode 静默回滚，看 [troubleshooting.md](../docs/lessons/troubleshooting.md) 第 1 节 |
 | `python` 命令无输出 / exit 9009 | Windows Store 占位 launcher 抢了，用 `py -3` 不要用 `python` |
 | 子进程报 `UnicodeDecodeError 'utf-8'` | sr_exec.py 已修复 utf-8 文件读取；如果还遇到，看是否是新写的脚本没加 `encoding="utf-8"` |
 | Hive 上游表当天分区还没就绪 | 等几小时，或换前一天 |
@@ -199,5 +199,5 @@ py -3 -u .\sr_exec.py -f check_data.sql
 ## 相关文档
 
 - [ops/daily_data_ops.md](../ops/daily_data_ops.md) — 各表逐一的回填命令、依赖关系、常见问题
-- [ops/troubleshooting.md](../lessons/troubleshooting.md) — strict mode 静默回滚等疑难问题排查
+- [ops/troubleshooting.md](../docs/lessons/troubleshooting.md) — strict mode 静默回滚等疑难问题排查
 - [starrocks/](../starrocks/) — 各表完整字段定义、建表 SQL、字段说明

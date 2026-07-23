@@ -10,7 +10,7 @@
 >
 > **分析性质**：描述性分析，只呈现数据观察，不做因果推断
 >
-> **配套产出**：`py/first-classic-beginner/output/` 下 17 个 CSV
+> **配套产出**：`ops/py/first-classic-beginner/output/` 下 17 个 CSV
 
 ---
 
@@ -211,15 +211,15 @@
 
 | 文件 | 用途 |
 | ---- | ---- |
-| `py/first-classic-beginner/sql/01_cohort_first3_detail.sql` | Cohort 构建 + 前 3 局明细导出（含 hand_cards） |
+| `ops/py/first-classic-beginner/sql/01_cohort_first3_detail.sql` | Cohort 构建 + 前 3 局明细导出（含 hand_cards） |
 
 ### Python
 
 | 文件 | 用途 |
 | ---- | ---- |
-| `py/first-classic-beginner/run_analysis.py` | 主编排：A-G 7 模块聚合 |
+| `ops/py/first-classic-beginner/run_analysis.py` | 主编排：A-G 7 模块聚合 |
 
-### 输出 CSV（`py/first-classic-beginner/output/`）
+### 输出 CSV（`ops/py/first-classic-beginner/output/`）
 
 | 文件 | 模块 | 内容 |
 | ---- | ---- | ---- |

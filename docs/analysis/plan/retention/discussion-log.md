@@ -1,7 +1,7 @@
 # 留存分析框架讨论记录
 
 > 记录 Samuel 与 Claude 关于留存分析框架方案的讨论过程与结论。
-> 讨论目录：`analysis/plan/retention/`
+> 讨论目录：`docs/analysis/plan/retention/`
 
 ---
 
@@ -33,7 +33,7 @@
 
 **方案**：将"注册 → 首日指标 → 留存 flag"预计算为一张用户级宽表。首日指标写入后不变，留存 flag 按到期日逐步回填（D1→T+2, D7→T+8, D30→T+31）。
 
-**目录决策**：新建 `starrocks/retention/`，与 `analysis/plan/retention/` 形成数据层与分析层对应。
+**目录决策**：新建 `starrocks/retention/`，与 `docs/analysis/plan/retention/` 形成数据层与分析层对应。
 
 **文档**：[starrocks/retention/dws_app_firstday_game_stat.md](../../../../starrocks/retention/dws_app_firstday_game_stat.md)（v2 已拆分，见下）
 
@@ -103,4 +103,4 @@ firstday_game_stat 从 v1 的 0 行变 1214 行，跟主表 app_daily_reg 行数
 ### 经验沉淀
 
 - StarRocks 复杂 SQL（多 CTE + 多 JOIN）容易触发优化器超时，优先**拆表降维**而非调 timeout。
-- CloudBeaver 异步 API 会吞 SR 内部错误（优化器超时、strict mode 回滚都表现为 statusMessage=Executed），INSERT 后必须 COUNT 复核，排查走 `load_tracking_logs` 或网页端真实报错（详见 [lessons/troubleshooting.md](../../../../lessons/troubleshooting.md)）。
+- CloudBeaver 异步 API 会吞 SR 内部错误（优化器超时、strict mode 回滚都表现为 statusMessage=Executed），INSERT 后必须 COUNT 复核，排查走 `load_tracking_logs` 或网页端真实报错（详见 [lessons/troubleshooting.md](../../../../docs/lessons/troubleshooting.md)）。

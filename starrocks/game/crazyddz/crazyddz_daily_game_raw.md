@@ -118,7 +118,7 @@ PROPERTIES (
 ```
 
 ## 更新SQL
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_crazyddz_daily_game_raw.py`](../../../py/batch_insert_crazyddz_daily_game_raw.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_crazyddz_daily_game_raw.py`](../../../ops/py/batch_insert_crazyddz_daily_game_raw.py)
 
 > **依赖**：tcy_dwd.dwd_game_combatgains_si 对应日期需先回填。
 

@@ -114,7 +114,7 @@
 
 ### 增量数据导入
 
-按 reg_date `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_firstday_game_stat.py`](../../py/batch_insert_firstday_game_stat.py)
+按 reg_date `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_firstday_game_stat.py`](../../ops/py/batch_insert_firstday_game_stat.py)
 
 > **依赖**：`dws_dq_app_daily_reg`、`dws_app_silvergame_stat`、`dws_app_scoregame_stat`、`dws_app_daily_allgame_stat` 在 reg_date 当天数据需已就位。
 
@@ -277,5 +277,5 @@ tcy_temp.dws_app_retention_flag        （留存 flag，姊妹表）
 > **文档版本**：v2.0
 > **变更**：
 >
-> - v2.0（2026-06-18）：从 `dws_app_firstday_retention` 重命名为 `dws_app_firstday_game_stat`，去掉 d1/d7/d30 留存 flag 字段（拆出独立表 `dws_app_retention_flag`）。原因：留存 flag 按到期日逐步回填，跟首日指标"写一次不变"的语义不同；混在一起导致整行重写浪费、CTE 嵌套触发优化器超时。详见 [analysis/plan/retention/20260615/discussion-log.md](../../analysis/plan/retention/20260615/discussion-log.md) v2 设计记录。
+> - v2.0（2026-06-18）：从 `dws_app_firstday_retention` 重命名为 `dws_app_firstday_game_stat`，去掉 d1/d7/d30 留存 flag 字段（拆出独立表 `dws_app_retention_flag`）。原因：留存 flag 按到期日逐步回填，跟首日指标"写一次不变"的语义不同；混在一起导致整行重写浪费、CTE 嵌套触发优化器超时。详见 [analysis/plan/retention/20260615/discussion-log.md](../../docs/analysis/plan/retention/20260615/discussion-log.md) v2 设计记录。
 > - v1.0（2026-06-15）：初始版本，注册信息 + 首日指标 + 留存 flag 一站式宽表。

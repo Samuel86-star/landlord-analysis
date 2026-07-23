@@ -212,7 +212,7 @@ PROPERTIES (
 
 ## 更新SQL
 
-按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_ddz_daily_game.py`](../../../py/batch_insert_ddz_daily_game.py)
+按天 `DELETE + INSERT`（幂等可重跑），脚本：[`batch_insert_ddz_daily_game.py`](../../../ops/py/batch_insert_ddz_daily_game.py)
 
 > **依赖**：ddz_daily_game_raw 对应日期需先回填。
 

@@ -64,7 +64,7 @@ analysis/result/
 
 - [ ] **Step 2: sr_exec 跑通验证**
 
-Run: `py -3 -u py/sr_exec.py -f py/first-classic-beginner/sql/01_cohort_first3_detail.sql`
+Run: `py -3 -u ops/py/sr_exec.py -f ops/py/first-classic-beginner/sql/01_cohort_first3_detail.sql`
 Expected: 返回 21,025 行（±少量浮动），列名齐全。**若返回空 `[]` → 立即中止**（说明 CTE 被多次引用或字段错误）。
 
 - [ ] **Step 3: 更新 .gitignore** 追加 `py/first-classic-beginner/output/`
@@ -82,7 +82,7 @@ Expected: 返回 21,025 行（±少量浮动），列名齐全。**若返回空 
 
 - [ ] **Step 1: 写失败测试**（覆盖：常规17张、sj/bj 双字符 token、王炸、四张炸弹、对子/三张计数、空串、异常 token）
 
-- [ ] **Step 2: 跑测试确认失败** — `py -3 -m pytest py/first-classic-beginner/test_parse_handcards.py -v`（Expected: FAIL，模块不存在）
+- [ ] **Step 2: 跑测试确认失败** — `py -3 -m pytest ops/py/first-classic-beginner/test_parse_handcards.py -v`（Expected: FAIL，模块不存在）
 
 - [ ] **Step 3: 实现 parse_handcards.py**（tokenize 用框架 7.5 的双字符优先扫描；结构指标按框架 7.3 基础版）
 
@@ -115,7 +115,7 @@ Expected: 返回 21,025 行（±少量浮动），列名齐全。**若返回空 
 
 - [ ] **Step 7: 模块F 牌力-胜负一致性**（框架八）— 按 game_seq × card_power_bucket：胜率、平均输赢、平均实际倍数、好牌输占比、差牌赢占比；并按地主/农民 + 新手保护/非新手保护拆分 → `output/06_cardpower_result_alignment.csv`
 
-- [ ] **Step 8: 跑通整条管线** — `py -3 -u py/first-classic-beginner/run_analysis.py`，6 个 CSV 全部落盘且非空
+- [ ] **Step 8: 跑通整条管线** — `py -3 -u ops/py/first-classic-beginner/run_analysis.py`，6 个 CSV 全部落盘且非空
 
 ---
 
@@ -128,9 +128,9 @@ Expected: 返回 21,025 行（±少量浮动），列名齐全。**若返回空 
 
 - [ ] **Step 2: 读 CSV 结果**，按框架第九章节结构写描述性报告（报告说明 / cohort 基线 / 前3局整体体验 / 牌力分布 / 配牌机制 / 手牌结构 / 牌力-胜负一致性 / 不确定性 / SQL 脚本索引）。**只呈现事实，不做因果推断**
 
-- [ ] **Step 3: 清理 py/tmp/**（probe_cohort.sql、debug_query.py 为探查临时文件）
+- [ ] **Step 3: 清理 ops/py/tmp/**（probe_cohort.sql、debug_query.py 为探查临时文件）
 
-- [ ] **Step 4: 写 py/first-classic-beginner/README.md**（一键运行说明）
+- [ ] **Step 4: 写 ops/py/first-classic-beginner/README.md**（一键运行说明）
 
 - [ ] **Step 5: git 提交**（脚本 + 报告，output/ 与 tmp/ 不提交）
 
