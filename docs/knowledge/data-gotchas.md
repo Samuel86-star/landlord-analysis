@@ -51,7 +51,7 @@
 ## 9. 字段有效性窗口（用到前先确认上线日）
 
 - **`card_power`（牌力）**：2026-06-15 修复算法后才可信；做牌力分析必须用 **≥ 2026-06-15** 的窗口，之前数据不可用。
-- **`hand_cards`（手牌）**：上报功能 2026-06-25 上线；DWS 层历史分区 hand_cards 列存在但为**空字符串**（非 NULL），须用 `LENGTH(CAST(hand_cards AS STRING)) > 0` 判定是否有数据，不要用 `IS NOT NULL`。分析窗口必须 ≥ 2026-06-25。
+- **`hand_cards`（手牌）**：上报功能 2026-06-25 上线；DWS 层历史分区 hand_cards 列存在但为**空字符串**（非 NULL），须用 `LENGTH(CAST(hand_cards AS STRING)) > 0` 判定是否有数据，不要用 `IS NOT NULL`。分析窗口必须 ≥ 2026-06-25。位于 `extend_content.card_info` 子节点（与 `bottom_cards`/`card_id`/`shuffle_type` 同级），`extend_content` 另有稳定 key `ai_level`/`card_power`/`user_attr`。手牌为逗号分隔字符串：单字符 `2-9/j/q/k/a`、双字符 `sj`(小王)/`bj`(大王)；`hand_cards` 长 34~38（地主 20/农民 17 张视角），`bottom_cards` 固定 3 张。06-25 dt 实测覆盖 92.5%（912,253/986,043）。
 
 ## 10. 描述与数字的解读规范
 
