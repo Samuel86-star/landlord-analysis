@@ -59,7 +59,7 @@
 | cut | int | 逃跑罚没货币（!=0 代表存在逃跑行为） | 0 |
 | safebox_deposit | int | 保险箱存银 | 1000 |
 | magnification | int | 个人理论总倍数 | 12 |
-| magnification_stacked | int | 个人加倍：1=不加倍，2=加倍，4=超级加倍 | 2 |
+| magnification_stacked | int | 个人加倍：1=不加倍，2=加倍，4=超级加倍（raw 原生字段，~1.5% 为 NULL；DWS 脚本已 `IFNULL(,1)` 兜底，同其他加倍字段口径） | 2 |
 | channel_id | int | 渠道号 | 1001 |
 | group_id | int | 分端 ID | 6 |
 | app_id | int | 应用ID | 1880053 |
@@ -274,7 +274,7 @@ SELECT
         WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee
         ELSE depositdiff + fee
     END AS game_outcome_money,
-    cut, safebox_deposit, magnification, magnification_stacked,
+    cut, safebox_deposit, magnification, IFNULL(magnification_stacked, 1) AS magnification_stacked,
     channel_id, group_id, app_id, app_code,
     afk_turn_cnt, magnification_subdivision, extend_content,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.initial_bet'), 1) AS initial_bet,

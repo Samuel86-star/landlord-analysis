@@ -33,7 +33,7 @@ SELECT
         WHEN room_id IN (11534,14238,15458,158,159) THEN scorediff + score_fee
         ELSE depositdiff + fee
     END AS game_outcome_money,
-    cut, safebox_deposit, magnification, magnification_stacked,
+    cut, safebox_deposit, magnification, IFNULL(magnification_stacked, 1) AS magnification_stacked,
     channel_id, group_id, app_id, app_code,
     afk_turn_cnt, magnification_subdivision, extend_content,
     IFNULL(get_json_int(magnification_subdivision, '$.public_bet.initial_bet'), 1) AS initial_bet,
