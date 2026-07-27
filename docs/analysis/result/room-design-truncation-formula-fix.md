@@ -2,7 +2,7 @@
 
 ## 背景
 
-`room-design/` 房间参数设计（底分/门槛/服务费）依赖 `py/tmp/compute_all.py` 计算的地主截断率。在为 #6 底分 3000 做单局输赢模拟时，按局模型系统性偏高约 2×，追查到列语义。
+`docs/room-design/` 房间参数设计（底分/门槛/服务费）依赖 `py/tmp/compute_all.py` 计算的地主截断率。在为 #6 底分 3000 做单局输赢模拟时，按局模型系统性偏高约 2×，追查到列语义。
 
 > 数据时间窗口：2026-06-15 ~ 2026-07-14
 > 数据源：`tcy_temp.dws_ddz_daily_game`，`game_id = 53 AND play_mode = 1 AND robot != 1`
@@ -20,7 +20,7 @@
 
 ## 误差
 
-`compute_all.py` 与 `room-design/` 文档算地主截断用：
+`compute_all.py` 与 `docs/room-design/` 文档算地主截断用：
 
 ```sql
 截断 = start_money < magnification × 2 × base      -- role=1, mult=2

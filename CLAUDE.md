@@ -25,12 +25,12 @@ docs/               # 团队知识
   lessons/          #  案例库 + 留存 SQL 规范
   analysis/         #  分析方案(plan/) + 结论(result/)
   tech/             #  技术文档
+  room-design/      #  房间设计方案
+  requirements/     #  研发需求文档
 ops/                # 运维
   py/               #  回填脚本集（调度器 + sr_exec + batch_insert）
   daily_data_ops.md #  每日数据增量更新手册
 starrocks/          # 数仓表文档（account / game / currency / config / retention）
-room-design/        # 房间设计方案
-requirements/       # 研发需求文档
 ```
 
 ## Git 操作

@@ -117,6 +117,6 @@ py -3 -u .\ops\py\sr_exec.py -f <query.sql>
 
 - **理论倍数 vs 实际倍数**：做倍数分布/费率分析一律用理论 `magnification`（全倍率链）；`real_magnification` 是破产截断后的实现值，偏低、不可用。
 - **角色差异**：同局 magnification 地主行 = 2M、农民行 = M（地主赔两边）。统计农民倍数用 `WHERE role=2`，别混入地主翻倍行。
-- **≤48 部分贡献均值是费率甜点基准**：`Σ(magnification WHERE mag≤48) / 总局数`（非条件子集均值）。用 ≤24 会偏高、用全部均值会被尾部带飞；≤48 跨房稳定且覆盖大多数对局。详见 [房间费率方法论](../../room-design/classic/00-framework.md)。
+- **≤48 部分贡献均值是费率甜点基准**：`Σ(magnification WHERE mag≤48) / 总局数`（非条件子集均值）。用 ≤24 会偏高、用全部均值会被尾部带飞；≤48 跨房稳定且覆盖大多数对局。详见 [房间费率方法论](../room-design/classic/00-framework.md)。
 - **`compute_all` 截断公式曾多乘 2**，致高估；正确判定用 `start_money < magnification × 底分`。
 - **极端高倍非脏数据**：magnification 在不洗牌(play_mode=2)玩法下可达极高值；倍数统计须按 play_mode 分层或用中位数，勿当异常剔除。
