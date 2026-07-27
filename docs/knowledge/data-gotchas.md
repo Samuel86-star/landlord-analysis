@@ -58,3 +58,13 @@
 - **箭头 A→B→C 描述是时序衰减，不是菜单选项**；解读游戏机制文档时别把状态流转当成并列项。
 - **"默认" = 无操作的结果**（如明牌不点 = 不明牌 ×1），不是"高亮推荐档"。
 - **禁止叙事化解读数字差异**：两个数字不同，不准编"用户心理/策略"故事；必须先查机制字段（`shuffle_type` / `role` / `play_mode` / `magnification` 等）才能下结论。
+
+## 11. `magnification_stacked` ~1.5% NULL（DWS 历史数据）
+
+`magnification_stacked`（个人加倍：1=不加倍、2=加倍、4=超级加倍）在 DWS 有 ~1.5% 为 NULL——按 1/2/4 分桶时加总 <100%，NULL 行被漏掉。
+
+**原因**：该字段是 raw **原生字段**（非 JSON 解析），DWS 脚本原样照搬、没 `IFNULL` 兜底；而其他加倍字段（`initial_bet` / `grab_landlord_bet` / `complete_victory_bet` / `bomb_bet` / `landlord_double_bet` / `total_farmer_double_bet`）都从 `magnification_subdivision` JSON 解析、且各有 `IFNULL` default。同语义字段口径不一致是坑点。
+
+**修复**：2026-07-27 `batch_insert_ddz_daily_game.py` 已加 `IFNULL(magnification_stacked, 1)`，新回填数据 NULL→1（不加倍）。
+
+**对策**：分析**历史数据**（2026-07-27 前回填的分区）的加倍状态时，查询里手动 `IFNULL(magnification_stacked, 1)`；或重跑 `batch_insert_ddz_daily_game.py` 刷历史让其干净。
