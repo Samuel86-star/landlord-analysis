@@ -31,6 +31,7 @@ ops/                # 运维
   py/               #  回填脚本集（调度器 + sr_exec + batch_insert）
   daily_data_ops.md #  每日数据增量更新手册
 starrocks/          # 数仓表文档（account / game / currency / config / retention）
+algorithm/          # landlord-algorithm 只读快照（Java/C++ 算法实现 + docs，参考用，勿改）
 ```
 
 ## Git 操作

@@ -47,7 +47,7 @@ algorithm/
 |---|---|
 | `target/`、`native/build/` | 构建产物 |
 | `native/sampler`、`native/test_main` | Mach-O arm64 二进制可执行文件，平台相关 |
-| `.idea/`、`.vscode/`、`.cursor/` | IDE 配置（`.cursor` 还是 submodule） |
+| `.idea/`、`.vscode/`、`.cursor/`、`.claude/` | IDE / 工具配置（`.cursor` 是 submodule；`.claude` 是 algorithm 的 Claude Code 项目配置） |
 | `.git/`、`.gitmodules`、`.gitattributes` | git 元数据（analysis 有自己的 repo） |
 | `**/.DS_Store`、`HELP.md` | 水文件 |
 
