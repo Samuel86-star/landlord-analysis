@@ -41,6 +41,13 @@ class StarRocksClient:
         if op_name:
             body["operationName"] = op_name
         r = self.s.post(BASE, json=body, timeout=60)
+        # 端点异常（如被本机代理 fake-ip 劫持返回 HTML 403/502）时，r.json() 会抛
+        # 晦涩的 JSONDecodeError(char 0)。先校验状态码/内容类型，给出可定位的报错。
+        if r.status_code != 200 or "json" not in (r.headers.get("content-type") or "").lower():
+            raise Exception(
+                f"gql non-JSON response: HTTP {r.status_code} "
+                f"content-type={r.headers.get('content-type')!r} body[:200]={r.text[:200]!r}"
+            )
         return r.json()
 
     def login(self):
