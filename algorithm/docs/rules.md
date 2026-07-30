@@ -24,16 +24,18 @@
 | **对子** | $V_{base} \times 2 + 2$ |
 | **三张** | $V_{base} \times 3 + 5$ |
 | **三带一** | $(V_{base\_tri} \times 3 + 8) + \max(0, V_{single} \times 0.5)$ |
-| **三带二** | $(V_{base\_tri} \times 3 + 10) + \max(0, V_{pair} \times 0.5)$ |
+| **三带二** | $(V_{base\_tri} \times 3 + 10) + \max(0, V_{base\_pair} + 1)$ |
 | **顺子** | $\max(0, \sum(\max(0, V_i))) + (L \times 3)$  *(L为长度)* |
 | **连对** | $\sum(V_{pair\_i}) + (L \times 4)$ *(L为长度)* |
 | **飞机** | $\sum(V_{tri\_i} \times 3 + 5) + (L \times 6)$ |
 | **飞机带单** | $\sum(V_{tri\_i} \times 3 + 8) + (L \times 8) + \sum\max(0, V_{single\_i} \times 0.5)$ |
-| **飞机带对** | $\sum(V_{tri\_i} \times 3 + 10) + (L \times 8) + \sum\max(0, V_{pair\_i} \times 0.5)$ |
+| **飞机带对** | $\sum(V_{tri\_i} \times 3 + 10) + (L \times 8) + \sum\max(0, V_{base\_pair\_i} + 1)$ |
 | **四带二单** | $(V_{base\_quad} \times 2 + 10) + \max(0, V_{single1} \times 0.5) + \max(0, V_{single2} \times 0.5)$ |
-| **四带二对** | $(V_{base\_quad} \times 2 + 14) + \max(0, V_{pair1} \times 0.5) + \max(0, V_{pair2} \times 0.5)$ |
+| **四带二对** | $(V_{base\_quad} \times 2 + 14) + \max(0, V_{base\_pair1} + 1) + \max(0, V_{base\_pair2} + 1)$ |
 | **炸弹** | $V_{base\_bomb} \times 2 + 35$ |
 | **王炸** | $60$ |
+
+> **翼牌加分**：单牌翼 $= \max(0, V_{base} \times 0.5)$（单牌基础分的一半）；对子翼 $= \max(0, V_{base} + 1)$（= 对子组合值 $(V_{base}\times2+2)$ 的一半，对齐 PRD §4.1.2）。负值一律按 0 计。
 
 ## 3. 调节因子 (Control Bonus)
 
@@ -42,7 +44,10 @@
 - **持有大王**: $+5$
 - **持有小王**: $+3$
 - **持有对2**: $+4$
-- **每持有一个炸弹**: $+5$
+- **每持有一个炸弹（任意点数张数 ≥ 4）**: $+5$
+- **持有王炸（大小王齐）**: $+5$
+
+> 以上调节因子均按**手牌持有情况**计算（查看全部手牌），与拆牌方式无关：只要手里有四张同点数即计入炸弹，无论拆牌是否将其作为 BOMB 牌型打出（对齐 PRD §4.1.3）。
 
 ## 4. 总牌力计算公式 ($V_{total}$)
 

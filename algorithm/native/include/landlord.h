@@ -387,9 +387,9 @@ public:
             case ComboType::TRIPLE:
                 return scoreMainRank(c.mainRanks, 0, scoringConfig().tripleCoeff, scoringConfig().tripleOffset);
             case ComboType::TRIPLE_WITH_SINGLE:
-                return scoreTripleWithWing(c, scoringConfig().tripleWithSingleOffset);
+                return scoreTripleWithWing(c, scoringConfig().tripleWithSingleOffset, false);
             case ComboType::TRIPLE_WITH_PAIR:
-                return scoreTripleWithWing(c, scoringConfig().tripleWithPairOffset);
+                return scoreTripleWithWing(c, scoringConfig().tripleWithPairOffset, true);
             case ComboType::STRAIGHT:
                 return scoreStraightOrPairs(c.mainRanks, true, scoringConfig().straightLenCoeff);
             case ComboType::CONSECUTIVE_PAIRS:
@@ -397,13 +397,13 @@ public:
             case ComboType::PLANE:
                 return scorePlane(c.mainRanks, scoringConfig().planeTripleOffset, scoringConfig().planeLenCoeff);
             case ComboType::PLANE_WITH_SINGLES:
-                return scorePlaneWithWings(c, scoringConfig().planeWithSinglesTripleOffset);
+                return scorePlaneWithWings(c, scoringConfig().planeWithSinglesTripleOffset, false);
             case ComboType::PLANE_WITH_PAIRS:
-                return scorePlaneWithWings(c, scoringConfig().planeWithPairsTripleOffset);
+                return scorePlaneWithWings(c, scoringConfig().planeWithPairsTripleOffset, true);
             case ComboType::QUAD_WITH_TWO_SINGLES:
-                return scoreQuadWithWings(c, scoringConfig().quadWithTwoSinglesOffset);
+                return scoreQuadWithWings(c, scoringConfig().quadWithTwoSinglesOffset, false);
             case ComboType::QUAD_WITH_TWO_PAIRS:
-                return scoreQuadWithWings(c, scoringConfig().quadWithTwoPairsOffset);
+                return scoreQuadWithWings(c, scoringConfig().quadWithTwoPairsOffset, true);
             case ComboType::BOMB:
                 return scoreMainRank(c.mainRanks, 0, scoringConfig().bombCoeff, scoringConfig().bombOffset);
             case ComboType::ROCKET:
@@ -423,9 +423,18 @@ private:
         return std::max(0.0, rankBaseValue(wings[idx]) * scoringConfig().wingRankFactor);
     }
 
-    static double scoreTripleWithWing(const Combo& c, int tripleOffset) {
+    // 对子翼加分 = 对子组合值的一半 = max(0, (V_base*pairCoeff + pairOffset) * wingRankFactor)
+    // 默认系数下 = max(0, V_base + 1)，对齐 PRD §4.1.2「翼牌为对子时 翼牌加分 = max(0, 基础分 + 1)」。
+    static double scorePairWingRank(const std::vector<Rank>& wings, int idx) {
+        if (idx >= static_cast<int>(wings.size())) return 0;
+        const ScoringConfig& cfg = scoringConfig();
+        double pairComboValue = rankBaseValue(wings[idx]) * cfg.pairCoeff + cfg.pairOffset;
+        return std::max(0.0, pairComboValue * cfg.wingRankFactor);
+    }
+
+    static double scoreTripleWithWing(const Combo& c, int tripleOffset, bool pairWing) {
         double main = scoreMainRank(c.mainRanks, 0, scoringConfig().tripleCoeff, tripleOffset);
-        double wing = scoreWingRank(c.wingRanks, 0);
+        double wing = pairWing ? scorePairWingRank(c.wingRanks, 0) : scoreWingRank(c.wingRanks, 0);
         return main + wing;
     }
 
@@ -449,7 +458,7 @@ private:
         return sum + static_cast<int>(mainRanks.size()) * lenCoeff;
     }
 
-    static double scorePlaneWithWings(const Combo& c, int tripleOffset) {
+    static double scorePlaneWithWings(const Combo& c, int tripleOffset, bool pairWing) {
         if (c.mainRanks.empty()) return 0;
         const ScoringConfig& cfg = scoringConfig();
         double sum = 0;
@@ -458,15 +467,15 @@ private:
         }
         sum += static_cast<int>(c.mainRanks.size()) * cfg.planeWithWingsLenCoeff;
         for (int i = 0; i < static_cast<int>(c.wingRanks.size()); ++i) {
-            sum += scoreWingRank(c.wingRanks, i);
+            sum += pairWing ? scorePairWingRank(c.wingRanks, i) : scoreWingRank(c.wingRanks, i);
         }
         return sum;
     }
 
-    static double scoreQuadWithWings(const Combo& c, int quadOffset) {
+    static double scoreQuadWithWings(const Combo& c, int quadOffset, bool pairWing) {
         double main = scoreMainRank(c.mainRanks, 0, scoringConfig().quadBaseCoeff, quadOffset);
-        double w1 = scoreWingRank(c.wingRanks, 0);
-        double w2 = scoreWingRank(c.wingRanks, 1);
+        double w1 = pairWing ? scorePairWingRank(c.wingRanks, 0) : scoreWingRank(c.wingRanks, 0);
+        double w2 = pairWing ? scorePairWingRank(c.wingRanks, 1) : scoreWingRank(c.wingRanks, 1);
         return main + w1 + w2;
     }
 };
@@ -486,35 +495,40 @@ public:
         if (handCards.empty() || combos.empty()) return 0.0;
         int n = static_cast<int>(combos.size());
         double comboSum = 0.0;
-        int bombRocketBonus = 0;
         for (const auto& c : combos) {
             comboSum += comboScorer_.score(c);
-            if (c.type == ComboType::BOMB || c.type == ComboType::ROCKET) {
-                bombRocketBonus += scoringConfig().bonusBombOrRocket;
-            }
         }
         double penalty = (n - 1) * scoringConfig().penaltyPerCombo;
-        int handBonus = computeHandControlBonus(handCards);
-        return comboSum - penalty + handBonus + bombRocketBonus;
+        // 控制牌加成（含炸弹/王炸）基于全部手牌计算，与拆牌方式无关（PRD §4.1.3）
+        int controlBonus = computeHandControlBonus(handCards);
+        return comboSum - penalty + controlBonus;
     }
 
 private:
     DefaultComboScoringStrategy comboScorer_;
 
+    // Control_Bonus：基于全部手牌计算，与拆牌方式无关（PRD §4.1.3）。
+    // 大王/小王/双2 + 每个持有炸弹(张数>=4) + 持有王炸(大小王齐)。
     static int computeHandControlBonus(const std::vector<Card>& handCards) {
         const ScoringConfig& cfg = scoringConfig();
         int bonus = 0;
         bool hasBigJoker = false, hasSmallJoker = false;
         int twoCount = 0;
+        std::array<int, RANK_COUNT> rankCount{};
         for (std::size_t i = 0; i < handCards.size(); ++i) {
             Rank r = handCards[i].rank;
             if (r == Rank::BIG_JOKER)   hasBigJoker = true;
             if (r == Rank::SMALL_JOKER) hasSmallJoker = true;
             if (r == Rank::TWO)         twoCount++;
+            rankCount[rankIndex(r)]++;
         }
         if (hasBigJoker)   bonus += cfg.bonusBigJoker;
         if (hasSmallJoker) bonus += cfg.bonusSmallJoker;
         if (twoCount >= 2) bonus += cfg.bonusTwoPairs;
+        for (int rc : rankCount) {
+            if (rc >= 4) bonus += cfg.bonusBombOrRocket;
+        }
+        if (hasBigJoker && hasSmallJoker) bonus += cfg.bonusBombOrRocket;
         return bonus;
     }
 };

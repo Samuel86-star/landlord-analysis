@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -71,6 +72,22 @@ class DefaultComboScoringStrategyTest {
 
         assertTrue(planeWithSingles > plainPlane, "飞机带单应高于不带牌的飞机");
         assertTrue(planeWithPairs > plainPlane, "飞机带对应高于不带牌的飞机");
+    }
+
+    @Test
+    @DisplayName("对子翼加分 = 对子组合值的一半（默认 基础分+1），单牌翼仍为基础分一半")
+    void pairWingScoresHalfOfPairComboValue() {
+        // 三带一对 AAA + 22：主分 6*3+10=28；对子翼 2 = (10*2+2)*0.5 = 11 = 基础分(10)+1
+        double tripleWithPair = strategy.score(Combo.tripleWithPair(Rank.ACE, Rank.TWO));
+        assertEquals(39.0, tripleWithPair, 0.001, "三带一对的对子翼 = 基础分 + 1");
+
+        // 对照：三带一 AAA + 2（单牌翼）= 6*3+8 + max(0,10*0.5) = 26+5 = 31
+        double tripleWithSingle = strategy.score(Combo.tripleWithSingle(Rank.ACE, Rank.TWO));
+        assertEquals(31.0, tripleWithSingle, 0.001, "三带一的单牌翼 = 基础分 * 0.5");
+
+        // 小牌对子翼被截断为 0：三带一对 AAA + 33 → 翼 max(0, -7+1) = 0，总分 28
+        double tripleWithPairLow = strategy.score(Combo.tripleWithPair(Rank.ACE, Rank.THREE));
+        assertEquals(28.0, tripleWithPairLow, 0.001, "负基础分对子翼按 0 计");
     }
 }
 

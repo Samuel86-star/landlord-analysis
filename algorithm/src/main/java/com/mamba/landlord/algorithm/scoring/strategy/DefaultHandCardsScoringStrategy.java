@@ -4,7 +4,6 @@ import com.mamba.landlord.algorithm.scoring.IComboScoringStrategy;
 import com.mamba.landlord.algorithm.scoring.IHandCardsScoringStrategy;
 import com.mamba.landlord.core.model.Card;
 import com.mamba.landlord.core.model.Combo;
-import com.mamba.landlord.core.model.ComboType;
 import com.mamba.landlord.core.model.Rank;
 import com.mamba.landlord.core.properties.ScoringStrategyProperties;
 
@@ -54,34 +53,42 @@ public final class DefaultHandCardsScoringStrategy implements IHandCardsScoringS
         }
         int n = combos.size();
         double comboSum = 0.0;
-        int bombRocketBonus = 0;
         for (Combo c : combos) {
             comboSum += comboScoringStrategy.score(c);
-            if (c.type() == ComboType.BOMB || c.type() == ComboType.ROCKET) {
-                bombRocketBonus += config.getBonusBombOrRocket();
-            }
         }
         double penalty = (n - 1) * config.getPenaltyPerCombo();
-        int handBonus = computeHandControlBonus(handCards);
-        return comboSum - penalty + handBonus + bombRocketBonus;
+        // 控制牌加成（含炸弹/王炸）基于全部手牌计算，与拆牌方式无关（PRD §4.1.3）
+        int controlBonus = computeHandControlBonus(handCards);
+        return comboSum - penalty + controlBonus;
     }
 
     /**
-     * Control_Bonus 中来自手牌的部分：大王、小王、双2。
+     * Control_Bonus：基于全部手牌计算，与拆牌方式无关（PRD §4.1.3）。
+     * - 持有大王 +bonusBigJoker；持有小王 +bonusSmallJoker
+     * - 持有 ≥2 张 2 +bonusTwoPairs
+     * - 每个持有炸弹（任意点数张数 ≥ 4）+bonusBombOrRocket
+     * - 持有王炸（大小王齐）+bonusBombOrRocket
      */
     private int computeHandControlBonus(List<Card> handCards) {
         int bonus = 0;
         boolean hasBigJoker = false;
         boolean hasSmallJoker = false;
         int twoCount = 0;
+        int[] rankCount = new int[15];
         for (Card c : handCards) {
-            if (c.rank() == Rank.BIG_JOKER) hasBigJoker = true;
-            if (c.rank() == Rank.SMALL_JOKER) hasSmallJoker = true;
-            if (c.rank() == Rank.TWO) twoCount++;
+            Rank r = c.rank();
+            if (r == Rank.BIG_JOKER) hasBigJoker = true;
+            else if (r == Rank.SMALL_JOKER) hasSmallJoker = true;
+            else if (r == Rank.TWO) twoCount++;
+            rankCount[r.getIndex()]++;
         }
         if (hasBigJoker) bonus += config.getBonusBigJoker();
         if (hasSmallJoker) bonus += config.getBonusSmallJoker();
         if (twoCount >= 2) bonus += config.getBonusTwoPairs();
+        for (int cnt : rankCount) {
+            if (cnt >= 4) bonus += config.getBonusBombOrRocket();
+        }
+        if (hasBigJoker && hasSmallJoker) bonus += config.getBonusBombOrRocket();
         return bonus;
     }
 }

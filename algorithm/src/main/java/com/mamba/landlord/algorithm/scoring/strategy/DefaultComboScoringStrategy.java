@@ -39,15 +39,15 @@ public class DefaultComboScoringStrategy implements IComboScoringStrategy {
             case SINGLE -> 0;
             case PAIR -> scoreMainRank(c.mainRanks(), 0, config.getPairCoeff(), config.getPairOffset());
             case TRIPLE -> scoreMainRank(c.mainRanks(), 0, config.getTripleCoeff(), config.getTripleOffset());
-            case TRIPLE_WITH_SINGLE -> scoreTripleWithWing(c, config.getTripleWithSingleOffset());
-            case TRIPLE_WITH_PAIR -> scoreTripleWithWing(c, config.getTripleWithPairOffset());
+            case TRIPLE_WITH_SINGLE -> scoreTripleWithWing(c, config.getTripleWithSingleOffset(), false);
+            case TRIPLE_WITH_PAIR -> scoreTripleWithWing(c, config.getTripleWithPairOffset(), true);
             case STRAIGHT -> scoreStraightOrPairs(c.mainRanks(), true, config.getStraightLenCoeff());
             case CONSECUTIVE_PAIRS -> scoreStraightOrPairs(c.mainRanks(), false, config.getConsecutivePairsLenCoeff());
             case PLANE -> scorePlane(c.mainRanks(), config.getPlaneTripleOffset(), config.getPlaneLenCoeff());
-            case PLANE_WITH_SINGLES -> scorePlaneWithWings(c, config.getPlaneWithSinglesTripleOffset());
-            case PLANE_WITH_PAIRS -> scorePlaneWithWings(c, config.getPlaneWithPairsTripleOffset());
-            case QUAD_WITH_TWO_SINGLES -> scoreQuadWithWings(c, config.getQuadWithTwoSinglesOffset());
-            case QUAD_WITH_TWO_PAIRS -> scoreQuadWithWings(c, config.getQuadWithTwoPairsOffset());
+            case PLANE_WITH_SINGLES -> scorePlaneWithWings(c, config.getPlaneWithSinglesTripleOffset(), false);
+            case PLANE_WITH_PAIRS -> scorePlaneWithWings(c, config.getPlaneWithPairsTripleOffset(), true);
+            case QUAD_WITH_TWO_SINGLES -> scoreQuadWithWings(c, config.getQuadWithTwoSinglesOffset(), false);
+            case QUAD_WITH_TWO_PAIRS -> scoreQuadWithWings(c, config.getQuadWithTwoPairsOffset(), true);
             case BOMB -> scoreMainRank(c.mainRanks(), 0, config.getBombCoeff(), config.getBombOffset());
             case ROCKET -> config.getRocketScore();
         };
@@ -64,9 +64,26 @@ public class DefaultComboScoringStrategy implements IComboScoringStrategy {
         return r == null ? 0 : Math.max(0, config.getRankBaseValue(r.getIndex()) * config.getWingRankFactor());
     }
 
-    private double scoreTripleWithWing(Combo c, int tripleOffset) {
+    /**
+     * 对子翼（带出的翼是对子）加分 = 对子组合值的一半。
+     * = max(0, (V_base × pairCoeff + pairOffset) × wingRankFactor)；
+     * 默认系数(pairCoeff=2, pairOffset=2, wingRankFactor=0.5)下 = max(0, V_base + 1)，
+     * 对齐 PRD《发牌均衡性过滤》§4.1.2「翼牌为对子时 翼牌加分 = max(0, 基础分 + 1)」。
+     * 单牌翼仍用 {@link #scoreWingRank}（= max(0, V_base × wingRankFactor)）。
+     */
+    private double scorePairWingRank(Rank r) {
+        if (r == null) {
+            return 0;
+        }
+        double pairComboValue = config.getRankBaseValue(r.getIndex()) * config.getPairCoeff() + config.getPairOffset();
+        return Math.max(0, pairComboValue * config.getWingRankFactor());
+    }
+
+    private double scoreTripleWithWing(Combo c, int tripleOffset, boolean pairWing) {
         double main = scoreMainRank(c.mainRanks(), 0, config.getTripleCoeff(), tripleOffset);
-        double wing = scoreWingRank(safeGet(c.wingRanks(), 0));
+        double wing = pairWing
+            ? scorePairWingRank(safeGet(c.wingRanks(), 0))
+            : scoreWingRank(safeGet(c.wingRanks(), 0));
         return main + wing;
     }
 
@@ -93,7 +110,7 @@ public class DefaultComboScoringStrategy implements IComboScoringStrategy {
         return sum + (long) mainRanks.size() * lenCoeff;
     }
 
-    private double scorePlaneWithWings(Combo c, int tripleOffset) {
+    private double scorePlaneWithWings(Combo c, int tripleOffset, boolean pairWing) {
         if (c.mainRanks() == null || c.mainRanks().isEmpty()) {
             return 0;
         }
@@ -104,16 +121,16 @@ public class DefaultComboScoringStrategy implements IComboScoringStrategy {
         sum += c.mainRanks().size() * config.getPlaneWithWingsLenCoeff();
         if (c.wingRanks() != null) {
             for (Rank r : c.wingRanks()) {
-                sum += scoreWingRank(r);
+                sum += pairWing ? scorePairWingRank(r) : scoreWingRank(r);
             }
         }
         return sum;
     }
 
-    private double scoreQuadWithWings(Combo c, int quadOffset) {
+    private double scoreQuadWithWings(Combo c, int quadOffset, boolean pairWing) {
         double main = scoreMainRank(c.mainRanks(), 0, config.getQuadBaseCoeff(), quadOffset);
-        double w1 = scoreWingRank(safeGet(c.wingRanks(), 0));
-        double w2 = scoreWingRank(safeGet(c.wingRanks(), 1));
+        double w1 = pairWing ? scorePairWingRank(safeGet(c.wingRanks(), 0)) : scoreWingRank(safeGet(c.wingRanks(), 0));
+        double w2 = pairWing ? scorePairWingRank(safeGet(c.wingRanks(), 1)) : scoreWingRank(safeGet(c.wingRanks(), 1));
         return main + w1 + w2;
     }
 

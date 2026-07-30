@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 
 import java.util.List;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -96,6 +97,27 @@ class DefaultHandCardsScoringStrategyTest {
         double scoreStructured = strategy.calcTotalHandScore(cards, straightAndBomb);
 
         assertTrue(scoreStructured > scoreSingles, "顺子+炸弹的结构应优于同一批牌全部拆成散牌");
+    }
+
+    @Test
+    @DisplayName("炸弹控制加成按手牌持有计算，与拆牌方式无关（拆成单牌也给 +5）")
+    void bombControlBonusIndependentOfSplit() {
+        // 手牌含 8888 + 3 + 4
+        List<Card> hand = List.of(
+            new Card(Rank.EIGHT, Suit.SPADE), new Card(Rank.EIGHT, Suit.HEART),
+            new Card(Rank.EIGHT, Suit.CLUB),  new Card(Rank.EIGHT, Suit.DIAMOND),
+            new Card(Rank.THREE, Suit.SPADE), new Card(Rank.FOUR, Suit.HEART)
+        );
+        // 全拆成单牌（拆牌结果里没有任何 BOMB 组合）：旧实现控制加成=0；新实现因持有四张8 仍 +5
+        List<Combo> asSingles = List.of(
+            Combo.single(Rank.EIGHT), Combo.single(Rank.EIGHT),
+            Combo.single(Rank.EIGHT), Combo.single(Rank.EIGHT),
+            Combo.single(Rank.THREE), Combo.single(Rank.FOUR)
+        );
+        double score = strategy.calcTotalHandScore(hand, asSingles);
+        // comboSum=0，N=6 → penalty=(6-1)*8=40，control=+5（持有炸弹） → V_total = -35
+        assertEquals(-35.0, score, 0.001,
+            "持有四张8 应给 +5 控制加成，即使拆牌结果里没有 BOMB 组合");
     }
 }
 

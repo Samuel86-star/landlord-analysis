@@ -97,6 +97,10 @@ void testComboScoring() {
     double rocketScore = scorer.score(Combo::rocket());
     assert(std::abs(rocketScore - 60.0) < 0.001);
 
+    // 三带一对（对子翼 = 基础分+1）：AAA+22 → 6*3+10 + (10*2+2)*0.5 = 28+11 = 39
+    double tripleWithPairScore = scorer.score(Combo::tripleWithPair(Rank::ACE, Rank::TWO));
+    assert(std::abs(tripleWithPairScore - 39.0) < 0.001);
+
     std::cout << "[PASS] testComboScoring" << std::endl;
 }
 
@@ -115,6 +119,21 @@ void testHandScoring() {
     // control bonus: no joker, no 2s >= 2, no bomb
     // V_total = 26
     assert(std::abs(score - 26.0) < 0.001);
+
+    // 持有炸弹的控制加成与拆牌无关：8888 全拆成单牌（无 BOMB 组合），仍应 +5
+    std::vector<Card> hand2 = {
+        {Rank::EIGHT, Suit::SPADE}, {Rank::EIGHT, Suit::HEART},
+        {Rank::EIGHT, Suit::CLUB},  {Rank::EIGHT, Suit::DIAMOND},
+        {Rank::THREE, Suit::SPADE}, {Rank::FOUR, Suit::HEART}
+    };
+    std::vector<Combo> combos2 = {
+        Combo::single(Rank::EIGHT), Combo::single(Rank::EIGHT),
+        Combo::single(Rank::EIGHT), Combo::single(Rank::EIGHT),
+        Combo::single(Rank::THREE), Combo::single(Rank::FOUR)
+    };
+    double score2 = handScorer.calcTotalHandScore(hand2, combos2);
+    // comboSum=0, N=6 -> penalty=(6-1)*8=40, control=+5(held bomb) -> V_total = -35
+    assert(std::abs(score2 - (-35.0)) < 0.001);
 
     std::cout << "[PASS] testHandScoring" << std::endl;
 }
