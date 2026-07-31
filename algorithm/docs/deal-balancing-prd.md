@@ -156,24 +156,24 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 
 ### 使用方式
 
-运行测试 `ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution`，输出如下（10 万局示例）：
+运行测试 `ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution`，输出如下（10 万局；2026-07-31 按现行评分公式重采样）：
 
 ```
 ===== DealDistributionSampler 详细分布 =====
-minScore（最差一家）： P5=-68.0 P50=-35.0 P95=-1.0  P99=12.5
-maxScore（最强一家）： P5=-18.0 P50=19.0  P95=74.0  P99=98.0
-spread（极差）      ： P5=14.0  P50=53.0  P95=113.0 P99=140.0
-potentialLandlord  ： P5=-3.0  P50=37.0  P95=94.0  P99=116.0
-landlordAdvantage  ： P5=15.3  P50=56.0  P95=114.5 P99=141.5
+minScore（最差一家）： P5=-68.0 P50=-35.0 P95=-2.0  P99=12.0
+maxScore（最强一家）： P5=-18.0 P50=18.0  P95=74.0  P99=97.0
+spread（极差）      ： P5=14.0  P50=53.0  P95=112.0 P99=140.0
+potentialLandlord  ： P5=-5.0  P50=35.0  P95=92.0  P99=116.0
+landlordAdvantage  ： P5=13.5  P50=54.5  P95=113.0 P99=139.5
 maxSingles（单牌数）： P5=4.0   P50=6.0   P95=8.0   P99=9.0
 maxBombs（炸弹数） ： P5=0.0   P50=0.0   P95=1.0   P99=2.0
 ============================================
 ===== DealDistributionSampler 推荐阈值 =====
 # landlord.shuffle-strategy.lower-threshold=-68.0
 # landlord.shuffle-strategy.upper-threshold=74.0
-# landlord.shuffle-strategy.max-spread=113.0
-# landlord.shuffle-strategy.max-potential-landlord-score=94.0
-# landlord.shuffle-strategy.max-landlord-advantage=114.5
+# landlord.shuffle-strategy.max-spread=112.0
+# landlord.shuffle-strategy.max-potential-landlord-score=92.0
+# landlord.shuffle-strategy.max-landlord-advantage=113.0
 # landlord.shuffle-strategy.max-singles-per-hand=8
 # landlord.shuffle-strategy.max-bombs-per-hand=2
 ============================================
@@ -189,7 +189,7 @@ maxBombs（炸弹数） ： P5=0.0   P50=0.0   P95=1.0   P99=2.0
 
 > **重要**：评分公式或拆牌策略每次有变更，必须重新运行采样测试更新基线，旧阈值不能复用。
 
-> ⚠️ **当前基线已失效（待重新采样）**：产品 PRD §4.1.2（对子翼加分改为 `基础分+1`）与 §4.1.3（控制牌加成改为按手牌持有计算、与拆牌无关）已变更评分公式，本节上方分位点 / 推荐阈值（-68 / 74 / 113 / 94 / 114.5 / 8 / 2）及 `application.properties` 默认值均为旧公式下的采样结果，**不可直接复用**。需在新公式下重跑 `DealDistributionSampler` / `ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution`（Java 与 C++ 采样器各一遍）后重新标定。
+> ✅ **基线已于 2026-07-31 重新采样**：在产品 PRD §4.1.2/§4.1.3 新评分公式（对子翼 `基础分+1`、控制牌加成按手牌持有）下重跑 Java `sampleBaselineDistribution`（10 万局）。相较旧基线，仅 spread 113→112、potential 94→92、advantage 114.5→113 各降 1~2，upper/lower/singles/bombs 不变；C++ `sampler_test` 10k 局复核分布一致。
 
 ---
 
@@ -202,9 +202,9 @@ landlord.shuffle-strategy.enabled=true
 # ===== 五维均衡性阈值（基于10万局P95/P99采样） =====
 landlord.shuffle-strategy.lower-threshold=-68.0
 landlord.shuffle-strategy.upper-threshold=74.0
-landlord.shuffle-strategy.max-spread=113.0
-landlord.shuffle-strategy.max-potential-landlord-score=94.0
-landlord.shuffle-strategy.max-landlord-advantage=114.5
+landlord.shuffle-strategy.max-spread=112.0
+landlord.shuffle-strategy.max-potential-landlord-score=92.0
+landlord.shuffle-strategy.max-landlord-advantage=113.0
 landlord.shuffle-strategy.max-singles-per-hand=8
 landlord.shuffle-strategy.max-bombs-per-hand=2
 
