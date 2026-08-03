@@ -423,13 +423,11 @@ private:
         return std::max(0.0, rankBaseValue(wings[idx]) * scoringConfig().wingRankFactor);
     }
 
-    // 对子翼加分 = 对子组合值的一半 = max(0, (V_base*pairCoeff + pairOffset) * wingRankFactor)
-    // 默认系数下 = max(0, V_base + 1)，对齐 PRD §4.1.2「翼牌为对子时 翼牌加分 = max(0, 基础分 + 1)」。
+    // 对子翼加分 = max(0, 基础分 + 1)，直接对齐 PRD §4.1.2「翼牌为对子时 翼牌加分 = max(0, 基础分 + 1)」字面口径，
+    // 不随评分配置(pairCoeff/pairOffset/wingRankFactor)漂移。单牌翼仍用 scoreWingRank(= 基础分 × wingRankFactor)。
     static double scorePairWingRank(const std::vector<Rank>& wings, int idx) {
         if (idx >= static_cast<int>(wings.size())) return 0;
-        const ScoringConfig& cfg = scoringConfig();
-        double pairComboValue = rankBaseValue(wings[idx]) * cfg.pairCoeff + cfg.pairOffset;
-        return std::max(0.0, pairComboValue * cfg.wingRankFactor);
+        return std::max(0.0, rankBaseValue(wings[idx]) + 1.0);
     }
 
     static double scoreTripleWithWing(const Combo& c, int tripleOffset, bool pairWing) {

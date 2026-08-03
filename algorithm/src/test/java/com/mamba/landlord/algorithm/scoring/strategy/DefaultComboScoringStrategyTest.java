@@ -75,9 +75,9 @@ class DefaultComboScoringStrategyTest {
     }
 
     @Test
-    @DisplayName("对子翼加分 = 对子组合值的一半（默认 基础分+1），单牌翼仍为基础分一半")
-    void pairWingScoresHalfOfPairComboValue() {
-        // 三带一对 AAA + 22：主分 6*3+10=28；对子翼 2 = (10*2+2)*0.5 = 11 = 基础分(10)+1
+    @DisplayName("对子翼加分 = 基础分 + 1，单牌翼仍为基础分一半")
+    void pairWingScoreIsBaseValuePlusOne() {
+        // 三带一对 AAA + 22：主分 6*3+10=28；对子翼 = 基础分(10)+1 = 11
         double tripleWithPair = strategy.score(Combo.tripleWithPair(Rank.ACE, Rank.TWO));
         assertEquals(39.0, tripleWithPair, 0.001, "三带一对的对子翼 = 基础分 + 1");
 

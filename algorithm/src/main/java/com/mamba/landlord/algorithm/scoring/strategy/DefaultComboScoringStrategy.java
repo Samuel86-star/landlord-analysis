@@ -65,18 +65,16 @@ public class DefaultComboScoringStrategy implements IComboScoringStrategy {
     }
 
     /**
-     * 对子翼（带出的翼是对子）加分 = 对子组合值的一半。
-     * = max(0, (V_base × pairCoeff + pairOffset) × wingRankFactor)；
-     * 默认系数(pairCoeff=2, pairOffset=2, wingRankFactor=0.5)下 = max(0, V_base + 1)，
-     * 对齐 PRD《发牌均衡性过滤》§4.1.2「翼牌为对子时 翼牌加分 = max(0, 基础分 + 1)」。
+     * 对子翼（带出的翼是对子）加分 = max(0, 基础分 + 1)。
+     * 直接对齐 PRD《发牌均衡性过滤》§4.1.2「翼牌为对子时 翼牌加分 = max(0, 基础分 + 1)」字面口径，
+     * 不随评分配置(pairCoeff/pairOffset/wingRankFactor)漂移。
      * 单牌翼仍用 {@link #scoreWingRank}（= max(0, V_base × wingRankFactor)）。
      */
     private double scorePairWingRank(Rank r) {
         if (r == null) {
             return 0;
         }
-        double pairComboValue = config.getRankBaseValue(r.getIndex()) * config.getPairCoeff() + config.getPairOffset();
-        return Math.max(0, pairComboValue * config.getWingRankFactor());
+        return Math.max(0, config.getRankBaseValue(r.getIndex()) + 1);
     }
 
     private double scoreTripleWithWing(Combo c, int tripleOffset, boolean pairWing) {

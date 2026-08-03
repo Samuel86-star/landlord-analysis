@@ -97,7 +97,7 @@ void testComboScoring() {
     double rocketScore = scorer.score(Combo::rocket());
     assert(std::abs(rocketScore - 60.0) < 0.001);
 
-    // 三带一对（对子翼 = 基础分+1）：AAA+22 → 6*3+10 + (10*2+2)*0.5 = 28+11 = 39
+    // 三带一对（对子翼 = 基础分+1）：AAA+22 → 6*3+10 + (10+1) = 28+11 = 39
     double tripleWithPairScore = scorer.score(Combo::tripleWithPair(Rank::ACE, Rank::TWO));
     assert(std::abs(tripleWithPairScore - 39.0) < 0.001);
 
