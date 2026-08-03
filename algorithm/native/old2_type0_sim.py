@@ -699,7 +699,7 @@ def _test_structure():
         print(f"{name:<16}" + "".join(f"{avg(acc[k]):>9.3f}" for k in keys))
 
 
-if __name__ == "__main__":
+def _run_tests():
     print("== 测试1：3张同点 -> 做牌补成炸弹 ==")
     _test_bomb_fill()
     print("\n== 测试2：复现「第二轮无条件做牌」bug ==")
@@ -709,3 +709,118 @@ if __name__ == "__main__":
     print("\n== 测试4：参数/改法扫描 ==")
     _test_sweep()
     print("\n完成。")
+
+
+# ============================================================
+# CLI —— 产品/运营友好的命令行接口（Python 3，无第三方依赖）
+# ============================================================
+FIXES = {
+    "baseline":        {"说明": "现状（含bug，全菜单）",            "kw": dict()},
+    "no-bomb":         {"说明": "去MatchBomb（不主动凑炸弹）",       "kw": dict(menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple])},
+    "bomb-last":       {"说明": "MatchBomb降到最后（最低优先级）",   "kw": dict(menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple, match_bomb])},
+    "fix-bug":         {"说明": "修bug（第二轮只续做触发家）",       "kw": dict(fix_bug=True)},
+    "fix-bug-no-bomb": {"说明": "修bug + 去MatchBomb",               "kw": dict(fix_bug=True, menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple])},
+}
+
+
+def _decks(n, seed):
+    rng = random.Random(seed)
+    return [rng.sample(range(TOTAL_CARDS), TOTAL_CARDS) for _ in range(n)]
+
+
+def _avg(a):
+    return sum(a) / len(a)
+
+
+def cli_run(fix, n, seed):
+    decks = _decks(n, seed)
+    kw = FIXES[fix]["kw"]
+    bombs, hands, bigs, zb, xb = [], [], [], [], []
+    for cards in decks:
+        r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, **kw)
+        banker = r["banker"]
+        for c in range(3):
+            seat = r["chair_cards"][c]
+            lay = build_lay(seat)
+            bombs.append(count_bombs_17(seat))
+            hands.append(calc_hand_cards_count(lay)[0])
+            bigs.append(lay[1] + lay[14] + lay[15])
+            (zb if c == banker else xb).append(count_bombs_17(seat))
+    print(f"[run] 改法={fix}（{FIXES[fix]['说明']}）  N={n}局×3家  seed={seed}")
+    print(f"  炸弹均值 {_avg(bombs):.3f} | 手数 {_avg(hands):.3f} | 大牌(2/王) {_avg(bigs):.3f} | 庄炸 {_avg(zb):.3f} | 闲炸 {_avg(xb):.3f}")
+    print(f"  （参照：纯随机 炸弹≈0.190 / 手数≈7.50）")
+
+
+def cli_sweep(n, seed):
+    decks = _decks(n, seed)
+    print(f"[sweep] N={n}局×3家  seed={seed}（同一批牌，改法间可直接对比）")
+    print(f"{'改法':<16}{'说明':<32}{'炸弹':>8}{'手数':>8}{'大牌':>8}{'庄炸':>8}{'闲炸':>8}")
+    print("-" * 96)
+    for name, info in FIXES.items():
+        bombs, hands, bigs, zb, xb = [], [], [], [], []
+        for cards in decks:
+            r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, **info["kw"])
+            banker = r["banker"]
+            for c in range(3):
+                seat = r["chair_cards"][c]
+                lay = build_lay(seat)
+                bombs.append(count_bombs_17(seat))
+                hands.append(calc_hand_cards_count(lay)[0])
+                bigs.append(lay[1] + lay[14] + lay[15])
+                (zb if c == banker else xb).append(count_bombs_17(seat))
+        print(f"{name:<14}{info['说明']:<30}{_avg(bombs):>8.3f}{_avg(hands):>8.3f}{_avg(bigs):>8.3f}{_avg(zb):>8.3f}{_avg(xb):>8.3f}")
+
+
+def cli_structure(fix, n, seed):
+    decks = _decks(n, seed)
+    kw = FIXES[fix]["kw"]
+    keys = ["rocket", "bomb", "plane", "seq_pair", "straight", "triple", "pair", "single"]
+    acc = {k: [] for k in keys}
+    for cards in decks:
+        r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, **kw)
+        for c in range(3):
+            st = analyze_hand(build_lay(r["chair_cards"][c]))
+            for k in keys:
+                acc[k].append(st[k])
+    print(f"[structure] 改法={fix}（{FIXES[fix]['说明']}）  N={n}局×3家  单家平均牌型个数")
+    print("  " + "  ".join(f"{k}={_avg(acc[k]):.3f}" for k in keys))
+
+
+def main():
+    import argparse
+    p = argparse.ArgumentParser(
+        prog="old2_type0_sim.py",
+        description="old2/Type0 发牌做牌模拟器（经典初级房：1真人+2机器人，真人=庄）。Python 3，无第三方依赖。")
+    sub = p.add_subparsers(dest="cmd")
+
+    pr = sub.add_parser("run", help="跑单个改法，输出炸弹/手数/大牌/庄闲")
+    pr.add_argument("--fix", default="baseline", choices=list(FIXES), help="改法名（默认 baseline）")
+    pr.add_argument("--n", type=int, default=20000, help="模拟局数（默认 20000）")
+    pr.add_argument("--seed", type=int, default=0)
+
+    ps = sub.add_parser("sweep", help="扫描所有改法对比（同一批牌）")
+    ps.add_argument("--n", type=int, default=10000)
+    ps.add_argument("--seed", type=int, default=0)
+
+    pst = sub.add_parser("structure", help="看某个改法的牌型构成")
+    pst.add_argument("--fix", default="baseline", choices=list(FIXES))
+    pst.add_argument("--n", type=int, default=10000)
+    pst.add_argument("--seed", type=int, default=0)
+
+    sub.add_parser("test", help="跑内置测试 1-4（机制验证 + bug 复现 + 采样）")
+
+    a = p.parse_args()
+    if a.cmd == "run":
+        cli_run(a.fix, a.n, a.seed)
+    elif a.cmd == "sweep":
+        cli_sweep(a.n, a.seed)
+    elif a.cmd == "structure":
+        cli_structure(a.fix, a.n, a.seed)
+    elif a.cmd == "test":
+        _run_tests()
+    else:
+        p.print_help()
+
+
+if __name__ == "__main__":
+    main()
