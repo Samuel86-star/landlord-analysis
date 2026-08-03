@@ -699,6 +699,79 @@ def _test_structure():
         print(f"{name:<16}" + "".join(f"{avg(acc[k]):>9.3f}" for k in keys))
 
 
+def _test_explore():
+    """探索：连贯优先+炸弹垫后的菜单顺序，聚焦庄/闲炸弹均衡。"""
+    N = 8000
+    rng = random.Random(0)
+    decks = [rng.sample(range(TOTAL_CARDS), TOTAL_CARDS) for _ in range(N)]
+    pt = [HUMAN, ROBOT, ROBOT]
+    exps = [
+        ("顺,连对,三,对,2王,炸",          dict(menu=[match_abt,match_abt_couple,match_three,match_couple,match_2_or_king,match_bomb])),
+        ("2王,顺,连对,三,对,炸",          dict(menu=[match_2_or_king,match_abt,match_abt_couple,match_three,match_couple,match_bomb])),
+        ("2王,顺,连对,三,对,炸 +修bug",  dict(fix_bug=True, menu=[match_2_or_king,match_abt,match_abt_couple,match_three,match_couple,match_bomb])),
+        ("顺,连对,三,2王,对,炸",          dict(menu=[match_abt,match_abt_couple,match_three,match_2_or_king,match_couple,match_bomb])),
+        ("2王,三,顺,连对,对,炸",          dict(menu=[match_2_or_king,match_three,match_abt,match_abt_couple,match_couple,match_bomb])),
+        ("2王,顺,连对,三,对 (去炸)",      dict(menu=[match_2_or_king,match_abt,match_abt_couple,match_three,match_couple])),
+    ]
+
+    def avg(a):
+        return sum(a) / len(a)
+
+    print(f"[explore N={N}局×3家 | 连贯优先+炸弹垫后，看庄/闲炸弹均衡]")
+    print(f"{'实验':<34}{'炸弹':>7}{'手数':>7}{'庄炸':>7}{'闲炸':>7}{'|庄闲差|':>9}")
+    print("-" * 78)
+    for name, kw in exps:
+        bombs, hands, zb, xb = [], [], [], []
+        for cards in decks:
+            r = deal(pt, preset_cards=list(cards), is_fix_banker=True, **kw)
+            bk = r["banker"]
+            for c in range(3):
+                seat = r["chair_cards"][c]
+                lay = build_lay(seat)
+                bombs.append(count_bombs_17(seat))
+                hands.append(calc_hand_cards_count(lay)[0])
+                (zb if c == bk else xb).append(count_bombs_17(seat))
+        print(f"{name:<32}{avg(bombs):>7.3f}{avg(hands):>7.3f}{avg(zb):>7.3f}{avg(xb):>7.3f}{abs(avg(zb)-avg(xb)):>9.3f}")
+
+
+def _test_grid():
+    """二维扫描：BeginMakeNum（配牌起点）× 菜单顺序（牌型优先级）的联合效果。"""
+    N = 4000
+    rng = random.Random(0)
+    decks = [rng.sample(range(TOTAL_CARDS), TOTAL_CARDS) for _ in range(N)]
+    pt = [HUMAN, ROBOT, ROBOT]
+
+    bmn_list = [8, 10, 12, 14]
+    menus = [
+        ("baseline(2王,炸,三,顺,连对,对)",  [match_2_or_king, match_bomb, match_three, match_abt, match_abt_couple, match_couple]),
+        ("控制连贯(2王,顺,连对,三,对,炸)",  [match_2_or_king, match_abt, match_abt_couple, match_three, match_couple, match_bomb]),
+        ("连贯优先(顺,连对,三,对,2王,炸)",  [match_abt, match_abt_couple, match_three, match_couple, match_2_or_king, match_bomb]),
+        ("去炸(2王,顺,连对,三,对)",          [match_2_or_king, match_abt, match_abt_couple, match_three, match_couple]),
+    ]
+
+    def avg(a):
+        return sum(a) / len(a)
+
+    print(f"[grid N={N}局×3家 | BeginMakeNum × 菜单顺序]")
+    for mname, menu in menus:
+        print(f"\n=== 菜单: {mname} ===")
+        print(f"{'BeginMakeNum':>12}{'做牌张数':>9}{'炸弹':>8}{'手数':>8}{'庄炸':>8}{'闲炸':>8}{'|庄闲差|':>9}")
+        print("-" * 66)
+        for bmn in bmn_list:
+            cfg = {**OLD2, "BeginMakeNum": bmn}
+            bombs, hands, zb, xb = [], [], [], []
+            for cards in decks:
+                r = deal(pt, preset_cards=list(cards), is_fix_banker=True, cfg=cfg, menu=menu)
+                bk = r["banker"]
+                for c in range(3):
+                    seat = r["chair_cards"][c]
+                    lay = build_lay(seat)
+                    bombs.append(count_bombs_17(seat))
+                    hands.append(calc_hand_cards_count(lay)[0])
+                    (zb if c == bk else xb).append(count_bombs_17(seat))
+            print(f"{bmn:>12}{17 - bmn:>9}{avg(bombs):>8.3f}{avg(hands):>8.3f}{avg(zb):>8.3f}{avg(xb):>8.3f}{abs(avg(zb) - avg(xb)):>9.3f}")
+
+
 def _run_tests():
     print("== 测试1：3张同点 -> 做牌补成炸弹 ==")
     _test_bomb_fill()
@@ -715,11 +788,13 @@ def _run_tests():
 # CLI —— 产品/运营友好的命令行接口（Python 3，无第三方依赖）
 # ============================================================
 FIXES = {
-    "baseline":        {"说明": "现状（含bug，全菜单）",            "kw": dict()},
-    "no-bomb":         {"说明": "去MatchBomb（不主动凑炸弹）",       "kw": dict(menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple])},
-    "bomb-last":       {"说明": "MatchBomb降到最后（最低优先级）",   "kw": dict(menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple, match_bomb])},
-    "fix-bug":         {"说明": "修bug（第二轮只续做触发家）",       "kw": dict(fix_bug=True)},
-    "fix-bug-no-bomb": {"说明": "修bug + 去MatchBomb",               "kw": dict(fix_bug=True, menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple])},
+    "baseline":            {"说明": "现状（含bug，全菜单）",              "kw": dict()},
+    "no-bomb":             {"说明": "去MatchBomb（不主动凑炸弹）",         "kw": dict(menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple])},
+    "bomb-last":           {"说明": "MatchBomb降到最后（最低优先级）",     "kw": dict(menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple, match_bomb])},
+    "control-flow":        {"说明": "控制连贯(2王,顺,连对,三,对,炸)★推荐", "kw": dict(menu=[match_2_or_king, match_abt, match_abt_couple, match_three, match_couple, match_bomb])},
+    "control-flow-nobomb": {"说明": "控制连贯去炸(2王,顺,连对,三,对)",     "kw": dict(menu=[match_2_or_king, match_abt, match_abt_couple, match_three, match_couple])},
+    "fix-bug":             {"说明": "修bug（第二轮只续做触发家）",         "kw": dict(fix_bug=True)},
+    "fix-bug-no-bomb":     {"说明": "修bug + 去MatchBomb",                 "kw": dict(fix_bug=True, menu=[match_2_or_king, match_three, match_abt, match_abt_couple, match_couple])},
 }
 
 
@@ -732,12 +807,13 @@ def _avg(a):
     return sum(a) / len(a)
 
 
-def cli_run(fix, n, seed):
+def cli_run(fix, n, seed, bmn=12):
     decks = _decks(n, seed)
     kw = FIXES[fix]["kw"]
+    cfg = {**OLD2, "BeginMakeNum": bmn}
     bombs, hands, bigs, zb, xb = [], [], [], [], []
     for cards in decks:
-        r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, **kw)
+        r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, cfg=cfg, **kw)
         banker = r["banker"]
         for c in range(3):
             seat = r["chair_cards"][c]
@@ -751,15 +827,16 @@ def cli_run(fix, n, seed):
     print(f"  （参照：纯随机 炸弹≈0.190 / 手数≈7.50）")
 
 
-def cli_sweep(n, seed):
+def cli_sweep(n, seed, bmn=12):
     decks = _decks(n, seed)
-    print(f"[sweep] N={n}局×3家  seed={seed}（同一批牌，改法间可直接对比）")
-    print(f"{'改法':<16}{'说明':<32}{'炸弹':>8}{'手数':>8}{'大牌':>8}{'庄炸':>8}{'闲炸':>8}")
-    print("-" * 96)
+    cfg = {**OLD2, "BeginMakeNum": bmn}
+    print(f"[sweep] N={n}局×3家  seed={seed}  bmn={bmn}（同一批牌，改法间可直接对比）")
+    print(f"{'改法':<22}{'说明':<30}{'炸弹':>8}{'手数':>8}{'大牌':>8}{'庄炸':>8}{'闲炸':>8}")
+    print("-" * 100)
     for name, info in FIXES.items():
         bombs, hands, bigs, zb, xb = [], [], [], [], []
         for cards in decks:
-            r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, **info["kw"])
+            r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, cfg=cfg, **info["kw"])
             banker = r["banker"]
             for c in range(3):
                 seat = r["chair_cards"][c]
@@ -768,16 +845,17 @@ def cli_sweep(n, seed):
                 hands.append(calc_hand_cards_count(lay)[0])
                 bigs.append(lay[1] + lay[14] + lay[15])
                 (zb if c == banker else xb).append(count_bombs_17(seat))
-        print(f"{name:<14}{info['说明']:<30}{_avg(bombs):>8.3f}{_avg(hands):>8.3f}{_avg(bigs):>8.3f}{_avg(zb):>8.3f}{_avg(xb):>8.3f}")
+        print(f"{name:<20}{info['说明']:<28}{_avg(bombs):>8.3f}{_avg(hands):>8.3f}{_avg(bigs):>8.3f}{_avg(zb):>8.3f}{_avg(xb):>8.3f}")
 
 
-def cli_structure(fix, n, seed):
+def cli_structure(fix, n, seed, bmn=12):
     decks = _decks(n, seed)
     kw = FIXES[fix]["kw"]
+    cfg = {**OLD2, "BeginMakeNum": bmn}
     keys = ["rocket", "bomb", "plane", "seq_pair", "straight", "triple", "pair", "single"]
     acc = {k: [] for k in keys}
     for cards in decks:
-        r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, **kw)
+        r = deal([HUMAN, ROBOT, ROBOT], preset_cards=list(cards), is_fix_banker=True, cfg=cfg, **kw)
         for c in range(3):
             st = analyze_hand(build_lay(r["chair_cards"][c]))
             for k in keys:
@@ -796,26 +874,29 @@ def main():
     pr = sub.add_parser("run", help="跑单个改法，输出炸弹/手数/大牌/庄闲")
     pr.add_argument("--fix", default="baseline", choices=list(FIXES), help="改法名（默认 baseline）")
     pr.add_argument("--n", type=int, default=20000, help="模拟局数（默认 20000）")
+    pr.add_argument("--bmn", type=int, default=12, help="BeginMakeNum：前N张固定发，第N+1张起做牌（默认12）")
     pr.add_argument("--seed", type=int, default=0)
 
     ps = sub.add_parser("sweep", help="扫描所有改法对比（同一批牌）")
     ps.add_argument("--n", type=int, default=10000)
+    ps.add_argument("--bmn", type=int, default=12, help="BeginMakeNum（默认12）")
     ps.add_argument("--seed", type=int, default=0)
 
     pst = sub.add_parser("structure", help="看某个改法的牌型构成")
     pst.add_argument("--fix", default="baseline", choices=list(FIXES))
     pst.add_argument("--n", type=int, default=10000)
+    pst.add_argument("--bmn", type=int, default=12, help="BeginMakeNum（默认12）")
     pst.add_argument("--seed", type=int, default=0)
 
     sub.add_parser("test", help="跑内置测试 1-4（机制验证 + bug 复现 + 采样）")
 
     a = p.parse_args()
     if a.cmd == "run":
-        cli_run(a.fix, a.n, a.seed)
+        cli_run(a.fix, a.n, a.seed, a.bmn)
     elif a.cmd == "sweep":
-        cli_sweep(a.n, a.seed)
+        cli_sweep(a.n, a.seed, a.bmn)
     elif a.cmd == "structure":
-        cli_structure(a.fix, a.n, a.seed)
+        cli_structure(a.fix, a.n, a.seed, a.bmn)
     elif a.cmd == "test":
         _run_tests()
     else:
