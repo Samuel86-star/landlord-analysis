@@ -458,7 +458,7 @@ def _test_grid_t1():
     def avg(a):
         return sum(a) / len(a)
 
-    print(f"[grid Type1 N={N}局×3家 | CouPaiStrategy × TargetValue × TargetRound]")
+    print(f"[grid Type1 N={N}局×3家 | 庄=真人(cp) / 闲=机器人(robot[6,13,3,4,5,2]) × TargetValue × TargetRound]")
     for cpname, cp in coupais:
         print(f"\n=== CouPaiStrategy: {cpname} {cp} ===")
         print(f"{'TargetValue':>11}{'TargetRound':>12}{'炸弹':>9}{'手数':>9}{'庄炸':>9}{'闲炸':>9}{'|庄闲差|':>9}")
@@ -469,7 +469,8 @@ def _test_grid_t1():
                        "TargetValue": tv, "TargetRound": tr, "CouPaiStrategy": [cp]}
                 bombs, hands, zb, xb = [], [], [], []
                 for cards in decks:
-                    r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards))
+                    r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards),
+                                   robot_strategy=[6, 13, 3, 4, 5, 2])
                     for c in range(3):
                         seat = r["chair_cards"][c]
                         b = count_bombs_17(seat)
