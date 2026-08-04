@@ -461,22 +461,24 @@ def _test_grid_t1():
     print(f"[grid Type1 N={N}局×3家 | CouPaiStrategy × TargetValue × TargetRound]")
     for cpname, cp in coupais:
         print(f"\n=== CouPaiStrategy: {cpname} {cp} ===")
-        print(f"{'TargetValue':>11}{'TargetRound':>12}{'炸弹':>9}{'手数':>9}")
-        print("-" * 44)
+        print(f"{'TargetValue':>11}{'TargetRound':>12}{'炸弹':>9}{'手数':>9}{'庄炸':>9}{'闲炸':>9}{'|庄闲差|':>9}")
+        print("-" * 70)
         for tv in tvs:
             for tr in trs:
                 cfg = {"BeginMakeNum": 10, "BeginSelectBanker": 15,
                        "TargetValue": tv, "TargetRound": tr, "CouPaiStrategy": [cp]}
-                bombs, hands = [], []
+                bombs, hands, zb, xb = [], [], [], []
                 for cards in decks:
                     r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards))
                     for c in range(3):
                         seat = r["chair_cards"][c]
-                        bombs.append(count_bombs_17(seat))
+                        b = count_bombs_17(seat)
+                        bombs.append(b)
                         hands.append(cal_hand_card_value(split_card(seat))[0])
+                        (zb if c == 0 else xb).append(b)
                 tvs_disp = "关" if tv == 999 else tv
                 trs_disp = "关" if tr == 10 else tr
-                print(f"{tvs_disp:>11}{trs_disp:>12}{avg(bombs):>9.3f}{avg(hands):>9.3f}")
+                print(f"{tvs_disp:>11}{trs_disp:>12}{avg(bombs):>9.3f}{avg(hands):>9.3f}{avg(zb):>9.3f}{avg(xb):>9.3f}{abs(avg(zb) - avg(xb)):>9.3f}")
 
 
 # ---------------- CLI（产品/运营友好）----------------
