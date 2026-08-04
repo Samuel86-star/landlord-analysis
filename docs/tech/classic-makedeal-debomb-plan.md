@@ -1,8 +1,9 @@
 # 经典玩法做牌降炸弹 — 落地方案
 
-> 目标:让经典玩法(`old2`/Type0)的发牌**贴近真实打牌、牌不烂、好打但不靠给炸弹**。
-> 结论基于 `algorithm/native/old2_type0_sim.py`(线上 old2/Type0 的 1:1 Python 复刻)的二维参数扫描。
-> 日期:2026-08-03 · 作者:分析团队
+> 目标:让经典玩法的发牌**贴近真实打牌、牌不烂、好打但不靠给炸弹**。
+> 结论基于模拟器多维扫描(`old2_type0_sim.py` 为线上 Type0 的 1:1 复刻;`old2_type1_sim.py` 为 Type1 复刻)。
+> **两条路线**:① **Type0 控制流**(改代码,主推,§二/§三);② **Type1 classic**(只改配置,替代,§二B)。
+> 日期:2026-08-03 · 2026-08-04 增补 Type1 路线与路线对比 · 作者:分析团队
 
 ---
 
@@ -39,7 +40,67 @@
 
 ---
 
+## 二B、替代路线:Type1(只改配置,不动代码)
+
+> Type1 = `MakeDealType=1`,拼牌走 `CouPaiStrategy`(配置驱动,见 `zgdatbl.cpp:4041` + `MakeDealHelper.cpp:849`)。**免改 C++**,只改 `makedeal.json`,适合"纯配置灰度、不动代码"的场景。
+
+### 推荐配置(`makedeal.json` → `MakeDealStrategy` 新增/改一套)
+
+```json
+"classic": {
+    "MakeDealType": 1,
+    "BeginMakeNum": 12,
+    "BeginSelectBanker": 15,
+    "TargetValue": 999,
+    "TargetRound": 10,
+    "CouPaiStrategy": [[4, 6, 5, 2, 3]]
+}
+```
+
+> 码:2对 3三 4顺 5连对 6飞机 13炸。`[4,6,5,2,3]` = 顺→飞机→连对→对→三,**不含炸码 13**(不主动凑炸)。
+> `TargetValue=999` = 恒拼牌(最可控);`tv=0.6/tr=4` 同效;避免 `tv=0.6/tr=10`(炸弹会升到 0.29)。
+
+### 效果(N=10000,与 Type0 同口径:同副牌、同拆牌)
+
+| | 炸弹 | 手数 | 庄闲差 |
+|---|---|---|---|
+| **Type1 classic b12** | **0.215** | **6.48** | **-0.005** |
+| 纯随机参照 | 0.194 | 7.50 | — |
+
+炸弹贴经典、庄闲几乎完美均衡;手数 6.48(好于自然 7.5,但不及 Type0 控制流 5.82)。
+
+### 路线对比
+
+| 路线 | 改动 | 炸弹 | 手数 | 庄闲差 | 适用 |
+|---|---|---|---|---|---|
+| **Type0 control-flow bmn10**(主推) | 改代码+配置 | **0.196** | **5.82** | -0.029 | 炸弹&手数双优 |
+| **Type1 classic b12**(替代) | **只改配置** | 0.215 | 6.48 | -0.005 | 免改代码、灰度快 |
+| 现状(Type0 baseline) | — | 0.433 | 6.09 | — | 改前 |
+| 纯随机参照 | — | 0.194 | 7.50 | — | — |
+
+**怎么选**:
+- 能改代码 → **Type0 控制流**(双指标都更好)。
+- 只能改配置 → **Type1 classic**(到经典级炸弹,代价是手数比 Type0 高 ~0.7 手)。
+- 经典 0.19 炸档的前沿点是 Type0 控制流;**Type1 给不出"0.19 炸 + 低手数"**——它的低手数靠收对收三,必然带炸。
+
+### 机制差别(为什么 Type0 手数更低)
+
+两算法每次都只拉 1 张牌(不是"多张 vs 单张"),差在两点:
+
+1. **覆盖率**:Type0 把所有空位都走菜单补满;Type1 只补 `[BeginMakeNum, BeginSelectBanker)`,**剩下随机填**(select=15、bmn12 → 只拼 3 张)。把 Type1 的 `BeginSelectBanker` 提到 17(线上 robot/newuser 即此值)可拼满,手数反降到 5.64,但炸弹升到 0.25。
+2. **收尾脾气**:同覆盖率下,Type1 爱收对/三(每家对 2.2、三 1.0 vs Type0 对 1.6、三 0.7),手数更低但炸弹更多;Type0 控制流留单牌(单 3.7 vs 2.7),手数偏高但炸弹贴自然。两者坐在"手数↔炸弹"权衡的两端。
+
+> 即"硬编码菜单 vs 配置 CouPaiStrategy"只是表层;底层差在**覆盖率**与**收尾脾气**。
+
+### 备注:Type1 `new` 策略(房间 742)已接近自然
+
+线上 `new`(`[4,5,3,6]`,bmn11)实测 **炸弹 0.160**(比纯随机还低,因不含对子码 2、不聚集),手数 6.85。**742 房本身不是"多炸"问题房**;多炸的是跑 `old2`/Type0 baseline 的经典房(0.43)。
+
+---
+
 ## 三、改动点
+
+> 本节为 **Type0 主路线**的代码改动;**Type1 替代路线**只改配置,见 §二B。
 
 ### 改动 1(主):做牌菜单顺序【改代码】
 
@@ -131,17 +192,24 @@ nMatchedCardID = MatchBombCardType(...);      // ⑥ 炸弹(垫后:几乎不主�
 
 ## 七、验证方法
 
-- **线下**:`algorithm/native/old2_type0_sim.py`
+- **线下 Type0**:`algorithm/native/old2_type0_sim.py`
   ```bash
   py -3 old2_type0_sim.py run --fix control-flow --bmn 10 --n 20000
   py -3 old2_type0_sim.py structure --fix control-flow --bmn 10
   ```
+- **线下 Type1**:`algorithm/native/old2_type1_sim.py`
+  ```bash
+  py -3 old2_type1_sim.py run --coupai classic --begin 12 --tv 999 --tr 10 --n 20000
+  py -3 old2_type1_sim.py sweep --n 5000
+  ```
+- **路线对比**:`old2_type1_sim.py` 的 `_test_grid_t1` 输出 Type1 Pareto 前沿(策略×begin)。
 - **线上**:灰度后取 `dws_ddz_daily_game` 的 `bomb_cnt` / `card_power` 分布对照(注意 `card_power` 在 2026-07 PRD 改版后有断档,见 memory `project_cardpower-formula-prd-change-2026-07`)。
 
 ---
 
 ## 八、附录:模拟器与参照源
 
-- 模拟器:`algorithm/native/old2_type0_sim.py`(+ `old2_type0_sim_README.md`)
-- 线上代码参照:`algorithm/native/previous/`(`zgdatbl.cpp` 等,全 UTF-8)+ `makedeal.json`
+- 模拟器(Type0):`algorithm/native/old2_type0_sim.py`(+ `old2_type0_sim_README.md`)
+- 模拟器(Type1):`algorithm/native/old2_type1_sim.py`(+ `old2_type1_sim_README.md`)
+- 线上代码参照:`algorithm/native/previous/`(`zgdatbl.cpp` Type1 分支 `3993`、`MakeDealHelper.cpp` `MakeDeal_ComposeCard 771`,全 UTF-8)+ `makedeal.json`
 - 相关 memory:`project_cardpower-formula-prd-change-2026-07`、`feedback_avoid-narrative-data-interpretation`
