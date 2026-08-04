@@ -445,41 +445,50 @@ def sample(player_types, cfg, n, seed=0, **kw):
 
 
 def _test_grid_t1():
-    """Type1 三维网格：CouPaiStrategy × TargetValue × TargetRound 的联合效果。"""
+    """Type1 组合扫描（三家同 cp，庄闲同步），扁平表 + 推荐接近经典的组合。"""
     N = 400
     rng = random.Random(0)
     decks = [rng.sample(range(TOTAL_CARDS), TOTAL_CARDS) for _ in range(N)]
     coupais = [("default", [4, 13, 6, 5, 3, 2]),
                ("bomb-last", [4, 6, 5, 3, 2, 13]),
                ("no-bomb", [4, 6, 5, 3, 2])]
-    tvs = [0.3, 0.6, 999]        # 999 = 牌力门槛极高（实际不按牌力触发）
-    trs = [3, 6, 10]             # 10 = 手数门槛极高（实际不按手数触发）
+    tvs = [0.3, 0.6, 999]        # 999 = 牌力门槛极高
+    trs = [3, 6, 10]             # 10 = 手数门槛极高
 
     def avg(a):
         return sum(a) / len(a)
 
-    print(f"[grid Type1 N={N}局×3家 | 庄=真人(cp) / 闲=机器人(robot[6,13,3,4,5,2]) × TargetValue × TargetRound]")
+    print(f"[grid Type1 N={N}局×3家 | 三家同 cp（庄闲同步）| 参考：纯随机 炸弹≈0.19 手数≈7.5]")
+    print(f"{'实验(cp/tv/tr)':<36}{'炸弹':>8}{'手数':>8}{'庄炸':>8}{'闲炸':>8}{'|庄闲差|':>9}")
+    print("-" * 79)
+    rows = []
     for cpname, cp in coupais:
-        print(f"\n=== CouPaiStrategy: {cpname} {cp} ===")
-        print(f"{'TargetValue':>11}{'TargetRound':>12}{'炸弹':>9}{'手数':>9}{'庄炸':>9}{'闲炸':>9}{'|庄闲差|':>9}")
-        print("-" * 70)
         for tv in tvs:
             for tr in trs:
                 cfg = {"BeginMakeNum": 10, "BeginSelectBanker": 15,
                        "TargetValue": tv, "TargetRound": tr, "CouPaiStrategy": [cp]}
                 bombs, hands, zb, xb = [], [], [], []
                 for cards in decks:
-                    r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards),
-                                   robot_strategy=[6, 13, 3, 4, 5, 2])
+                    r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards))
                     for c in range(3):
                         seat = r["chair_cards"][c]
                         b = count_bombs_17(seat)
                         bombs.append(b)
                         hands.append(cal_hand_card_value(split_card(seat))[0])
                         (zb if c == 0 else xb).append(b)
-                tvs_disp = "关" if tv == 999 else tv
-                trs_disp = "关" if tr == 10 else tr
-                print(f"{tvs_disp:>11}{trs_disp:>12}{avg(bombs):>9.3f}{avg(hands):>9.3f}{avg(zb):>9.3f}{avg(xb):>9.3f}{abs(avg(zb) - avg(xb)):>9.3f}")
+                tvd = "关" if tv == 999 else tv
+                trd = "关" if tr == 10 else tr
+                name = f"{cpname} / tv={tvd} / tr={trd}"
+                ab, ah, az, ax = avg(bombs), avg(hands), avg(zb), avg(xb)
+                diff = abs(az - ax)
+                rows.append((name, ab, ah, az, ax, diff))
+                print(f"{name:<34}{ab:>8.3f}{ah:>8.3f}{az:>8.3f}{ax:>8.3f}{diff:>9.3f}")
+
+    # 推荐接近经典：炸弹低（接近0.19）+ 庄闲差小 + 手数低
+    classic = sorted(rows, key=lambda r: (r[1], r[5], r[2]))[:3]
+    print(f"\n[最接近经典发牌的 3 组（炸弹低 + 庄闲均衡 + 手数低）]")
+    for name, ab, ah, az, ax, d in classic:
+        print(f"  {name}: 炸弹={ab:.3f} 手数={ah:.3f} 庄闲差={d:.3f}")
 
 
 # ---------------- CLI（产品/运营友好）----------------
