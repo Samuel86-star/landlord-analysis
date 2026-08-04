@@ -444,17 +444,72 @@ def sample(player_types, cfg, n, seed=0, **kw):
     return _avg(bombs), _avg(hands_n), bombs
 
 
+# ---------------- CLI（产品/运营友好）----------------
+COUPAI = {
+    "default":   ([4, 13, 6, 5, 3, 2], "炸第2位（线上 default）"),
+    "bomb-last": ([4, 6, 5, 3, 2, 13], "炸降最后"),
+    "no-bomb":   ([4, 6, 5, 3, 2],    "去炸"),
+    "newuser":   ([13, 6, 3, 4, 5, 2], "炸首位（线上 newuser）"),
+    "robot":     ([6, 13, 3, 4, 5, 2], "线上 robot"),
+}
+
+
+def _cfg(begin, select, tv, tr, cp):
+    return {"BeginMakeNum": begin, "BeginSelectBanker": select,
+            "TargetValue": tv, "TargetRound": tr, "CouPaiStrategy": [cp]}
+
+
+def cli_run(name, n, seed, begin, select, tv, tr):
+    cp, desc = COUPAI[name]
+    cfg = _cfg(begin, select, tv, tr, cp)
+    b, h, _ = sample([HUMAN, ROBOT, ROBOT], cfg, n, seed=seed)
+    print(f"[run] CouPaiStrategy={name}（{desc}）  顺序={cp}  N={n} seed={seed}")
+    print(f"  炸弹均值 {b:.3f} | 手数 {h:.3f}")
+    print(f"  （参照：纯随机 炸弹≈0.19）")
+
+
+def cli_sweep(n, seed, begin, select, tv, tr):
+    print(f"[sweep] N={n} seed={seed}  begin={begin} select={select} tv={tv} tr={tr}")
+    print(f"{'CouPaiStrategy':<12}{'说明':<24}{'顺序':<22}{'炸弹':>8}{'手数':>8}")
+    print("-" * 74)
+    for name, (cp, desc) in COUPAI.items():
+        cfg = _cfg(begin, select, tv, tr, cp)
+        b, h, _ = sample([HUMAN, ROBOT, ROBOT], cfg, n, seed=seed)
+        print(f"{name:<10}{desc:<22}{str(cp):<22}{b:>8.3f}{h:>8.3f}")
+
+
+def main():
+    import argparse
+    p = argparse.ArgumentParser(
+        prog="old2_type1_sim.py",
+        description="Type1 发牌拼牌模拟器（CouPaiStrategy 可调）。Python 3，无第三方依赖。")
+    sub = p.add_subparsers(dest="cmd")
+
+    pr = sub.add_parser("run", help="跑单个 CouPaiStrategy")
+    pr.add_argument("--coupai", default="default", choices=list(COUPAI), help="策略名（默认 default）")
+    pr.add_argument("--n", type=int, default=3000, help="模拟局数（默认 3000）")
+    pr.add_argument("--begin", type=int, default=10, help="BeginMakeNum（默认10）")
+    pr.add_argument("--select", type=int, default=15, help="BeginSelectBanker（默认15）")
+    pr.add_argument("--tv", type=float, default=0.6, help="TargetValue（默认0.6）")
+    pr.add_argument("--tr", type=int, default=4, help="TargetRound（默认4）")
+    pr.add_argument("--seed", type=int, default=0)
+
+    ps = sub.add_parser("sweep", help="扫描所有 CouPaiStrategy 对比")
+    ps.add_argument("--n", type=int, default=2000)
+    ps.add_argument("--begin", type=int, default=10)
+    ps.add_argument("--select", type=int, default=15)
+    ps.add_argument("--tv", type=float, default=0.6)
+    ps.add_argument("--tr", type=int, default=4)
+    ps.add_argument("--seed", type=int, default=0)
+
+    a = p.parse_args()
+    if a.cmd == "run":
+        cli_run(a.coupai, a.n, a.seed, a.begin, a.select, a.tv, a.tr)
+    elif a.cmd == "sweep":
+        cli_sweep(a.n, a.seed, a.begin, a.select, a.tv, a.tr)
+    else:
+        p.print_help()
+
+
 if __name__ == "__main__":
-    print("== Type1 简化复刻：不同 CouPaiStrategy 的炸弹/手数对比（default 配置）==\n")
-    tests = [
-        ("default [4,13,6,5,3,2]（炸第2位）", [[4, 13, 6, 5, 3, 2]]),
-        ("炸降最后 [4,6,5,3,2,13]",           [[4, 6, 5, 3, 2, 13]]),
-        ("去炸 [4,6,5,3,2]",                  [[4, 6, 5, 3, 2]]),
-        ("newuser [13,6,3,4,5,2]（炸首位）",  [[13, 6, 3, 4, 5, 2]]),
-    ]
-    N = 3000
-    for name, coupai in tests:
-        cfg = dict(DEFAULT_T1); cfg["CouPaiStrategy"] = coupai
-        b, h, _ = sample([HUMAN, ROBOT, ROBOT], cfg, N, seed=0)
-        print(f"  {name:<34} 炸弹={b:.3f}  手数={h:.3f}")
-    print(f"\n  （参照：Type0 baseline 炸弹≈0.42；纯随机≈0.19）")
+    main()
