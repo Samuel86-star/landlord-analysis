@@ -444,6 +444,41 @@ def sample(player_types, cfg, n, seed=0, **kw):
     return _avg(bombs), _avg(hands_n), bombs
 
 
+def _test_grid_t1():
+    """Type1 三维网格：CouPaiStrategy × TargetValue × TargetRound 的联合效果。"""
+    N = 400
+    rng = random.Random(0)
+    decks = [rng.sample(range(TOTAL_CARDS), TOTAL_CARDS) for _ in range(N)]
+    coupais = [("default", [4, 13, 6, 5, 3, 2]),
+               ("bomb-last", [4, 6, 5, 3, 2, 13]),
+               ("no-bomb", [4, 6, 5, 3, 2])]
+    tvs = [0.3, 0.6, 999]        # 999 = 牌力门槛极高（实际不按牌力触发）
+    trs = [3, 6, 10]             # 10 = 手数门槛极高（实际不按手数触发）
+
+    def avg(a):
+        return sum(a) / len(a)
+
+    print(f"[grid Type1 N={N}局×3家 | CouPaiStrategy × TargetValue × TargetRound]")
+    for cpname, cp in coupais:
+        print(f"\n=== CouPaiStrategy: {cpname} {cp} ===")
+        print(f"{'TargetValue':>11}{'TargetRound':>12}{'炸弹':>9}{'手数':>9}")
+        print("-" * 44)
+        for tv in tvs:
+            for tr in trs:
+                cfg = {"BeginMakeNum": 10, "BeginSelectBanker": 15,
+                       "TargetValue": tv, "TargetRound": tr, "CouPaiStrategy": [cp]}
+                bombs, hands = [], []
+                for cards in decks:
+                    r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards))
+                    for c in range(3):
+                        seat = r["chair_cards"][c]
+                        bombs.append(count_bombs_17(seat))
+                        hands.append(cal_hand_card_value(split_card(seat))[0])
+                tvs_disp = "关" if tv == 999 else tv
+                trs_disp = "关" if tr == 10 else tr
+                print(f"{tvs_disp:>11}{trs_disp:>12}{avg(bombs):>9.3f}{avg(hands):>9.3f}")
+
+
 # ---------------- CLI（产品/运营友好）----------------
 COUPAI = {
     "default":   ([4, 13, 6, 5, 3, 2], "炸第2位（线上 default）"),
