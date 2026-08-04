@@ -15,6 +15,8 @@ Type1 发牌拼牌机制的 Python 复刻（简化版）。
 
 import math
 import random
+import sys
+sys.stdout.reconfigure(encoding="utf-8", errors="replace") if hasattr(sys.stdout, "reconfigure") else None
 from old2_type0_sim import (card_index, build_lay, count_bombs_17, hand_str,
                             HUMAN, ROBOT, CARDS_PER_CHAIR, TOTAL_CARDS, BOTTOM_CARD, TOTAL_CHAIRS)
 
@@ -445,57 +447,58 @@ def sample(player_types, cfg, n, seed=0, **kw):
 
 
 def _test_grid_t1():
-    """Type1 组合扫描（三家同 cp，庄闲同步），扁平表 + 推荐接近经典的组合。"""
-    N = 400
+    """Type1 寻经典组合：CouPaiStrategy × BeginMakeNum 扫描，找最接近经典(炸弹≈0.19)且好打的组合。
+    杠杆：对(2)/三(3)=聚集→顶高炸弹、降手数；顺(4)/连对(5)/飞机(6)=散开→压低炸弹、升手数；
+          begin 越大→拼牌越少→聚集策略的炸弹向自然0.19回落。tv=999/tr=10 恒走策略环（最可控）。"""
+    N = 3000
     rng = random.Random(0)
     decks = [rng.sample(range(TOTAL_CARDS), TOTAL_CARDS) for _ in range(N)]
-    coupais = [("default", [4, 13, 6, 5, 3, 2]),
-               ("bomb-last", [4, 6, 5, 3, 2, 13]),
-               ("no-bomb", [4, 6, 5, 3, 2])]
-    tvs = [0.3, 0.6, 999]        # 999 = 牌力门槛极高
-    trs = [3, 6, 10]             # 10 = 手数门槛极高
+    avg = lambda x: sum(x) / len(x)
 
-    def avg(a):
-        return sum(a) / len(a)
-
-    print(f"[grid Type1 N={N}局×3家 | 三家同 cp（庄闲同步）| 参考：纯随机 炸弹≈0.19 手数≈7.5]")
-    print(f"{'实验(cp/tv/tr)':<36}{'炸弹':>8}{'手数':>8}{'庄炸':>8}{'闲炸':>8}{'|庄闲差|':>9}")
-    print("-" * 79)
+    strats = [
+        ("natural [4,5,3,6]",      [4, 5, 3, 6]),          # 散：无对子补
+        ("classic [4,6,5,2,3]",    [4, 6, 5, 2, 3]),       # ★推荐
+        ("full    [4,5,6,3,2]",    [4, 5, 6, 3, 2]),       # 全量（带对在三前）
+        ("default [4,13,6,5,3,2]", [4, 13, 6, 5, 3, 2]),   # 线上现状（含炸）
+    ]
+    begins = [10, 12, 13, 14]
     rows = []
-    for cpname, cp in coupais:
-        for tv in tvs:
-            for tr in trs:
-                cfg = {"BeginMakeNum": 10, "BeginSelectBanker": 15,
-                       "TargetValue": tv, "TargetRound": tr, "CouPaiStrategy": [cp]}
-                bombs, hands, zb, xb = [], [], [], []
-                for cards in decks:
-                    r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards))
-                    for c in range(3):
-                        seat = r["chair_cards"][c]
-                        b = count_bombs_17(seat)
-                        bombs.append(b)
-                        hands.append(cal_hand_card_value(split_card(seat))[0])
-                        (zb if c == 0 else xb).append(b)
-                tvd = "关" if tv == 999 else tv
-                trd = "关" if tr == 10 else tr
-                name = f"{cpname} / tv={tvd} / tr={trd}"
-                ab, ah, az, ax = avg(bombs), avg(hands), avg(zb), avg(xb)
-                diff = abs(az - ax)
-                rows.append((name, ab, ah, az, ax, diff))
-                print(f"{name:<34}{ab:>8.3f}{ah:>8.3f}{az:>8.3f}{ax:>8.3f}{diff:>9.3f}")
+    print(f"[grid Type1 N={N}局×3家 | tv=999/tr=10 | 参考：纯随机 炸弹0.194 手数7.80]")
+    for name, cp in strats:
+        print(f"\n● {name}  策略={cp}")
+        print(f"{'begin':>6}{'炸弹':>8}{'手数':>8}{'庄炸':>8}{'闲炸':>8}{'庄闲差':>8}{'距0.19':>8}")
+        for bmn in begins:
+            cfg = {"BeginMakeNum": bmn, "BeginSelectBanker": 15,
+                   "TargetValue": 999, "TargetRound": 10, "CouPaiStrategy": [cp]}
+            bombs, hands, zb, xb = [], [], [], []
+            for cards in decks:
+                r = deal_type1([HUMAN, ROBOT, ROBOT], cfg=cfg, preset_cards=list(cards))
+                for c in range(3):
+                    seat = r["chair_cards"][c]
+                    bn = count_bombs_17(seat)
+                    bombs.append(bn); hands.append(cal_hand_card_value(split_card(seat))[0])
+                    (zb if c == 0 else xb).append(bn)
+            ab, ah, az, ax = avg(bombs), avg(hands), avg(zb), avg(xb)
+            rows.append((f"{name} b{bmn}", ab, ah, az - ax))
+            flag = " ←近经典" if abs(ab - 0.19) <= 0.03 else ""
+            print(f"{bmn:>6}{ab:>8.3f}{ah:>8.2f}{az:>8.3f}{ax:>8.3f}{az-ax:>8.3f}{ab-0.19:>+8.3f}{flag}")
 
-    # 推荐接近经典：炸弹低（接近0.19）+ 庄闲差小 + 手数低
-    classic = sorted(rows, key=lambda r: (r[1], r[5], r[2]))[:3]
-    print(f"\n[最接近经典发牌的 3 组（炸弹低 + 庄闲均衡 + 手数低）]")
-    for name, ab, ah, az, ax, d in classic:
-        print(f"  {name}: 炸弹={ab:.3f} 手数={ah:.3f} 庄闲差={d:.3f}")
+    near = [r for r in rows if abs(r[1] - 0.19) <= 0.03]
+    near.sort(key=lambda r: r[2])
+    print(f"\n[最接近经典(炸弹≈0.19)且最好打的组合（距0.19≤0.03，按手数升序）]")
+    for name, ab, ah, d in near:
+        print(f"  {name}: 炸弹={ab:.3f} 手数={ah:.2f} 庄闲差={d:+.3f}")
 
 
 # ---------------- CLI（产品/运营友好）----------------
+# CouPaiStrategy 预设。码：1单 2对 3三 4顺 5连对 6飞机 13炸 14王
+# 杠杆：对(2)/三(3)=聚集→顶高炸弹、降手数；顺(4)/连对(5)/飞机(6)=散开→压低炸弹、升手数。
 COUPAI = {
-    "default":   ([4, 13, 6, 5, 3, 2], "炸第2位（线上 default）"),
+    "default":   ([4, 13, 6, 5, 3, 2], "炸第2位（线上 default，炸弹0.64）"),
+    "classic":   ([4, 6, 5, 2, 3],    "★推荐：顺→飞机→连对→对→三，b12 下 0.22炸/6.8手/庄闲均衡"),
+    "natural":   ([4, 5, 3, 6],       "散牌型（线上 new 风格），b13 下 0.18炸/7.1手"),
     "bomb-last": ([4, 6, 5, 3, 2, 13], "炸降最后"),
-    "no-bomb":   ([4, 6, 5, 3, 2],    "去炸"),
+    "no-bomb":   ([4, 6, 5, 3, 2],    "去炸但仍带对子补（聚集，0.33炸）"),
     "newuser":   ([13, 6, 3, 4, 5, 2], "炸首位（线上 newuser）"),
     "robot":     ([6, 13, 3, 4, 5, 2], "线上 robot"),
 }
