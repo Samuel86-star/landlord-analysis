@@ -628,7 +628,7 @@ ComposeCardResult MakeDeal_ComposeCard(LPMAKEDEALCFG pCfg, std::vector<CardGroup
                         if (tmpMaxValueMap.count(4) && tmpMaxValueMap.count(5)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, 3);
                             if (nTargetCardID != -1) { DLINE_EXTEND(6); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,5+prov,6+prov*2);
-                                deletelist.clear(); deletelist.push_back(tmpMaxValueMap[4]); deletelist.push_back(tmpMaxValueMap[5]);
+                                deletelist.push_back(tmpMaxValueMap[4]); deletelist.push_back(tmpMaxValueMap[5]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
                                 stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6+prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
@@ -636,14 +636,14 @@ ComposeCardResult MakeDeal_ComposeCard(LPMAKEDEALCFG pCfg, std::vector<CardGroup
                         if (tmpMaxValueMap.count(3) && tmpMaxValueMap.count(5)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, 4);
                             if (nTargetCardID != -1) { DLINE_EXTEND(6); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,5+prov,6+prov*2);
-                                deletelist.clear(); deletelist.push_back(tmpMaxValueMap[3]); deletelist.push_back(tmpMaxValueMap[5]);
+                                deletelist.push_back(tmpMaxValueMap[3]); deletelist.push_back(tmpMaxValueMap[5]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
                                 stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6+prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
                         if (tmpMaxValueMap.count(5) && tmpMaxValueMap.count(6)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, 4);
                             if (nTargetCardID != -1) { DLINE_EXTEND(7); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,6+prov,6*prov*2);  /* C++ 原笔误，保留 */
-                                deletelist.clear(); deletelist.push_back(tmpMaxValueMap[5]); deletelist.push_back(tmpMaxValueMap[6]);
+                                deletelist.push_back(tmpMaxValueMap[5]); deletelist.push_back(tmpMaxValueMap[6]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
                                 stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6*prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
@@ -658,7 +658,7 @@ ComposeCardResult MakeDeal_ComposeCard(LPMAKEDEALCFG pCfg, std::vector<CardGroup
                         if (tmpMaxValueMap.count(11) && tmpMaxValueMap.count(12)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, 13);
                             if (nTargetCardID != -1) { DLINE_EXTEND(14); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,13+prov,6+prov*2);
-                                deletelist.clear(); deletelist.push_back(tmpMaxValueMap[11]); deletelist.push_back(tmpMaxValueMap[12]);
+                                deletelist.push_back(tmpMaxValueMap[11]); deletelist.push_back(tmpMaxValueMap[12]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
                                 stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6+prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
@@ -674,21 +674,21 @@ ComposeCardResult MakeDeal_ComposeCard(LPMAKEDEALCFG pCfg, std::vector<CardGroup
                         if (tmpMaxValueMap.count(mc-1) && tmpMaxValueMap.count(mc-2)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, mc);
                             if (nTargetCardID != -1) { DLINE_EXTEND(mc+1); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,mc+prov,6+prov*2);
-                                deletelist.clear(); deletelist.push_back(tmpMaxValueMap[mc-1]); deletelist.push_back(tmpMaxValueMap[mc-2]);
+                                deletelist.push_back(tmpMaxValueMap[mc-1]); deletelist.push_back(tmpMaxValueMap[mc-2]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
                                 stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6+prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
                         if (tmpMaxValueMap.count(mc+1) && tmpMaxValueMap.count(mc+2)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, mc);
                             if (nTargetCardID != -1) { DLINE_EXTEND(mc+2+1); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,mc+2+prov,6+prov*2);
-                                deletelist.clear(); deletelist.push_back(tmpMaxValueMap[mc+1]); deletelist.push_back(tmpMaxValueMap[mc+2]);
+                                deletelist.push_back(tmpMaxValueMap[mc+1]); deletelist.push_back(tmpMaxValueMap[mc+2]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
                                 stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6+prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
                         if (tmpMaxValueMap.count(mc-1) && tmpMaxValueMap.count(mc+1)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, mc);
                             if (nTargetCardID != -1) { DLINE_EXTEND(mc+1+1); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,mc+1+prov,6+prov*2);
-                                deletelist.clear(); deletelist.push_back(tmpMaxValueMap[mc-1]); deletelist.push_back(tmpMaxValueMap[mc+1]);
+                                deletelist.push_back(tmpMaxValueMap[mc-1]); deletelist.push_back(tmpMaxValueMap[mc+1]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
                                 stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6+prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
@@ -966,6 +966,7 @@ struct CGameTable {
             nMatchedCardID = MatchCoupleCardType(nCardLay, nReserveCards, nReserveCount); if (CopyMatchedCardID(nChairCard[i], nCardLay, nMatchedCardID, nReserveCards, nReserveCount)) break;
             return;
         }
+        m_nMakeDealTypes[0] = 2;
     }
     void MatchOtherChairCards(int nChairCard[], int nCardLay[], int nReserveCards[], int nReserveCount, LPMAKEDEALCFG pCfg, int nChairNO = -1) {
         for (int i = 0; i < CARDS_PER_CHAIR; i++) {
@@ -978,7 +979,7 @@ struct CGameTable {
             nMatchedCardID = MatchCoupleCardType(nCardLay, nReserveCards, nReserveCount); if (CopyMatchedCardID(nChairCard[i], nCardLay, nMatchedCardID, nReserveCards, nReserveCount)) break;
             return;
         }
-        if (nChairNO != -1) {} // m_nMakeDealTypes[nChairNO]=2 （沙盒不上报）
+        if (nChairNO != -1) m_nMakeDealTypes[nChairNO] = 2;
     }
     BOOL DoMakeDeal(int (*pChairCards)[CARDS_PER_CHAIR], int (*pCardLays)[SK_LAYOUT_NUM], int nReserveCards[], int nReserveCount,
                     LPMAKEDEALCFG pCfg, int nHandCount[], int nBombCount[], int nBigCardsCount[]) {
