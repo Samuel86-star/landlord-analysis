@@ -1,5 +1,10 @@
 # Type1 发牌拼牌模拟器
 
+> ⚠️ **精确度警示（2026-08-05）**：本模拟器用**贪心拆牌**近似，炸弹率与线上有偏差
+> （例：742/new 贪心给 ~0.16，harness 真值 0.137）。
+> **精确概率请用 [`extracted/harness.cpp`](extracted/README.md)**（1:1 剥离线上 C++，递归最优拆牌）。
+> 本脚本仍可用于**Type1 配置的方向性 grid 扫描**，但绝对数字以 harness 为准。
+
 > `old2_type1_sim.py` —— 把线上 `MakeDealType=1`（CouPaiStrategy 拼牌）的发牌逻辑用 Python 复刻，
 > 用来**穷举 `makedeal.json` 配置（CouPaiStrategy / BeginMakeNum / BeginSelectBanker / TargetValue / TargetRound），找最接近经典发牌的组合**。
 > Python 3 标准库，无第三方依赖。适用：产品/研发评估"Type1 配置调成什么样，手牌最贴近经典"。

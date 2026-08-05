@@ -4,6 +4,13 @@
 > 数据来自模拟器（`old2_type0_sim.py` / `old2_type1_sim.py`），N=4000 局×3 家、同一副牌、手数用 t0拆口径。
 > 配套：完整落地方案见 [`classic-makedeal-debomb-plan.md`](classic-makedeal-debomb-plan.md)。
 
+> ⚠️ **重要更正（2026-08-05，harness 真值）**：下文所有数字来自**贪心拆牌**的 Python 模拟（`old2_type*_sim.py`），
+> 已被 1:1 剥离线上 C++ 的独立模拟器 [`algorithm/native/extracted/harness.cpp`](../../algorithm/native/extracted/README.md) **部分推翻**：
+> - **742 / 420 持有炸弹实际 ≈ 0.137 / 0.138（几乎相同）**，不是下表的 0.16 / 0.20；
+> - **"对(2)顶炸悬崖"（with-pair ≫ no-pair）是贪心拆牌的伪影，线上不存在**；
+> - 下表 TOP N 排名**仅供方向性参考**（跨配置相对快慢仍可信），**精确概率以 harness 为准**。
+>   如需据此做上线取舍，请先用 `harness --room <id> --reals 3 -n 100000` 复核对应配置。
+
 ---
 
 ## 五个指标怎么看（通俗）
