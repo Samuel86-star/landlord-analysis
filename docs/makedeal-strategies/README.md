@@ -7,11 +7,11 @@
 
 ```
 docs/makedeal-strategies/
-  经典玩法/        # game_id=53 等，old2 / new 策略
+  classic/         # 经典玩法，old2 / new 策略
     <roomid>.md
-  不洗牌/          # NoShuff 房，b1 / level4 策略
+  no-shuffle/      # 不洗牌，b1 / level4 策略
     <roomid>.md
-  _模板.md         # 复制这个填
+  _template.md     # 复制这个填
 ```
 
 - **文件名** = 房间 ID，如 `742.md`、`4484.md`。
@@ -46,7 +46,7 @@ docs/makedeal-strategies/
 
 ## 怎么补
 
-1. 复制 `_模板.md` → `<玩法>/<roomid>.md`。
+1. 复制 `_template.md` → `<玩法文件夹>/<roomid>.md`（如 `classic/420.md`）。
 2. 填 frontmatter（room_id / 玩法 / 当前策略 / MakeDealType）。
 3. 填「当前发牌参数」（从 `makedeal.json` 对应策略抄）、「现状指标」（模拟器跑或线上日志）、「改造建议」「备注」。
 4. 跑模拟器：`py -3 algorithm/native/old2_type1_sim.py run --coupai <名> --begin <N> --select <N> --tv <V> --tr <R>`（Type1）或 `old2_type0_sim.py run --fix <名> --bmn <N>`（Type0）。
