@@ -282,6 +282,18 @@ def md_table(title, rows, view="std"):
                      f"{met['bomb_held']:.3f} | {met['bomb_split']:.3f} |")
     return head + "\n".join(lines) + "\n"
 
+def md_compare_table(title, rows):
+    """统一对照表：每行同时给 std(3×17) 与 real(地主20) 炸弹指标 + 手数/单牌/大牌/首叫/抗衡。"""
+    head = (f"### {title}\n\n"
+            f"| 排名 | 配置 | 综合得分 | 手数 | 单牌 | 大牌 | 持有炸/人 | 单局炸率(std) | 每局3×17炸(std) | 单局真实炸率(real) | 每局真实炸(real) | 地主20炸(real) | 首叫 | 抗衡 |\n"
+            f"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+    lines = []
+    for i, (lab, met, f) in enumerate(rows, 1):
+        lines.append(f"| {i} | `{lab}` | {f['score']:.3f} | {met['hands']:.2f} | {met['singles']:.2f} | {met['bigcards']:.2f} | "
+                     f"{met['bomb_held']:.3f} | {met['bomb_occ']:.3f} | {met['table_3x17']:.3f} | {met['occ_real']:.3f} | "
+                     f"{met['table_real']:.3f} | {met['landlord_bomb20']:.3f} | {met['head_start']:.3f} | {met['resist']:.3f} |")
+    return head + "\n".join(lines) + "\n"
+
 PROOF_SECTION = r"""**实现**：`extracted/optimal_split.h`（header-only，复用 `landlord.h` 的 Combo/Card/ComboType 与 `DefaultComboScoringStrategy::score`）。校验程序 `extracted/split_test.cpp`。
 
 **目标**：字典序 `(最小组合数 n → 最大 Σscore)`。纯 max-score 被否——它会拒绝组低对子（两张 3：对子分 −12 < 两单牌 0），把 n 误判成 2，污染手数/单牌。min-n 居首对齐用户「手数=最小组合数」；max-Σscore 在等 n 中破平，对齐 §1.2「全局牌力最优」（6666+7..K 下 BOMB+STRAIGHT(55) 胜 STRAIGHT+TRIPLE(24)，炸弹不被长顺吞没）。
@@ -318,6 +330,30 @@ optimalSplit: solve(根) → 沿 memo.moveCode 重建组合序列
 **实证对照（1000 随机手，split_test）**：optimal 比 `DefaultSplitterFactory`(贪心) **更少手数 546/1000**、等手数 454/1000、**违反 0**（即 optimal.n ≤ 贪心.n 恒成立，等 n 时 Σscore ≥ 贪心）⇒ 旧贪心拆牌确为次优，本最优解严格不劣于它。memo 稳态约 4.7 万状态/进程。
 """
 
+COMPARE_DEFS = """
+## 指标口径定义
+
+> 每局 = 3 家各 17 张手牌 + 3 张底牌；**地主 = 牌力最强座**（竞叫赢家近似；庄家=首叫位 ≠ 地主）。
+> 全部炸弹列均为**持有**口径（手牌物理四张同点 + 王炸），**非**拆牌炸弹、**非**打出炸弹(`bomb_bet`)。
+
+| 指标 | 定义 | 单位 |
+|---|---|---|
+| 手数 | 人均最优手数：三家 min-combo 最优拆牌(字典序 min 组合数→max Σscore)的组合数平均 | 手/人 |
+| 单牌 | 最优拆牌里 SINGLE 组合数的三家平均（17 张口径） | 张/人 |
+| 大牌 | 2/王 张数的三家平均（17 张口径） | 张/人 |
+| 持有炸/人 | 每家 17 张持有炸(四张同点+王炸)的平均颗数 | 颗/人 |
+| 单局炸率(std) | **3×17**：桌上任意一家 17 张有炸的局占比（不给地主底牌） | 比例 |
+| 每局3×17炸(std) | 每局 3 家 17 张持有炸总颗数的平均（= 持有炸/人 ×3） | 颗/局 |
+| 单局真实炸率(real) | **地主20+2农民17**：桌上任意有炸的局占比 | 比例 |
+| 每局真实炸(real) | 每局 地主20+2农民17 持有炸总颗数的平均 | 颗/局 |
+| 地主20炸(real) | 地主 20 张(17手牌+3底牌)持有炸的平均颗数 | 颗/局 |
+| 首叫诱导度 | P_max/P_avg（P=sigmoid(牌力/40)） | 比值 |
+| 抗衡度 | (P_mid+P_min)/P_max | 比值 |
+
+**综合得分（real 视角）**：`.28·S_bomb + .18·S_hand + .12·S_single + .20·S_susp + .10·S_div + .12·S_hit`；S_bomb=单局真实炸率抱随机(基线 0.540)，S_hand=手数比随机顺~1.5手为峰，S_susp=首叫+抗衡落健康带。
+> real 恒 ≥ std：差源于地主多吃 3 张底牌 + 地主自选强牌（bid-winner）。
+"""
+
 def main():
     import argparse
     ap = argparse.ArgumentParser()
@@ -328,6 +364,7 @@ def main():
     ap.add_argument("--view", choices=["std", "real"], default="std",
                     help="std=3×17 单局炸率抱随机；real=地主20真实口径(occ_real)")
     ap.add_argument("--top", type=int, default=20)
+    ap.add_argument("--compare", action="store_true", help="另出 top20_compare.md：每行同时给 std+real 指标+大牌/单牌/手数，含 new/new2")
     args = ap.parse_args()
     view = args.view
     # 报告按视角分文件，避免互相覆盖：std→top20_report.md，real→top20_report_real.md
@@ -430,6 +467,37 @@ def main():
                                              "strategy": strategy_json(cand_for_label(lab, t1c, t0c))}
                                             for i, (lab, m, f) in enumerate(top0)]}
     open(OUTJSON, "w", encoding="utf-8").write(json.dumps(export, ensure_ascii=False, indent=2))
+
+    # ===== 统一对照报告（可选 --compare）：每行 std+real + 大牌/单牌/手数，含 new/new2 =====
+    if args.compare:
+        def _lab_of(cands, **kw):
+            for c in cands:
+                if all(c.get(k) == v for k, v in kw.items()):
+                    return c["label"]
+            return None
+        new_lab = _lab_of(t1c, coupai=[4, 5, 3, 6], begin=11, select=15, tv=999)
+        new2_lab = _lab_of(t1c, coupai=[4, 6, 5, 2, 3], begin=14, select=17, tv=999)
+        top1r = rank(df1, B, "real")[:args.top]
+        top0r = rank(df0, B, "real")[:args.top]
+        cmp = ["# 742/420 发牌策略 TOP 对照（std+real 双视角 + 大牌/单牌/手数）\n",
+               f"> 决赛 N={data.get('final_n', args.final_n)}。**每行同时给 std(3×17) 与 real(地主20真实口径) 炸弹指标**；"
+               f"手数=人均最优手数(min-combo)，单牌/大牌=17 张口径；real 地主=牌力最强座(竞叫赢家近似)。TOP 按 real 视角排名。\n"]
+        ref = []
+        for lab, mm in [("纯随机(--pure-random)", B), ("old2 (Type0)", data.get("old2")),
+                        ("new (=742 现行)", df.get(new_lab) if new_lab else None),
+                        ("new2 (=420 改造中)", df.get(new2_lab) if new2_lab else None)]:
+            if mm is None:
+                continue
+            ref.append((lab, mm, fitness(mm, B, "real")))
+        cmp.append("\n## 一、现行/参照配置\n")
+        cmp.append(md_compare_table("参照（纯随机/old2/new/new2）", ref))
+        cmp.append("\n## 二、makedealType = 1 TOP20（real 视角）\n")
+        cmp.append(md_compare_table("Type1 TOP20", top1r))
+        cmp.append("\n## 三、makedealType = 0 TOP20（real 视角）\n")
+        cmp.append(md_compare_table("Type0 TOP20", top0r))
+        cmp.append(COMPARE_DEFS)
+        open(HERE / "top20_compare.md", "w", encoding="utf-8").write("".join(cmp))
+        print(f"对照: {HERE / 'top20_compare.md'}", file=sys.stderr)
 
     print(f"\n报告: {REPORT}", file=sys.stderr)
     print(f"配置: {OUTJSON}", file=sys.stderr)
