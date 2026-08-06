@@ -11,6 +11,7 @@
 3. **DAU/活跃口径每次重推**：用哪个表、哪些字段、怎么分桶？→ [dau-active-cohort.md](dau-active-cohort.md)
 4. **结果解读反复求证**：胜率 93% 正常吗？`robot=0` 说明没机器人吗？→ [data-gotchas.md](data-gotchas.md)
 5. **StarRocks 性能/运维排查**：查询慢、磁盘涨？→ [starrocks-ops.md](starrocks-ops.md)
+6. **发牌配置/炸弹/手数评估**：哪个配置好？harness 怎么跑？持有 vs 打出？→ [makedeal-simulation.md](makedeal-simulation.md)
 
 ## 精准加载路由
 
@@ -23,6 +24,7 @@
 | 对局 / 房间 / 战绩 / 胜率 / game_id / room_id | [game-combat-analysis.md](game-combat-analysis.md) | 对局表矩阵 + 分析 recipe |
 | 解读结果 / 排查异常 / 反直觉 | [data-gotchas.md](data-gotchas.md) | robot、胜率、符号等陷阱 |
 | StarRocks 运维 / 性能 / 读写放大 | [starrocks-ops.md](starrocks-ops.md) | 读写放大排查 SQL + 调优锦囊 |
+| 发牌 / 做牌 / 炸弹 / 手数 / makedeal / harness | [makedeal-simulation.md](makedeal-simulation.md) | harness 真值 + 最优拆牌 + 严苛口径 + 对账线上 |
 | 留存分析 SQL | [../lessons/retention-sql-pattern.md](../lessons/retention-sql-pattern.md) | CTE 骨架、矩阵坍缩、分区裁剪 |
 | 疑难排查案例 | [../lessons/troubleshooting.md](../lessons/troubleshooting.md) | strict mode 回滚、INSERT 0 行 |
 

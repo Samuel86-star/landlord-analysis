@@ -25,6 +25,8 @@
 #include <vector>
 #include <map>
 #include <algorithm>
+#include "../include/landlord.h"   // 复用规范拆牌器 + 牌力评分（namespace landlord，无冲突）
+#include "optimal_split.h"         // 搜索式全局最优拆牌（min-combo + max-Σscore）——指标期用
 
 // =============================================================================
 // 0. 可移植性 Stub（不发牌逻辑）
@@ -262,6 +264,14 @@ typedef struct _tagMakeDealCfg {
     int nReserved[4] = {0,0,0,0};
 } MAKEDEALCFG, *LPMAKEDEALCFG;
 
+// ---- 参数扫描注入（sweep mode）：--type0/--type1 注入式候选 + --pure-random 基线 ----
+// 须在 CGameTable 定义之前声明，供 MakeDealByCfg 两层注入使用
+static MAKEDEALCFG g_injectedCfg;
+static bool g_inject = false;
+static bool g_pureRandom = false;
+static double g_tv_raw = 999.0;
+static bool g_tv_set = false;
+
 #define USER_TYPE_REAL  0
 #define USER_TYPE_ROBOT 1
 
@@ -283,6 +293,14 @@ static int SK_GetCardIndex(int nCardID) {            // Type0 layout 1-15
 }
 static int SK_GetCardShape(int nCardID) { (void)nCardID; return 0; }
 static inline int SK_GetCardIndexEx(int nCardID, int = 0) { return SK_GetCardIndex(nCardID); }
+// harness cardid(0-53) → landlord::Rank（cardid%13: 0→2, 1→3, …, 12→A; 52→小王, 53→大王）
+static inline landlord::Rank cardidToRank(int nCardID) {
+    if (nCardID == 52) return landlord::Rank::SMALL_JOKER;
+    if (nCardID == 53) return landlord::Rank::BIG_JOKER;
+    int r = nCardID % 13;
+    if (r == 0) return landlord::Rank::TWO;
+    return static_cast<landlord::Rank>(r - 1);   // 1→THREE(0) … 12→ACE(11)
+}
 
 // =============================================================================
 // 5. get_GroupData（MakeDealHelper.cpp:85）—— 读 JSON GroupDataExp
@@ -642,10 +660,10 @@ ComposeCardResult MakeDeal_ComposeCard(LPMAKEDEALCFG pCfg, std::vector<CardGroup
                         }
                         if (tmpMaxValueMap.count(5) && tmpMaxValueMap.count(6)) {
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, 4);
-                            if (nTargetCardID != -1) { DLINE_EXTEND(7); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,6+prov,6*prov*2);  /* C++ 原笔误，保留 */
+                            if (nTargetCardID != -1) { DLINE_EXTEND(7); CardGroupDatas[i2]=get_GroupData(cgDOUBLE_LINE,6+prov,6+prov*2);  /* 审计 B5 已修正: 原 6*prov*2 → 6+prov*2（该 nCount 不被下游消费，修正仅统一元数据）*/
                                 deletelist.push_back(tmpMaxValueMap[5]); deletelist.push_back(tmpMaxValueMap[6]);
                                 sort(deletelist.begin(),deletelist.end()); for(int ii=(int)deletelist.size()-1;ii>=0;--ii) CardGroupDatas.erase(CardGroupDatas.begin()+deletelist[ii]);
-                                stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6*prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
+                                stRet.bRet=true; stRet.ComposeCardGroupType=get_GroupCardName(cgDOUBLE_LINE); stRet.ComposeCardGroupCardCount=6+prov*2; stRet.nRemoveCardID=nTargetCardID; return stRet; }
                         }
                     } else if (mc == 13) {
                         if (tmpMaxValueMap.count(12) && tmpMaxValueMap.count(14)) {
@@ -889,7 +907,7 @@ struct CGameTable {
     int m_nBanker = 0;
     int m_nRoomID = 0;
     int m_nTotalChairs = TOTAL_CHAIRS;
-    int m_nMakeDealTypes[TOTAL_CHAIRS];
+    int m_nMakeDealTypes[TOTAL_CHAIRS] = {0, 0, 0};   // 审计 B2: stub 丢失了线上 CGameTable 构造清零，须类内默认 0
 
     int CalcBankerChairBefore() { return XygGetRandomBetween(m_nTotalChairs); }
     int CalcBanker(BOOL isFixBankerToSoleRealPlayer) {
@@ -943,8 +961,10 @@ struct CGameTable {
         if (fTargetValue >= 0) pCfg->nTargetValue = (int)(fTargetValue * CFG_MGR[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["MaxCardsValue"].asInt());
         else pCfg->nTargetValue = -(int)(fTargetValue * CFG_MGR[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["MinCardsValue"].asInt());
         pCfg->nTargetRound = S["TargetRound"].asInt();
-        srand((unsigned)time(NULL));
+        // 审计 B3: 删除 srand(time(NULL))。原写法秒级粒度，harness 紧循环同 1 秒内数千局会选同一 CouPaiStrategy（多策略房间统计偏斜）。
+        // 改由每局 SvrXygRandomSort 的 srand(shuffleSeed) 提供按局变化的随机源，更贴合线上「每局策略独立」意图。属对线上字面代码的偏离。
         int nCouPaiStrategyCount = (int)CFG_MGR[MAKEDEAL_CONFIG]["MakeDealStrategy"][strMakeDealStrategy.c_str()]["CouPaiStrategy"].size();
+        if (nCouPaiStrategyCount <= 0) return;   // 审计 B1 加固: CouPaiStrategy 缺失/为空时线上 rand()%0 除零崩溃，静默返回（仅畸形配置触发）
         int nCouPaiStrategySelectIndex = rand() % nCouPaiStrategyCount;
         for (int i = 0; i < (int)CFG_MGR[MAKEDEAL_CONFIG]["MakeDealStrategy"][strMakeDealStrategy.c_str()]["CouPaiStrategy"][nCouPaiStrategySelectIndex].size(); i++)
             pCfg->arrCouPaiStrategy.push_back(CFG_MGR[MAKEDEAL_CONFIG]["MakeDealStrategy"][strMakeDealStrategy.c_str()]["CouPaiStrategy"][nCouPaiStrategySelectIndex][i].asInt());
@@ -1003,12 +1023,13 @@ struct CGameTable {
         }
         for (int i = pCfg->nBeginMakeNum; i < CARDS_PER_CHAIR; i++) {
             for (int c = 0; c < TOTAL_CHAIRS; c++) if (-1 == pChairCards[c][i]) { pChairCards[c][i] = GetOneReservedCard(nReserveCards, (CARDS_PER_CHAIR - pCfg->nBeginMakeNum)*3); pCardLays[c][SK_GetCardIndexEx(pChairCards[c][i], 0)]++; }
+            if (-1 == pChairCards[0][i] || -1 == pChairCards[1][i] || -1 == pChairCards[2][i]) return FALSE;   // 审计 B6: 恢复线上储备耗尽兜底（不可达：储备恰好=空槽数）
         }
         return TRUE;
     }
     void MakeDealByCfg(int cards[], int length) {
         MAKEDEALCFG dealCfg; ZeroMemory(&dealCfg, sizeof(MAKEDEALCFG));
-        GetMakeDealCfg(&dealCfg);
+        if (g_inject) dealCfg = g_injectedCfg; else GetMakeDealCfg(&dealCfg);   // 注入层1：盖 dealCfg 决定 Type0/Type1 分支
         if (0 == dealCfg.nMakeDealType) {
             if (0 < dealCfg.nBeginMakeNum && dealCfg.nBeginMakeNum < CARDS_PER_CHAIR && -1 != dealCfg.nFirstChairHandCount && -1 != dealCfg.nFirstChairBombCount && -1 != dealCfg.nFirstChairBigCardsCount && -1 != dealCfg.nOtherChairHandCount && -1 != dealCfg.nOtherChairBombCount && -1 != dealCfg.nOtherChairBigCardsCount) {
                 int nChairCards[TOTAL_CHAIRS][CARDS_PER_CHAIR], *pReserveCards = new int[(CARDS_PER_CHAIR - dealCfg.nBeginMakeNum) * 3];
@@ -1027,7 +1048,8 @@ struct CGameTable {
         } else if (1 == dealCfg.nMakeDealType) {
             MAKEDEALCFG userdealCfg[3]; for (int i=0;i<3;i++){ userdealCfg[i].nMakeDealType=0; userdealCfg[i].nBeginMakeNum=0; userdealCfg[i].nBeginSelectBanker=0; userdealCfg[i].nFirstChairHandCount=-1; userdealCfg[i].nFirstChairBombCount=-1; userdealCfg[i].nFirstChairBigCardsCount=-1; userdealCfg[i].nOtherChairHandCount=-1; userdealCfg[i].nOtherChairBombCount=-1; userdealCfg[i].nOtherChairBigCardsCount=-1; userdealCfg[i].nTargetValue=0; userdealCfg[i].nTargetRound=0; userdealCfg[i].nReserved[0]=0; userdealCfg[i].nReserved[1]=0; userdealCfg[i].nReserved[2]=0; userdealCfg[i].nReserved[3]=0; }
             for (int i = 0; i < 3; i++) {
-                if (m_ptrPlayers[i]->IsRoboter()) { GetMakeDealCfg(&userdealCfg[i], "robot"); }
+                if (g_inject) { userdealCfg[i] = g_injectedCfg; }                // 注入层2：三家同 cfg，绕过身份路由
+                else if (m_ptrPlayers[i]->IsRoboter()) { GetMakeDealCfg(&userdealCfg[i], "robot"); }
                 else if (IsNeedMakeDealByUserBoutInfo(m_ptrPlayers[i])) { GetMakeDealCfg(&userdealCfg[i], "newuser"); }
                 else { userdealCfg[i] = dealCfg; }
                 if (0 > userdealCfg[i].nBeginMakeNum || userdealCfg[i].nBeginMakeNum > CARDS_PER_CHAIR || 0 > userdealCfg[i].nBeginSelectBanker || userdealCfg[i].nBeginSelectBanker > CARDS_PER_CHAIR) return;
@@ -1080,10 +1102,40 @@ int main(int argc, char** argv) {
         else if ((a == "-n" || a == "--n") && i+1 < argc) n = atol(argv[++i]);
         else if (a == "--seed" && i+1 < argc) seed = (unsigned)atol(argv[++i]);
         else if (a == "--cfg" && i+1 < argc) cfgPath = argv[++i];
-        else if (a == "--help" || a == "-h") { fprintf(stderr, "usage: harness --room 742 --reals 3 -n 100000 [--seed 0] [--cfg makedeal.json]\n"); return 0; }
+        // sweep 注入：强制三家同策略，绕过 robot/newuser 路由
+        else if (a == "--pure-random") g_pureRandom = true;                       // 跳过 MakeDealByCfg = 纯随机基线
+        else if (a == "--type0") { g_inject = true; g_injectedCfg.nMakeDealType = 0; }
+        else if (a == "--type1") { g_inject = true; g_injectedCfg.nMakeDealType = 1; }
+        // Type1 参数（Type1 实际只消费这 6 字段）
+        else if (a == "--begin" && i+1 < argc) g_injectedCfg.nBeginMakeNum = atoi(argv[++i]);
+        else if (a == "--select" && i+1 < argc) g_injectedCfg.nBeginSelectBanker = atoi(argv[++i]);
+        else if (a == "--tv" && i+1 < argc) { g_tv_raw = atof(argv[++i]); g_tv_set = true; }
+        else if (a == "--tr" && i+1 < argc) g_injectedCfg.nTargetRound = atoi(argv[++i]);
+        else if (a == "--coupai" && i+1 < argc) {
+            g_injectedCfg.arrCouPaiStrategy.clear();
+            for (char* p = strtok(argv[++i], ","); p; p = strtok(NULL, ",")) g_injectedCfg.arrCouPaiStrategy.push_back(atoi(p));
+        }
+        // Type0 参数（BigCardsTo + 6 阈值；BeginMakeNum 同 --bmn）
+        else if (a == "--bmn" && i+1 < argc) g_injectedCfg.nBeginMakeNum = atoi(argv[++i]);
+        else if (a == "--bigcards-to" && i+1 < argc) g_injectedCfg.nReserved[0] = atoi(argv[++i]);
+        else if (a == "--first-hc" && i+1 < argc) g_injectedCfg.nFirstChairHandCount = atoi(argv[++i]);
+        else if (a == "--first-bomb" && i+1 < argc) g_injectedCfg.nFirstChairBombCount = atoi(argv[++i]);
+        else if (a == "--first-big" && i+1 < argc) g_injectedCfg.nFirstChairBigCardsCount = atoi(argv[++i]);
+        else if (a == "--other-hc" && i+1 < argc) g_injectedCfg.nOtherChairHandCount = atoi(argv[++i]);
+        else if (a == "--other-bomb" && i+1 < argc) g_injectedCfg.nOtherChairBombCount = atoi(argv[++i]);
+        else if (a == "--other-big" && i+1 < argc) g_injectedCfg.nOtherChairBigCardsCount = atoi(argv[++i]);
+        else if (a == "--help" || a == "-h") { fprintf(stderr, "usage: harness --room 742 --reals 3 -n 100000 [--seed 0] [--cfg makedeal.json]\n"
+              "  sweep: --pure-random | --type0/--type1 --begin N --select N --tv F --tr N --coupai \"4,5,3,6\"\n"
+              "         type0: --bmn N --bigcards-to N --first-hc/bomb/big N --other-hc/bomb/big N\n"); return 0; }
     }
     if (reals < 1 || reals > 3) { fprintf(stderr, "--reals must be 1/2/3\n"); return 1; }
     if (!loadConfig(cfgPath)) { fprintf(stderr, "cannot load config %s (use --cfg <path>)\n", cfgPath); return 1; }
+    // 注入模式下，--tv 按 MakeDealCommonArgs.MaxCardsValue 缩放成 nTargetValue（与 GetMakeDealCfg 同口径）
+    if (g_inject && g_tv_set) {
+        int maxCV = CFG_MGR[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["MaxCardsValue"].asInt(); if (maxCV <= 0) maxCV = 121;
+        if (g_tv_raw >= 0) g_injectedCfg.nTargetValue = (int)(g_tv_raw * maxCV);
+        else { int minCV = CFG_MGR[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["MinCardsValue"].asInt(); if (minCV == 0) minCV = 16; g_injectedCfg.nTargetValue = -(int)(g_tv_raw * minCV); }
+    }
 
     CPlayer players[3];
     for (int i = 0; i < reals; i++)        { players[i].m_nUserType = USER_TYPE_REAL;  players[i].m_nBout = 999; }
@@ -1094,6 +1146,7 @@ int main(int argc, char** argv) {
     T.m_ptrPlayers[0] = &players[0]; T.m_ptrPlayers[1] = &players[1]; T.m_ptrPlayers[2] = &players[2];
 
     for (long deal = 0; deal < n; deal++) {
+        for (int c = 0; c < TOTAL_CHAIRS; c++) T.m_nMakeDealTypes[c] = 0;   // 审计 B2: 每局重置做牌类型，避免上一局残留/未初始化污染 makedeal 字段
         // 真人局数随 deal 增长（影响 newuser 判定；默认 999 远大于 NewUserBout，即非新手）
         for (int i = 0; i < reals; i++) players[i].m_nBout = 999 + (int)deal;
         // 新手保护：恰好 1 真人 + 该真人局数 <= NewUserBout → 强制真人当庄（isFixBanker）
@@ -1107,23 +1160,44 @@ int main(int argc, char** argv) {
         int card[TOTAL_CARDS]; for (int i = 0; i < TOTAL_CARDS; i++) card[i] = i;
         int shuffleSeed = (int)(seed + deal * 7919u + 17u);
         SvrXygRandomSort(card, TOTAL_CARDS, shuffleSeed);          // 1:1 线上洗牌（rand/srand）
-        T.MakeDealByCfg(card, TOTAL_CARDS);                        // 1:1 发牌/配牌/拆牌
+        if (!g_pureRandom) T.MakeDealByCfg(card, TOTAL_CARDS);     // 1:1 发牌/配牌/拆牌（--pure-random 跳过 = 纯随机基线）
 
         // 输出 JSONL：每家手牌(17)+底牌(3)+炸弹/手数/大牌/做牌类型/是否真人/庄
         printf("{\"deal\":%ld,\"room\":%d,\"reals\":%d,\"banker\":%d,\"seats\":[",
                deal, room, reals, T.m_nBanker);
+        double seatVal[3]={0,0,0}; int seatBomb[3]={0,0,0};
         for (int c = 0; c < 3; c++) {
             int hand[CARDS_PER_CHAIR];
             for (int i = 0; i < CARDS_PER_CHAIR; i++) hand[i] = card[c + i*3];   // stride-3：chair c
             int lay[SK_LAYOUT_NUM]; memset(lay,0,sizeof(lay));
             int hc=0, bc=0, big=0;
-            CalcHandCardsCount(hand, CARDS_PER_CHAIR, lay, hc, bc, big);
+            CalcHandCardsCount(hand, CARDS_PER_CHAIR, lay, hc, bc, big);          // held 口径: bombs/handcount(Calc)/bigcards（对照用）
+            // 指标期拆牌：搜索式全局最优（字典序 min-combo → max-Σscore），复用 landlord.h 的 Combo/评分
+            std::vector<landlord::Card> lhand;
+            for (int i = 0; i < CARDS_PER_CHAIR; i++) lhand.push_back({cardidToRank(hand[i]), landlord::Suit::NONE});
+            std::vector<landlord::Combo> combos = landlord::optimalSplit(lhand);
+            int optHands=(int)combos.size(), singles=0, splitBombs=0, gt[15]; memset(gt,0,sizeof(gt));
+            for (size_t g=0; g<combos.size(); g++){ int t=static_cast<int>(combos[g].type); if(t>=0&&t<15) gt[t]++;
+                if(combos[g].type==landlord::ComboType::SINGLE) singles++;
+                if(combos[g].type==landlord::ComboType::BOMB||combos[g].type==landlord::ComboType::ROCKET) splitBombs++; }
+            double lval = landlord::DefaultHandCardsScoringStrategy().calcTotalHandScore(lhand, combos);
+            seatVal[c]=lval; seatBomb[c]=splitBombs;
             printf("%s{\"seat\":%d,\"is_robot\":%s,\"hand\":[",
                    c?"," : "", c, players[c].m_nUserType==USER_TYPE_ROBOT?"true":"false");
             for (int i = 0; i < CARDS_PER_CHAIR; i++) printf("%s%d", i?",":"", hand[i]);
-            printf("],\"bombs\":%d,\"handcount\":%d,\"bigcards\":%d,\"makedeal\":%d}", bc, hc, big, T.m_nMakeDealTypes[c]);
+            printf("],\"bombs\":%d,\"handcount\":%d,\"bigcards\":%d,\"makedeal\":%d,\"opt_hands\":%d,\"value\":%d,\"singles\":%d,\"split_bombs\":%d,\"gtypes\":{\"0\":%d,\"1\":%d,\"2\":%d,\"3\":%d,\"4\":%d,\"5\":%d,\"6\":%d,\"7\":%d,\"8\":%d,\"9\":%d,\"10\":%d,\"11\":%d,\"12\":%d,\"13\":%d},\"val_f\":%.4f}",
+                   bc, hc, big, T.m_nMakeDealTypes[c], optHands, (int)llround(lval), singles, splitBombs,
+                   gt[0],gt[1],gt[2],gt[3],gt[4],gt[5],gt[6],gt[7],gt[8],gt[9],gt[10],gt[11],gt[12],gt[13], lval);
         }
-        printf("],\"bottom\":[%d,%d,%d]}\n",
+        // 庄闲平衡：庄家=首叫位 m_nBanker（非地主，不吃底牌）；17 张口径，value/split_bombs 均用最优拆牌口径
+        int bk=T.m_nBanker, o1=(bk+1)%3, o2=(bk+2)%3;
+        double gap_val = seatVal[bk] - (seatVal[o1]+seatVal[o2])/2.0;
+        double gap_bomb = seatBomb[bk] - (seatBomb[o1]+seatBomb[o2])/2.0;
+        double vmax=seatVal[0], vmin=seatVal[0];
+        for (int c=1;c<3;c++){ if(seatVal[c]>vmax)vmax=seatVal[c]; if(seatVal[c]<vmin)vmin=seatVal[c]; }
+        double spread = vmax - vmin;
+        printf("],\"gap_val\":%.2f,\"gap_bomb\":%.2f,\"spread\":%.2f,\"bottom\":[%d,%d,%d]}\n",
+               gap_val, gap_bomb, spread,
                card[CARDS_PER_CHAIR*3], card[CARDS_PER_CHAIR*3+1], card[CARDS_PER_CHAIR*3+2]);
     }
     return 0;

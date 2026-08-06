@@ -47,13 +47,19 @@ g++ -std=c++14 -O2 harness.cpp -o harness
 ```json
 {"deal":0,"room":742,"reals":3,"banker":2,
  "seats":[
-   {"seat":0,"is_robot":false,"hand":[53,6,...17张],"bombs":0,"handcount":6,"bigcards":2,"makedeal":3},
+   {"seat":0,"is_robot":false,"hand":[53,6,...17张],"bombs":0,"handcount":6,"bigcards":2,"makedeal":3,
+    "opt_hands":6,"value":14,"singles":3,"split_bombs":0,"gtypes":{"0":3,"1":1,...},"val_f":14.3},
    {"seat":1,...},{"seat":2,...}],
- "bottom":[0,16,50]}
+ "gap_val":0.5,"gap_bomb":0.0,"spread":12.3,"bottom":[0,16,50]}
 ```
 
-字段：`banker`=庄家座位；每家 `hand`(17 张 cardid，stride-3 取自 `card[c+3*i]`)、`bombs`(持有炸弹=quads+rocket)、
-`handcount`(Type0 手数口径)、`bigcards`(2/王张数)、`makedeal`(做牌类型 0/1/2/3)；`bottom`(3 张底牌)。
+字段：`banker`=庄家座位（首叫位，非地主、不吃底牌）；每家 `hand`(17 张 cardid，stride-3 取自 `card[c+3*i]`)、
+`bombs`(持有炸弹=quads+rocket，**与线上 `bomb_cnt` 对齐**)、`handcount`(Type0 手数口径，对照)、`bigcards`(2/王张数)、`makedeal`(做牌类型 0/1/2/3)；
+**指标期拆牌字段**（来自 `optimal_split.h` 搜索式最优拆牌，min-combo→max-Σscore）：`opt_hands`(人均最优手数)、`value`/`val_f`(牌力，int/float)、`singles`(单牌数)、`split_bombs`(拆牌炸弹，偏低仅参考)、`gtypes`(牌型直方图)。
+局级：`gap_val`/`gap_bomb`(庄家−闲家均值，17 张口径)、`spread`(三座位牌力极差)、`bottom`(3 张底牌，不并入任何座位)。
+
+> 指标口径与统计方法见 [`docs/knowledge/makedeal-simulation.md`](../../../docs/knowledge/makedeal-simulation.md)。
+> 扫描/打分/TOP20 用 `sweep.py`，单配置聚合用 `anchor_check.py`，最优拆牌校验用 `split_test.cpp`。
 
 ## 聚合统计
 
@@ -68,10 +74,10 @@ py -3 stats.py out_742_3.jsonl
 ## 忠实度（1:1 verbatim 部分）
 
 `SvrXygRandomSort`/`SvrReversalMoreByValue`、`MakeDealByCfg`(Type0+Type1)、`DoMakeDeal`、
-`MatchFirst/OtherChairCards`+6 个 `Match*`、`MakeDeal_ComposeCard`(全分支含 3/4/13/14 位置特判与原笔误)、
+`MatchFirst/OtherChairCards`+6 个 `Match*`、`MakeDeal_ComposeCard`(全分支含 3/4/13/14 位置特判；mc==4 连对 `6*prov*2` 笔误已修，见审计 B5)、
 `SpliteCard`+`GetBestCardType`+`get_MaxHandCardValue`(递归最优拆牌)、`get_GroupData`(读 JSON GroupDataExp)、
 `CalHandCardValue`、`CalcHandCardsCount`+8 个 `Calc*HandCount`、`GetMakeDealCfg`(含 robot/newuser/room 路由)、
-`CalcBanker`——全部逐字照抄，含 `rand()`/`srand()` 与 `s=54000>RAND_MAX` 截断。
+`CalcBanker`——逐字照抄。`GetMakeDealCfg` 原 `srand(time(NULL))` 已删（审计 B3，偏离 1:1）；洗牌 `rand()` 与 `s=54000>RAND_MAX` 截断原样保留（审计 B4）。
 
 **仅 stub 部分**（不发牌逻辑）：`CPlayer`/`CGameTable` 精简到只留发牌所需成员；`CConfigManagerSys` 换成
 `std::map`；`GetPrivateProfileInt` 走默认值；`UwlLogFile` no-op；`_T/TCHAR/CString/_stprintf` 映射到标准 C++；
@@ -93,3 +99,16 @@ py -3 stats.py out_742_3.jsonl
   种子源不同 → **具体某局不可复现线上**；但**概率分布忠实**（同一 shuffle 算法），统计结论有效。
 - 新手脚本牌层（`ReadNoviceCardsFromFile`）未含（需外部预制牌文件）；newuser **策略层**已含。
 - 配置加载后不热更新（沙盒静态读 `makedeal.json`）。
+
+## 审计发现与修复（2026-08 静态审计）
+
+对 `harness.cpp` 做了一轮纯逻辑/边界审计，区分为 **A 类（线上共有）** 与 **B 类（harness stub 引入）**。处理见下表——A 类中 **B3 经确认按「修」处理（标注「偏离 1:1」，仅影响策略选型随机源，不动洗牌/发牌算法体）；B4 保留线上洗牌 bias 以守住「线上真值」定位**。**742/420 标定结论不受影响。**
+
+| 编号 | 类别 | 处理 | 说明 |
+|---|---|---|---|
+| B2 | B·已修 | 代码 | `m_nMakeDealTypes` 原为未初始化裸数组（stub 丢失了线上 `CGameTable` 的构造清零），Type0 首局 / Match 未命中时读出垃圾或跨局残留，污染 `makedeal` 字段。已加类内 `={0,0,0}` + 每局循环重置。**仅动该元数据字段，不碰发牌算法体**；Type1(742/420) 因 compose 阶段必写全 3 位为 3，输出字节不变。 |
+| B1 | A·加固 | 代码 | `GetMakeDealCfg` 中 `rand() % nCouPaiStrategyCount` 在 `CouPaiStrategy` 缺失/为空时整数除零崩溃（线上既有缺陷）。已加 `if (nCouPaiStrategyCount<=0) return;`，仅畸形配置触发，正常配置零影响，不破坏 1:1 统计等价性。 |
+| B3 | A·已修(偏离1:1) | 代码 | `GetMakeDealCfg` 原有 `srand(time(NULL))`（秒级粒度）：线上每局间隔秒级无碍，但 harness 紧循环同 1 秒内数千局会选同一 `CouPaiStrategy`，致多策略房间（old2/robot/level1-6 等）策略分层偏斜。**已删除该 srand**，改由每局 `SvrXygRandomSort` 的 `srand(shuffleSeed)` 提供按局变化的随机源 → 更贴合线上「每局策略独立」的统计意图。**742(`new`)/420(`new2`) 单策略，输出不变。** 属对线上字面代码的偏离，不动洗牌/发牌算法体。 |
+| B4 | A·保留 | 文档 | `SvrXygRandomSort` 中 `s=length*1000=54000>RAND_MAX(32767)`，`rand()%54000≡rand()`，洗牌键值域压缩、碰撞处保原序，存在轻微系统性洗牌偏置。**属线上既有行为，原样保留**——改它会改变洗牌分布、使已标定真人炸弹率 0.137 失效并动摇「线上真值来源」定位。 |
+| B5 | A·已修 | 代码 | `MakeDeal_ComposeCard` 连对 mc==4 第二分支 `6*prov*2`（应为 `6+prov*2`）原笔误，已修正。该 `nCount` 不进 `CalHandCardValue`（在其之前重拆）、不被 Type1 下游消费，**修正前后零输出影响**，仅统一元数据。 |
+| B6 | B·已修 | 代码 | harness `DoMakeDeal` 原删去了线上储备耗尽 `return FALSE` 兜底，**已恢复**。该分支不可达（储备牌数恰好 = 总空槽数，精确耗尽、永不超取），零输出影响，恢复后重新对齐线上 1:1。 |

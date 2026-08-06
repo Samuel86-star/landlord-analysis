@@ -8,3 +8,9 @@
 
 # 运行日志
 err.txt
+*.log
+*.err
+
+# sweep 指标缓存（再生性，改权重 sweep.py --rerank 即可重建）
+sweep_raw.json
+sweep_runs/
