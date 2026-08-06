@@ -25,6 +25,7 @@
 | 解读结果 / 排查异常 / 反直觉 | [data-gotchas.md](data-gotchas.md) | robot、胜率、符号等陷阱 |
 | StarRocks 运维 / 性能 / 读写放大 | [starrocks-ops.md](starrocks-ops.md) | 读写放大排查 SQL + 调优锦囊 |
 | 发牌 / 做牌 / 炸弹 / 手数 / makedeal / harness | [makedeal-simulation.md](makedeal-simulation.md) | harness 真值 + 最优拆牌 + 严苛口径 + 对账线上 |
+| 拆牌 / 拆解 / 最优拆牌 / optimal_split / 手数算法 | [makedeal-optimal-split.md](makedeal-optimal-split.md) | 最优拆牌完整方法论（目标/算法/证明/校验） |
 | 留存分析 SQL | [../lessons/retention-sql-pattern.md](../lessons/retention-sql-pattern.md) | CTE 骨架、矩阵坍缩、分区裁剪 |
 | 疑难排查案例 | [../lessons/troubleshooting.md](../lessons/troubleshooting.md) | strict mode 回滚、INSERT 0 行 |
 
