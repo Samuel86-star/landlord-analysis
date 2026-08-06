@@ -28,12 +28,28 @@ def summ(path):
             hs.append(ps[0]/pavg)
             if ps[0]>1e-9: rs.append((ps[1]+ps[2])/ps[0])
     return dict(n=n, held=held, occ=occ, dens=dens, hands=hands, singles=singles,
-                val=val, hs=st.mean(hs) if hs else 0, res=st.mean(rs) if rs else 0)
+                val=val, hs=st.mean(hs) if hs else 0, res=st.mean(rs) if rs else 0,
+                ll20=_ll(deals))
+
+def _ll(deals):
+    """landlord-20 口径（仅当 harness 以 --landlord-bottom 跑时存在）。"""
+    have = [r for r in deals if "landlord_bomb20" in r]
+    if not have:
+        return None
+    lb = [r["landlord_bomb20"] for r in have]
+    tr = [r["table_real_bombs"] for r in have]
+    return dict(landlord_bomb20=st.mean(lb), table_real=st.mean(tr),
+                occ_real=sum(1 for x in tr if x > 0)/len(tr))
 
 for path in sys.argv[1:]:
     m = summ(path)
     tag = path.split('_')[-1].replace('.jsonl','')
-    print(f"[{tag:6}] N={m['n']:5d}  持有炸={m['held']:.4f}  单局炸率={m['occ']:.3f}  "
-          f"密度[0/1/2/3+]=[{m['dens'][0]:.3f}/{m['dens'][1]:.3f}/{m['dens'][2]:.3f}/{m['dens'][3]:.3f}]  "
-          f"人均手={m['hands']:.3f}  人均散={m['singles']:.3f}  牌力={m['val']:.2f}  "
-          f"首叫诱导={m['hs']:.3f}  抗衡={m['res']:.3f}")
+    line = (f"[{tag:6}] N={m['n']:5d}  持有炸={m['held']:.4f}  单局炸率={m['occ']:.3f}  "
+            f"密度[0/1/2/3+]=[{m['dens'][0]:.3f}/{m['dens'][1]:.3f}/{m['dens'][2]:.3f}/{m['dens'][3]:.3f}]  "
+            f"人均手={m['hands']:.3f}  人均散={m['singles']:.3f}  牌力={m['val']:.2f}  "
+            f"首叫诱导={m['hs']:.3f}  抗衡={m['res']:.3f}")
+    if m['ll20']:
+        L = m['ll20']
+        line += (f"  | 地主20炸={L['landlord_bomb20']:.3f}  桌真实={L['table_real']:.3f}  "
+                 f"有炸局(真实)={L['occ_real']*100:.1f}%")
+    print(line)

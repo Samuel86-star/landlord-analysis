@@ -271,6 +271,7 @@ static bool g_inject = false;
 static bool g_pureRandom = false;
 static double g_tv_raw = 999.0;
 static bool g_tv_set = false;
+static bool g_landlordBottom = false;   // --landlord-bottom：额外算"地主20张(手牌+底牌)"炸弹，对齐线上真实
 
 #define USER_TYPE_REAL  0
 #define USER_TYPE_ROBOT 1
@@ -300,6 +301,16 @@ static inline landlord::Rank cardidToRank(int nCardID) {
     int r = nCardID % 13;
     if (r == 0) return landlord::Rank::TWO;
     return static_cast<landlord::Rank>(r - 1);   // 1→THREE(0) … 12→ACE(11)
+}
+
+// 持有炸弹(物理口径)：一组 cardid 里，四张同点数(0..12)的个数 + 王炸(大小王齐)
+static inline int heldBombsFromCardids(const int* ids, int n) {
+    int cnt[15] = {0};
+    for (int i = 0; i < n; i++) cnt[(int)cardidToRank(ids[i])]++;
+    int bombs = 0;
+    for (int r = 0; r <= 12; r++) if (cnt[r] >= 4) bombs++;
+    if (cnt[13] >= 1 && cnt[14] >= 1) bombs++;   // 王炸
+    return bombs;
 }
 
 // =============================================================================
@@ -1104,6 +1115,7 @@ int main(int argc, char** argv) {
         else if (a == "--cfg" && i+1 < argc) cfgPath = argv[++i];
         // sweep 注入：强制三家同策略，绕过 robot/newuser 路由
         else if (a == "--pure-random") g_pureRandom = true;                       // 跳过 MakeDealByCfg = 纯随机基线
+        else if (a == "--landlord-bottom") g_landlordBottom = true;               // 额外算地主20张(手牌+底牌)炸弹
         else if (a == "--type0") { g_inject = true; g_injectedCfg.nMakeDealType = 0; }
         else if (a == "--type1") { g_inject = true; g_injectedCfg.nMakeDealType = 1; }
         // Type1 参数（Type1 实际只消费这 6 字段）
@@ -1165,7 +1177,7 @@ int main(int argc, char** argv) {
         // 输出 JSONL：每家手牌(17)+底牌(3)+炸弹/手数/大牌/做牌类型/是否真人/庄
         printf("{\"deal\":%ld,\"room\":%d,\"reals\":%d,\"banker\":%d,\"seats\":[",
                deal, room, reals, T.m_nBanker);
-        double seatVal[3]={0,0,0}; int seatBomb[3]={0,0,0};
+        double seatVal[3]={0,0,0}; int seatBomb[3]={0,0,0}; int seatHeld[3]={0,0,0};
         for (int c = 0; c < 3; c++) {
             int hand[CARDS_PER_CHAIR];
             for (int i = 0; i < CARDS_PER_CHAIR; i++) hand[i] = card[c + i*3];   // stride-3：chair c
@@ -1181,7 +1193,7 @@ int main(int argc, char** argv) {
                 if(combos[g].type==landlord::ComboType::SINGLE) singles++;
                 if(combos[g].type==landlord::ComboType::BOMB||combos[g].type==landlord::ComboType::ROCKET) splitBombs++; }
             double lval = landlord::DefaultHandCardsScoringStrategy().calcTotalHandScore(lhand, combos);
-            seatVal[c]=lval; seatBomb[c]=splitBombs;
+            seatVal[c]=lval; seatBomb[c]=splitBombs; seatHeld[c]=bc;
             printf("%s{\"seat\":%d,\"is_robot\":%s,\"hand\":[",
                    c?"," : "", c, players[c].m_nUserType==USER_TYPE_ROBOT?"true":"false");
             for (int i = 0; i < CARDS_PER_CHAIR; i++) printf("%s%d", i?",":"", hand[i]);
@@ -1196,9 +1208,22 @@ int main(int argc, char** argv) {
         double vmax=seatVal[0], vmin=seatVal[0];
         for (int c=1;c<3;c++){ if(seatVal[c]>vmax)vmax=seatVal[c]; if(seatVal[c]<vmin)vmin=seatVal[c]; }
         double spread = vmax - vmin;
-        printf("],\"gap_val\":%.2f,\"gap_bomb\":%.2f,\"spread\":%.2f,\"bottom\":[%d,%d,%d]}\n",
+        printf("],\"gap_val\":%.2f,\"gap_bomb\":%.2f,\"spread\":%.2f,\"bottom\":[%d,%d,%d]",
                gap_val, gap_bomb, spread,
                card[CARDS_PER_CHAIR*3], card[CARDS_PER_CHAIR*3+1], card[CARDS_PER_CHAIR*3+2]);
+        if (g_landlordBottom) {
+            // 地主 = 牌力最强座（竞叫赢家近似；注意 m_nBanker 只是首叫位≠地主）。其 20 张 = 手牌 17 + 底牌 3
+            int ll = 0; for (int c = 1; c < 3; c++) if (seatVal[c] > seatVal[ll]) ll = c;
+            int hand20[20];
+            for (int i = 0; i < CARDS_PER_CHAIR; i++) hand20[i] = card[ll + i*3];
+            hand20[17] = card[CARDS_PER_CHAIR*3]; hand20[18] = card[CARDS_PER_CHAIR*3+1]; hand20[19] = card[CARDS_PER_CHAIR*3+2];
+            int bomb20 = heldBombsFromCardids(hand20, 20);
+            int t3x17 = seatHeld[0] + seatHeld[1] + seatHeld[2];
+            int treal = bomb20; for (int c = 0; c < 3; c++) if (c != ll) treal += seatHeld[c];
+            printf(",\"landlord_seat\":%d,\"landlord_bomb20\":%d,\"table_3x17_bombs\":%d,\"table_real_bombs\":%d",
+                   ll, bomb20, t3x17, treal);
+        }
+        printf("}\n");
     }
     return 0;
 }

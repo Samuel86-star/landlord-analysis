@@ -57,10 +57,36 @@ py -3 algorithm/native/extracted/sweep.py --rerank   # 改适应度权重后秒�
 
 ## 4. 与线上口径的关系（对账必读）
 
-- 持有炸弹 → `dws_ddz_daily_game.bomb_cnt`（应与 harness 持有炸吻合，如 742≈0.137）。
-- 打出炸弹 → `bomb_bet`（**≠ 持有**；打出受玩家决策/牌局影响，恒 < 持有）。
+**线上持有炸弹 = 从 `hand_cards` 解析**：DWS `tcy_temp.dws_ddz_daily_game` **无 `bomb_cnt` 列**（早期文档误记），持有炸弹须从 `hand_cards`（如 `6,q,8,7,...`）解析——四张同点 + 王炸。打出炸弹 → `bomb_bet`（≠持有，受玩家决策影响）。
+
+> ⚠️ **对账 SQL 三坑**：① 必带 `dt` 分区过滤（不带返回空 `[]`）；② 一个文件只跑一条语句（`sr_exec` 多语句静默返回 `[]`）；③ 列名查 `information_schema.columns`。`hand_cards` 炸弹解析：先 `10→T, sj→S, bj→B`、去逗号得 17 字符串，再 `LENGTH(h)-LENGTH(REPLACE(h,'x',''))` 数各点频次≥4（每牌 1 字符，无连续歧义）。
+
+### ⚠️ 核心差距：模拟 3×17 是真实牌面的【下界】（重要）
+
+模拟用 **3 家 × 17 张**（庄家=首叫位、不吃底牌、不建模竞叫）。线上真实牌面**地主有 20 张**（17+底牌）且**地主=竞叫赢家（自选强牌方）**——两层叠加使线上真实炸弹 ≫ 模拟。2026-08-05 真人实测（420/742，`hand_cards` 解析）：
+
+| | new 真实 | new 模拟 | new2 真实 | new2 模拟 |
+|---|---|---|---|---|
+| 每局炸弹数 | 0.55 | 0.42 | **0.86** | 0.42 |
+| 有炸局占比 | 44% | 35% | **62%** | 36% |
+
+| 地主拆解 | new | new2 |
+|---|---|---|
+| 地主 17 张炸弹 | 0.29 | 0.30 |
+| 地主 20 张(+底牌) | 0.39 | **0.68** |
+| 底牌加成 | +0.10 | **+0.37** |
+
+**底牌对 new2 加成巨大(+0.37)**：with-pair `[4,6,5,2,3]` 凑出大量三张，底牌 3 张极易补成炸；new(no-pair) 牌散只 +0.10。**含义**：3×17 口径掩盖了 new2 的多炸本性——3×17 下 new2≈new，但真实(地主20) new2(0.86) ≫ new(0.55)。低等级要"少炸"，`new` 比 `new2` 实战干净得多。
+
+**对账用同口径**：比"持有炸/人"或"每局总数(3×17)"，别拿模拟"有炸局占比 0.36"对线上"每局个数 0.46"（计数 vs 占比，错位）。
+
+### 对齐线上真实：`--landlord-bottom`
+
+harness 加 `--landlord-bottom` 标志：每局取**牌力最强座作地主**（竞叫赢家近似；注意 `m_nBanker`=首叫位 ≠ 地主），算其 20 张(手牌+底牌)持有炸，输出 `landlord_bomb20` / `table_real_bombs` / `table_3x17_bombs`。`table_real = 地主20 + 2农民17`，对齐线上"真实牌面"。
+
+**实测校验（N=20000，vs 2026-08-05 线上）**：sim `new2` landlord_bomb20=**0.63**（线上 0.68）、table_real=**0.77**（线上 0.86）；`new`=0.34/0.49（线上 0.39/0.55）。开 `--landlord-bottom` 后 sim 从 3×17 的 0.42 跃到真实 ~0.77（**≈线上的 90%**，余 ~10% 为 newuser 混入 + 最强座代理略低于真实竞叫赢家），且 new2(0.77) ≫ new(0.49) 与线上同构。
+
 - 牌力 → `card_power`：≥06-15 窗口才可信；2026-07 PRD 改版（对子翼/炸弹加成）将致第二次断档，见 memory `project_cardpower-formula-prd-change-2026-07`。
-- 庄家=首叫位 `m_nBanker`（**非地主、不吃底牌**）；地主由竞叫决定，harness 不模拟竞叫。庄闲比较用 17 张口径。
 
 ## 5. 关键文件索引
 
@@ -71,7 +97,7 @@ py -3 algorithm/native/extracted/sweep.py --rerank   # 改适应度权重后秒�
 | `algorithm/native/extracted/sweep.py` | TOP20 扫描 + 打分 + 报告 |
 | `algorithm/native/extracted/anchor_check.py` | 锚点/单配置聚合 |
 | `algorithm/native/extracted/top20_report.md` | 完整 TOP20 + 算法证明（决策看这个） |
-| `algorithm/native/previous/makedeal.json` | 线上配置只读快照（策略定义） |
+| `algorithm/native/previous/makedeal.json` | 线上配置参照副本（策略定义，可改） |
 | `docs/tech/classic-makedeal-config-topn.md` | TOP 速查（本库口径） |
 | `docs/tech/classic-makedeal-debomb-plan.md` | 降炸/调体验落地方案 |
 
