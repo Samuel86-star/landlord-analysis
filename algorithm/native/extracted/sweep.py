@@ -25,13 +25,24 @@ HARNESS = HERE / "harness.exe"
 CFG = HERE.parent / "previous" / "makedeal.json"
 RUNDIR = HERE / "sweep_runs"
 RAW = HERE / "sweep_raw.json"
-REPORT = HERE / "top20_report.md"
-OUTJSON = HERE / "top20_configs.json"
 SEED = 1
 
 def sigmoid(x):
     """normalizeHandStrength 的 Python 版：sigmoid(V/40) ∈(0,1)，非负单调牌力强度。"""
     return 1.0 / (1.0 + math.exp(-x / 40.0))
+
+def _cid_rank(cid):
+    """cardid(0-53) → 点数索引 0..14（0=THREE..11=ACE,12=TWO,13=小王,14=大王），与 harness cardidToRank 一致。"""
+    if cid == 52: return 13
+    if cid == 53: return 14
+    r = cid % 13
+    return 12 if r == 0 else r - 1
+
+def _held_bombs(ids):
+    """一组 cardid 的持有炸弹数（四张同点 0..12 + 王炸）。与 harness heldBombsFromCardids 一致。"""
+    cnt = [0] * 15
+    for c in ids: cnt[_cid_rank(c)] += 1
+    return sum(1 for r in range(13) if cnt[r] >= 4) + (1 if cnt[13] and cnt[14] else 0)
 
 
 # =============================================================================
@@ -136,6 +147,16 @@ def parse_metrics(path):
             hs.append(ps[0] / pavg)
             if ps[0] > 1e-9:
                 rs.append((ps[1] + ps[2]) / ps[0])
+    # landlord-20 真实口径：地主=牌力最强座(竞叫赢家近似)，20 张=手牌17+底牌3
+    ll_b20, t_real, t3x17 = [], [], []
+    occ_real = 0
+    for r in deals:
+        ss = r["seats"]
+        ll = max(range(3), key=lambda i: ss[i].get("value", 0))
+        b20 = _held_bombs(list(ss[ll]["hand"]) + list(r.get("bottom", [])))
+        treal = b20 + sum(ss[c]["bombs"] for c in range(3) if c != ll)
+        ll_b20.append(b20); t_real.append(treal); t3x17.append(sum(s["bombs"] for s in ss))
+        if treal > 0: occ_real += 1
     return {
         "bomb_held": m("bombs"), "bomb_split": m("split_bombs"), "hands": m("opt_hands"),
         "singles": m("singles"), "bigcards": m("bigcards"), "value": m("value"),
@@ -146,6 +167,8 @@ def parse_metrics(path):
         "spread": st.mean([r["spread"] for r in deals]),
         "bomb_occ": occ, "dens": dens,
         "head_start": st.mean(hs) if hs else 0.0, "resist": st.mean(rs) if rs else 0.0,
+        "landlord_bomb20": st.mean(ll_b20), "table_real": st.mean(t_real),
+        "occ_real": occ_real / n, "table_3x17": st.mean(t3x17),
         "n": n,
     }
 
@@ -174,9 +197,13 @@ def run_all(cands, n, tag):
 # =============================================================================
 W = {"bomb": 0.28, "hand": 0.18, "single": 0.12, "susp": 0.20, "div": 0.10, "hit": 0.12}
 
-def fitness(m, B):
-    # §2.1 单局炸弹率（持有口径）抱随机——低等级房核心项
-    Sb = 1 - min(1, abs(m["bomb_occ"] - B["bomb_occ"]) / (0.5 * B["bomb_occ"] + 1e-9))
+def fitness(m, B, view="std"):
+    # 炸弹抱随机：std=单局炸率(3×17 持有口径)；real=地主20真实口径(occ_real)
+    if view == "real":
+        bm, Bbm = m["occ_real"], B["occ_real"]
+    else:
+        bm, Bbm = m["bomb_occ"], B["bomb_occ"]
+    Sb = 1 - min(1, abs(bm - Bbm) / (0.5 * Bbm + 1e-9))
     # §2.4 人均最优手数：比随机顺 ~1.5 手为峰
     ideal_h = B["hands"] - 1.5
     Sh = math.exp(-((m["hands"] - ideal_h) / 1.0) ** 2)
@@ -200,11 +227,11 @@ def fitness(m, B):
 # =============================================================================
 # 排名 + 报告
 # =============================================================================
-def rank(df, B):
+def rank(df, B, view="std"):
     """df: {label: metrics} → list of (label, metrics, fitness) desc by score."""
     rows = []
     for lab, m in df.items():
-        rows.append((lab, m, fitness(m, B)))
+        rows.append((lab, m, fitness(m, B, view)))
     rows.sort(key=lambda x: x[2]["score"], reverse=True)
     return rows
 
@@ -232,7 +259,17 @@ def strategy_json(cand):
                 "BigCardsTo": cand["bigcardsto"], "TargetValue": 0.5, "TargetRound": 5,
                 "CouPaiStrategy": [[3, 4, 13, 6, 5, 2]]}
 
-def md_table(title, rows, B_label=""):
+def md_table(title, rows, view="std"):
+    if view == "real":
+        head = (f"### {title}\n\n"
+                f"| 排名 | 配置 | 综合得分 | 手均手数 | 人均散牌 | 单局真实炸率 | 每局真实炸(地主20+2农17) | 地主20炸 | 持有炸(人均) | 首叫偏置 | 抗衡度 |\n"
+                f"|---|---|---|---|---|---|---|---|---|---|---|\n")
+        lines = []
+        for i, (lab, met, f) in enumerate(rows, 1):
+            lines.append(f"| {i} | `{lab}` | **{f['score']:.3f}** | {met['hands']:.2f} | {met['singles']:.2f} | "
+                         f"{met['occ_real']:.3f} | {met['table_real']:.3f} | {met['landlord_bomb20']:.3f} | "
+                         f"{met['bomb_held']:.3f} | {met['head_start']:.3f} | {met['resist']:.3f} |")
+        return head + "\n".join(lines) + "\n"
     head = (f"### {title}\n\n"
             f"| 排名 | 配置 | 综合得分 | 手均手数 | 人均散牌 | 单局炸弹率 | 0/1/2/3+炸密度 | 首叫偏置 | 抗衡度 | 持有炸(人均) | 拆牌炸(人均) |\n"
             f"|---|---|---|---|---|---|---|---|---|---|---|\n")
@@ -288,8 +325,15 @@ def main():
     ap.add_argument("--final-n", type=int, default=20000)
     ap.add_argument("--base-n", type=int, default=20000)
     ap.add_argument("--rerank", action="store_true", help="只用 sweep_raw.json 重排，不重跑")
+    ap.add_argument("--view", choices=["std", "real"], default="std",
+                    help="std=3×17 单局炸率抱随机；real=地主20真实口径(occ_real)")
     ap.add_argument("--top", type=int, default=20)
     args = ap.parse_args()
+    view = args.view
+    # 报告按视角分文件，避免互相覆盖：std→top20_report.md，real→top20_report_real.md
+    suffix = "" if view == "std" else "_real"
+    REPORT = HERE / f"top20_report{suffix}.md"
+    OUTJSON = HERE / f"top20_configs{suffix}.json"
 
     t1c = type1_candidates()
     t0c = type0_candidates()
@@ -319,11 +363,11 @@ def main():
         print(f"[粗扫] N={args.coarse_n}, {len(allc)} 候选...", file=sys.stderr, flush=True)
         coarse = run_all(allc, args.coarse_n, "coarse")
 
-        # 粗排选每类 TOP{top} 决赛
+        # 粗排选每类决赛：取 std 与 real 两视角 TOP 的并集（使同一缓存可服务两视角报告）
         cdf1 = {k: v for k, v in coarse.items() if k.startswith("T1 ")}
         cdf0 = {k: v for k, v in coarse.items() if k.startswith("T0 ")}
-        fin1 = [lab for lab, _, _ in rank(cdf1, B)[:args.top]]
-        fin0 = [lab for lab, _, _ in rank(cdf0, B)[:args.top]]
+        fin1 = list({lab for v in ("std", "real") for lab, _, _ in rank(cdf1, B, v)[:args.top]})
+        fin0 = list({lab for v in ("std", "real") for lab, _, _ in rank(cdf0, B, v)[:args.top]})
         fin_cands = [c for c in t1c + t0c if c["label"] in set(fin1 + fin0)]
         print(f"[决赛] N={args.final_n}, {len(fin_cands)} 候选...", file=sys.stderr, flush=True)
         final = run_all(fin_cands, args.final_n, "final")
@@ -339,35 +383,42 @@ def main():
     # 排名（决赛选手用决赛指标，其余用粗扫）
     df1 = {k: v for k, v in df.items() if k.startswith("T1 ")}
     df0 = {k: v for k, v in df.items() if k.startswith("T0 ")}
-    top1 = rank(df1, B)[:args.top]
-    top0 = rank(df0, B)[:args.top]
+    top1 = rank(df1, B, view)[:args.top]
+    top0 = rank(df0, B, view)[:args.top]
 
     # ===== 报告 =====
     md = []
-    md.append("# 742/420 经典玩法发牌策略 TOP20（Type0 & Type1）—— 最优拆牌 + 严苛口径\n")
-    md.append(f"> 模拟器：`extracted/harness.exe`（C++ 真值，发牌/配牌/洗牌管线 1:1 复刻线上；**指标期拆牌 = 搜索式全局最优** "
-              f"`optimal_split.h`，目标字典序(min 组合数, max Σscore)，**非贪心**）。决赛 TOP{args.top} N={data.get('final_n',args.final_n)}，"
-              f"粗扫 N={data.get('coarse_n',args.coarse_n)}。指标缓存 `sweep_raw.json`，改权重后 `py -3 sweep.py --rerank` 秒重排。\n")
-    md.append(f"> **口径**：炸弹=**持有**(物理四张/王炸)为主、拆牌炸弹为辅；手数=**人均最优手数**(min-combo)；"
-              f"首叫诱导/抗衡用归一化牌力 P=sigmoid(V/40)。\n")
-    md.append(f"> **适应度(基线=纯随机)**：`总分=.28·S_bomb+.18·S_hand+.12·S_single+.20·S_susp+.10·S_div+.12·S_hit`。"
-              f" S_bomb=**单局炸弹率**抱随机；S_hand=人均手数比随机顺~1.5手为峰；S_single=人均散牌少于随机；"
-              f" S_susp=首叫诱导(≥1.05 且 ≤基线)+抗衡(≥基线)；S_div=牌型熵/基线熵；S_hit=配牌触发∈[0.2,0.95]。\n")
+    view_tag = "（真实炸弹视角：地主20张口径）" if view == "real" else "（3×17 持有口径）"
+    md.append(f"# 742/420 经典玩法发牌策略 TOP{args.top}（Type0 & Type1）—— 最优拆牌{view_tag}\n")
+    md.append(f"> 模拟器：`extracted/harness.exe`（C++ 真值，发牌管线 1:1 复刻线上；指标期拆牌=`optimal_split.h` 搜索式全局最优）。"
+              f"决赛 TOP{args.top} N={data.get('final_n',args.final_n)}，粗扫 N={data.get('coarse_n',args.coarse_n)}。"
+              f" **视角 view={view}**：{'S_bomb 用单局真实炸率(occ_real, 地主20+底牌)' if view=='real' else 'S_bomb 用单局炸率(3×17 持有)'}。"
+              f" 缓存 `sweep_raw.json`，改视角/权重 `py -3 sweep.py --rerank --view {view}` 秒重排。\n")
+    md.append(f"> 口径：手数=人均最优手数(min-combo)；首叫/抗衡 P=sigmoid(V/40)；real 视角下地主=牌力最强座(竞叫赢家近似)。\n")
+    md.append(f"> 适应度(基线=纯随机)：`.28·S_bomb+.18·S_hand+.12·S_single+.20·S_susp+.10·S_div+.12·S_hit`。\n")
     md.append("\n## 一、最优拆牌算法与校验证明\n")
     md.append(PROOF_SECTION)
     md.append("\n## 二、对照组基线\n")
-    md.append("| 组 | N | 持有炸(人均) | 单局炸弹率 | 0/1/2/3+炸密度 | 人均手数 | 人均散牌 | 首叫偏置 | 抗衡度 | 牌力 | hit |\n|---|---|---|---|---|---|---|---|---|---|---|\n")
-    for lab, mm in [("纯随机(--pure-random)", B), ("old2 (Type0)", data.get("old2", df.get("T0 thr3 bmn12 (=old2)")))]:
-        if mm is None:
-            continue
-        d = mm["dens"]
-        md.append(f"| {lab} | {mm['n']} | {mm['bomb_held']:.3f} | {mm['bomb_occ']:.3f} | "
-                  f"{d[0]:.2f}/{d[1]:.2f}/{d[2]:.2f}/{d[3]:.2f} | {mm['hands']:.2f} | {mm['singles']:.2f} | "
-                  f"{mm['head_start']:.3f} | {mm['resist']:.3f} | {mm['value']:.1f} | {mm['hit']:.2f} |\n")
+    if view == "real":
+        md.append("| 组 | N | 单局真实炸率 | 每局真实炸 | 地主20炸 | 持有炸(人均) | 人均手数 | 人均散牌 | 首叫偏置 | 抗衡度 |\n|---|---|---|---|---|---|---|---|---|---|\n")
+        for lab, mm in [("纯随机(--pure-random)", B), ("old2 (Type0)", data.get("old2", df.get("T0 thr3 bmn12 (=old2)")))]:
+            if mm is None:
+                continue
+            md.append(f"| {lab} | {mm['n']} | {mm['occ_real']:.3f} | {mm['table_real']:.3f} | {mm['landlord_bomb20']:.3f} | "
+                      f"{mm['bomb_held']:.3f} | {mm['hands']:.2f} | {mm['singles']:.2f} | {mm['head_start']:.3f} | {mm['resist']:.3f} |\n")
+    else:
+        md.append("| 组 | N | 持有炸(人均) | 单局炸弹率 | 0/1/2/3+炸密度 | 人均手数 | 人均散牌 | 首叫偏置 | 抗衡度 | 牌力 | hit |\n|---|---|---|---|---|---|---|---|---|---|---|\n")
+        for lab, mm in [("纯随机(--pure-random)", B), ("old2 (Type0)", data.get("old2", df.get("T0 thr3 bmn12 (=old2)")))]:
+            if mm is None:
+                continue
+            d = mm["dens"]
+            md.append(f"| {lab} | {mm['n']} | {mm['bomb_held']:.3f} | {mm['bomb_occ']:.3f} | "
+                      f"{d[0]:.2f}/{d[1]:.2f}/{d[2]:.2f}/{d[3]:.2f} | {mm['hands']:.2f} | {mm['singles']:.2f} | "
+                      f"{mm['head_start']:.3f} | {mm['resist']:.3f} | {mm['value']:.1f} | {mm['hit']:.2f} |\n")
     md.append("\n## 三、makedealType = 1 最优 TOP20\n\n")
-    md.append(md_table("Type1 TOP20", top1))
+    md.append(md_table("Type1 TOP20", top1, view))
     md.append("\n## 四、makedealType = 0 最优 TOP20\n\n")
-    md.append(md_table("Type0 TOP20", top0))
+    md.append(md_table("Type0 TOP20", top0, view))
     open(REPORT, "w", encoding="utf-8").write("".join(md))
 
     # ===== JSON 导出 =====

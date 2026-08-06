@@ -1,7 +1,7 @@
-# 742/420 经典玩法发牌策略 TOP20（Type0 & Type1）—— 最优拆牌 + 严苛口径
-> 模拟器：`extracted/harness.exe`（C++ 真值，发牌/配牌/洗牌管线 1:1 复刻线上；**指标期拆牌 = 搜索式全局最优** `optimal_split.h`，目标字典序(min 组合数, max Σscore)，**非贪心**）。决赛 TOP20 N=20000，粗扫 N=3000。指标缓存 `sweep_raw.json`，改权重后 `py -3 sweep.py --rerank` 秒重排。
-> **口径**：炸弹=**持有**(物理四张/王炸)为主、拆牌炸弹为辅；手数=**人均最优手数**(min-combo)；首叫诱导/抗衡用归一化牌力 P=sigmoid(V/40)。
-> **适应度(基线=纯随机)**：`总分=.28·S_bomb+.18·S_hand+.12·S_single+.20·S_susp+.10·S_div+.12·S_hit`。 S_bomb=**单局炸弹率**抱随机；S_hand=人均手数比随机顺~1.5手为峰；S_single=人均散牌少于随机； S_susp=首叫诱导(≥1.05 且 ≤基线)+抗衡(≥基线)；S_div=牌型熵/基线熵；S_hit=配牌触发∈[0.2,0.95]。
+# 742/420 经典玩法发牌策略 TOP20（Type0 & Type1）—— 最优拆牌（3×17 持有口径）
+> 模拟器：`extracted/harness.exe`（C++ 真值，发牌管线 1:1 复刻线上；指标期拆牌=`optimal_split.h` 搜索式全局最优）。决赛 TOP20 N=20000，粗扫 N=3000。 **视角 view=std**：S_bomb 用单局炸率(3×17 持有)。 缓存 `sweep_raw.json`，改视角/权重 `py -3 sweep.py --rerank --view std` 秒重排。
+> 口径：手数=人均最优手数(min-combo)；首叫/抗衡 P=sigmoid(V/40)；real 视角下地主=牌力最强座(竞叫赢家近似)。
+> 适应度(基线=纯随机)：`.28·S_bomb+.18·S_hand+.12·S_single+.20·S_susp+.10·S_div+.12·S_hit`。
 
 ## 一、最优拆牌算法与校验证明
 **实现**：`extracted/optimal_split.h`（header-only，复用 `landlord.h` 的 Combo/Card/ComboType 与 `DefaultComboScoringStrategy::score`）。校验程序 `extracted/split_test.cpp`。
