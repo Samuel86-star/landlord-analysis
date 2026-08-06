@@ -10,7 +10,7 @@
 |---|---|
 | `harness.cpp` | 单文件模拟器：发牌逻辑逐字剥离 + 极简 JSON + 极简 Table/Player/Config stub + JSONL 输出 |
 | `stats.py` | 聚合 harness 产出的 `*.jsonl`，打印炸弹/手数/大牌/做牌类型分布（按真人/机器人拆分） |
-| `makedeal.json` | **不在此目录**——运行时 `--cfg ../previous/makedeal.json` 指向只读快照里的原配置 |
+| `makedeal.json` | **不在此目录**——运行时 `--cfg ../previous/makedeal.json` 指向线上配置参照副本（`algorithm/native/previous/`，可改） |
 | `*.jsonl` | harness 运行产出（样本数据，已 gitignore，可再生） |
 
 ## 编译
