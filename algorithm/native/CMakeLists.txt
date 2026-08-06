@@ -14,3 +14,5 @@ include_directories(include)
 
 add_executable(landlord_test test/main_test.cpp)
 add_executable(landlord_sampler test/sampler_test.cpp)
+add_executable(power_split_test extracted/power_split_test.cpp)
+add_executable(split_vs_power extracted/verify_split_vs_power.cpp)
