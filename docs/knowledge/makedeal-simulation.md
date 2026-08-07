@@ -1,14 +1,14 @@
 # 发牌模拟方法学（harness + 最优拆牌）
 
 > 做经典/不洗牌发牌分析、评估发牌配置、对账线上炸弹/牌力时先过这篇。
-> 真值来源：`algorithm/native/extracted/`（C++ harness + 搜索式最优拆牌器）。旧贪心 Python 模拟（`old2_type*_sim.py`）已作废——贪心拆牌被证次优（1000 随机手 546/1000 比最优多手数）。
+> 真值来源：`algorithm/native/extracted/`（C++ harness + 搜索式最优拆牌器）。旧贪心 Python 模拟 `old2_type*_sim.py` **已从仓库删除**——贪心拆牌被证次优（1000 随机手 546/1000 比最优多手数），被 harness + `optimal_split.h` 取代。
 
 ## 0. 真值来源定位（三套别混）
 
 | 来源 | 是什么 | 用途 | 陷阱 |
 |---|---|---|---|
 | **`extracted/harness.exe`** | 线上发牌/配牌/洗牌 C++ 的 1:1 剥离独立可执行 | **发牌概率唯一可信真值** | 指标期拆牌须用 `optimal_split.h`（最优），勿回退贪心 |
-| 旧 `old2_type0/1_sim.py` | 贪心拆牌的 Python 模拟 | **已作废**，仅历史参考 | 手数=t0拆、炸弹=贪心拆牌数，与线上/最优口径都不符 |
+| ~~`old2_type0/1_sim.py`~~ | 贪心拆牌的 Python 模拟（**已删除**） | 被 harness + `optimal_split.h` 取代 | 手数=t0拆、炸弹=贪心拆牌数，与线上/最优口径都不符 |
 | 线上 `dws_ddz_daily_game` | 线上实测 | 上线后对账 | `bomb_cnt`(持有) ≠ `bomb_bet`(打出)；`card_power` 2026-07 PRD 改版有断档 |
 
 > harness 用 `--seed 1` 可复现；种子源与线上不同（线上 `GetTickCount()+token*10+socket`）→ 具体某局不可复现线上，但**概率分布忠实**（同一洗牌算法）。
