@@ -147,6 +147,13 @@ def parse_metrics(path):
             hs.append(ps[0] / pavg)
             if ps[0] > 1e-9:
                 rs.append((ps[1] + ps[2]) / ps[0])
+    # Delta-Power（叫牌引导位）：有效叫牌牌力 P=sigmoid(牌力/40)+炸弹溢价；Δ_ratio=(P_max−P_mid)/P_max
+    # <lo 过均衡(叫牌断层)，>hi 碾压。head_start/resist 保持纯 sigmoid 口径不变，delta_ratio 独立带炸弹溢价。
+    dr = []
+    for r in deals:
+        pe = sorted((sigmoid(s["val_f"]) + BOMB_PREMIUM * s["bombs"] for s in r["seats"]), reverse=True)
+        if pe[0] > 1e-9:
+            dr.append((pe[0] - pe[1]) / pe[0])
     # landlord-20 真实口径：地主=牌力最强座(竞叫赢家近似)，20 张=手牌17+底牌3
     ll_b20, t_real, t3x17 = [], [], []
     occ_real = 0
@@ -157,6 +164,11 @@ def parse_metrics(path):
         treal = b20 + sum(ss[c]["bombs"] for c in range(3) if c != ll)
         ll_b20.append(b20); t_real.append(treal); t3x17.append(sum(s["bombs"] for s in ss))
         if treal > 0: occ_real += 1
+    # 地主20张炸弹分布(0/1/2/3+)：解释 count 为何 > rate（多炸局拉高均值）
+    land_dens = [0, 0, 0, 0]
+    for b in ll_b20:
+        land_dens[3 if b >= 3 else b] += 1
+    land_dens = [x / len(ll_b20) for x in land_dens]
     return {
         "bomb_held": m("bombs"), "bomb_split": m("split_bombs"), "hands": m("opt_hands"),
         "singles": m("singles"), "bigcards": m("bigcards"), "value": m("value"),
@@ -167,8 +179,9 @@ def parse_metrics(path):
         "spread": st.mean([r["spread"] for r in deals]),
         "bomb_occ": occ, "dens": dens,
         "head_start": st.mean(hs) if hs else 0.0, "resist": st.mean(rs) if rs else 0.0,
+        "delta_ratio": st.mean(dr) if dr else 0.0,
         "landlord_bomb20": st.mean(ll_b20), "table_real": st.mean(t_real),
-        "occ_real": occ_real / n, "table_3x17": st.mean(t3x17),
+        "occ_real": occ_real / n, "table_3x17": st.mean(t3x17), "land_dens": land_dens,
         "n": n,
     }
 
@@ -197,6 +210,22 @@ def run_all(cands, n, tag):
 # =============================================================================
 W = {"bomb": 0.28, "hand": 0.18, "single": 0.12, "susp": 0.20, "div": 0.10, "hit": 0.12}
 
+# ---- 叫牌引导健康带（双限）：首叫 / 抗衡 / Delta-Power。初值依纯随机(new/new2)分布标定，可调 ----
+# 动机：原 S_hs=[1.05,基线] 对 1.21 与 1.28 一视同仁、S_res 无上限 → sweep 被推向"过均衡/叫牌断层"。
+HS_LO, HS_HI = 1.26, 1.40      # 首叫诱导 P_max/P_avg 健康带（<lo 过均衡；>hi 碾压）
+RS_LO, RS_HI = 1.30, 1.45      # 抗衡 (P_mid+P_min)/P_max 健康带（原版无上限是过均衡根因）
+DR_LO, DR_HI = 0.20, 0.26      # Delta-Power 比 (P_max−P_mid)/P_max 健康带（实测分布 0.148~0.262：纯随机0.259/new0.207；<lo 过均衡,>hi 碾压）
+BOMB_PREMIUM = 0.10            # 叫牌牌力 P(seat) 的炸弹溢价（叫牌权重 > 出牌最优口径，故在 sigmoid 牌力上额外加）
+# S_susp 内部三项重权（总权重仍 W["susp"]=0.20，此处只重分；和=1.0）
+W_SUSP_HS, W_SUSP_RES, W_SUSP_DELTA = 0.34, 0.33, 0.33
+
+def band2(x, lo, hi):
+    """双限健康带：lo<=x<=hi 满分 1.0，两侧线性衰减到 0（尺度=半带宽，下限 0.05 防带宽过窄时跳变）。"""
+    scale = max((hi - lo) / 2.0, 0.05)
+    if x < lo: return max(0.0, 1.0 - (lo - x) / scale)
+    if x > hi: return max(0.0, 1.0 - (x - hi) / scale)
+    return 1.0
+
 def fitness(m, B, view="std"):
     # 炸弹抱随机：std=单局炸率(3×17 持有口径)；real=地主20真实口径(occ_real)
     if view == "real":
@@ -209,11 +238,12 @@ def fitness(m, B, view="std"):
     Sh = math.exp(-((m["hands"] - ideal_h) / 1.0) ** 2)
     # §2.3 人均散牌少于随机
     Ss = 1 - max(0, m["singles"] - (B["singles"] - 1.0)) / (B["singles"] + 1e-9)
-    # §2.5/§2.6 悬念：首叫诱导(≤基线且≥1.05 ⇒ 至少如随机般均衡、不至流局) + 抗衡(≥基线 ⇒ 农民更能抗)
-    Bhs, Brs = B["head_start"], B["resist"]
-    S_hs = 1.0 if (1.05 <= m["head_start"] <= Bhs) else max(0.0, 1.0 - abs(m["head_start"] - Bhs) / (0.5 * Bhs + 1e-9))
-    S_res = 1.0 if m["resist"] >= Brs else max(0.0, 1.0 - (Brs - m["resist"]) / (0.5 * Brs + 1e-9))
-    Ssusp = 0.5 * S_hs + 0.5 * S_res
+    # §2.5/§2.6/叫牌引导：首叫诱导 + 抗衡 + Delta-Power，三者均落"双限健康带"才满分
+    # 注：原 S_hs=[1.05,基线] 对 1.21 与 1.28 一视同仁、S_res 无上限 → sweep 被推向"过均衡"
+    S_hs = band2(m["head_start"], HS_LO, HS_HI)
+    S_res = band2(m["resist"], RS_LO, RS_HI)
+    S_delta = band2(m.get("delta_ratio", 0.0), DR_LO, DR_HI)
+    Ssusp = W_SUSP_HS * S_hs + W_SUSP_RES * S_res + W_SUSP_DELTA * S_delta
     # 牌型多样
     Sd = min(1.0, m["entropy"] / (B["entropy"] + 1e-9))
     # 配牌真实触发
@@ -221,8 +251,8 @@ def fitness(m, B, view="std"):
     total = (W["bomb"] * Sb + W["hand"] * Sh + W["single"] * Ss +
              W["susp"] * Ssusp + W["div"] * Sd + W["hit"] * Shit)
     return {"S_bomb": round(Sb, 4), "S_hand": round(Sh, 4), "S_single": round(Ss, 4),
-            "S_susp": round(Ssusp, 4), "S_div": round(Sd, 4), "S_hit": round(Shit, 2),
-            "score": round(total, 4)}
+            "S_susp": round(Ssusp, 4), "S_delta": round(S_delta, 4), "S_div": round(Sd, 4),
+            "S_hit": round(Shit, 2), "score": round(total, 4)}
 
 # =============================================================================
 # 排名 + 报告
@@ -283,15 +313,18 @@ def md_table(title, rows, view="std"):
     return head + "\n".join(lines) + "\n"
 
 def md_compare_table(title, rows):
-    """统一对照表：每行同时给 std(3×17) 与 real(地主20) 炸弹指标 + 手数/单牌/大牌/首叫/抗衡。"""
+    """统一对照表：颗数+率(同维度挨着) + 两组 0/1/2/3+ 炸分布(解释颗数为何 > 率)。"""
     head = (f"### {title}\n\n"
-            f"| 排名 | 配置 | 综合得分 | 手数 | 单牌 | 大牌 | 持有炸/人 | 单局炸率(std) | 每局3×17炸(std) | 单局真实炸率(real) | 每局真实炸(real) | 地主20炸(real) | 首叫 | 抗衡 |\n"
-            f"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
+            f"| 排名 | 配置 | 综合得分 | 手数 | 单牌 | 大牌 | 持有炸/人 | 每局3×17炸(std) | 每局真实炸(real) | 地主20炸(real) | 单局炸率(std) | 单局真实炸率(real) | 3×17炸分布(0/1/2/3+) | 地主20炸分布(0/1/2/3+) | 首叫 | 抗衡 | 引导度(Δ) |\n"
+            f"|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|\n")
     lines = []
     for i, (lab, met, f) in enumerate(rows, 1):
+        d3 = met["dens"]; dl = met["land_dens"]
         lines.append(f"| {i} | `{lab}` | {f['score']:.3f} | {met['hands']:.2f} | {met['singles']:.2f} | {met['bigcards']:.2f} | "
-                     f"{met['bomb_held']:.3f} | {met['bomb_occ']:.3f} | {met['table_3x17']:.3f} | {met['occ_real']:.3f} | "
-                     f"{met['table_real']:.3f} | {met['landlord_bomb20']:.3f} | {met['head_start']:.3f} | {met['resist']:.3f} |")
+                     f"{met['bomb_held']:.3f} | {met['table_3x17']:.3f} | {met['table_real']:.3f} | {met['landlord_bomb20']:.3f} | "
+                     f"{met['bomb_occ']:.3f} | {met['occ_real']:.3f} | "
+                     f"{d3[0]:.2f}/{d3[1]:.2f}/{d3[2]:.2f}/{d3[3]:.2f} | {dl[0]:.2f}/{dl[1]:.2f}/{dl[2]:.2f}/{dl[3]:.2f} | "
+                     f"{met['head_start']:.3f} | {met['resist']:.3f} | {met['delta_ratio']:.3f} |")
     return head + "\n".join(lines) + "\n"
 
 PROOF_SECTION = r"""**实现**：`extracted/optimal_split.h`（header-only，复用 `landlord.h` 的 Combo/Card/ComboType 与 `DefaultComboScoringStrategy::score`）。校验程序 `extracted/split_test.cpp`。
@@ -335,6 +368,7 @@ COMPARE_DEFS = """
 
 > 每局 = 3 家各 17 张手牌 + 3 张底牌；**地主 = 牌力最强座**（竞叫赢家近似；庄家=首叫位 ≠ 地主）。
 > 全部炸弹列均为**持有**口径（手牌物理四张同点 + 王炸），**非**拆牌炸弹、**非**打出炸弹(`bomb_bet`)。
+> **两套维度，别跨维度比**：① **颗数**(持有炸/人→每局3×17炸→每局真实炸→地主20炸)——同口径在"颗/人→颗/局"递进，对尾部(多炸局)敏感；② **率**(单局炸率std / 单局真实炸率real)——0/1 占比，对颗数不敏感。颗↔率会背离(少局有炸但一有就成串)，故同维度挨着比(std↔real)才有意义。
 
 | 指标 | 定义 | 单位 |
 |---|---|---|
@@ -347,10 +381,13 @@ COMPARE_DEFS = """
 | 单局真实炸率(real) | **地主20+2农民17**：桌上任意有炸的局占比 | 比例 |
 | 每局真实炸(real) | 每局 地主20+2农民17 持有炸总颗数的平均 | 颗/局 |
 | 地主20炸(real) | 地主 20 张(17手牌+3底牌)持有炸的平均颗数 | 颗/局 |
+| 3×17炸分布 | 桌上(3家×17张)炸弹总数 K∈{0,1,2,3+} 的局占比——颗数 vs 率背离的形状 | 分布 |
+| 地主20炸分布 | 地主 20 张炸弹数 K∈{0,1,2,3+} 的局占比（2+/3+ 解释颗数为何 > 率） | 分布 |
 | 首叫诱导度 | P_max/P_avg（P=sigmoid(牌力/40)） | 比值 |
 | 抗衡度 | (P_mid+P_min)/P_max | 比值 |
+| 引导度(Δ) | **Delta-Power**=(P_max−P_mid)/P_max，P=sigmoid(牌力/40)+0.10·持有炸（叫牌专用炸弹溢价）；健康带 **[0.20,0.26]**，<0.20 过均衡(叫牌断层)，>0.26 碾压 | 比值 |
 
-**综合得分（real 视角）**：`.28·S_bomb + .18·S_hand + .12·S_single + .20·S_susp + .10·S_div + .12·S_hit`；S_bomb=单局真实炸率抱随机(基线 0.540)，S_hand=手数比随机顺~1.5手为峰，S_susp=首叫+抗衡落健康带。
+**综合得分（real 视角）**：`.28·S_bomb + .18·S_hand + .12·S_single + .20·S_susp + .10·S_div + .12·S_hit`；S_bomb=单局真实炸率抱随机(基线 0.540)，S_hand=手数比随机顺~1.5手为峰，**S_susp=首叫+抗衡+Delta-Power 三项落双限健康带(内权 0.34/0.33/0.33；带：首叫[1.26,1.40]/抗衡[1.30,1.45]/Δ[0.20,0.26])**。
 > real 恒 ≥ std：差源于地主多吃 3 张底牌 + 地主自选强牌（bid-winner）。
 """
 
@@ -361,6 +398,7 @@ def main():
     ap.add_argument("--final-n", type=int, default=20000)
     ap.add_argument("--base-n", type=int, default=20000)
     ap.add_argument("--rerank", action="store_true", help="只用 sweep_raw.json 重排，不重跑")
+    ap.add_argument("--reparse", action="store_true", help="从 sweep_runs/*.jsonl 重算指标(含新字段)，刷新缓存，不重跑 harness")
     ap.add_argument("--view", choices=["std", "real"], default="std",
                     help="std=3×17 单局炸率抱随机；real=地主20真实口径(occ_real)")
     ap.add_argument("--top", type=int, default=20)
@@ -384,6 +422,30 @@ def main():
         B = data["baseline"]
         # 用决赛指标（若已有），否则粗扫
         df = {k: v for k, v in data["candidates"].items()}
+    elif args.reparse:
+        if not RAW.exists():
+            print("sweep_raw.json 不存在，无法 reparse", file=sys.stderr); sys.exit(1)
+        data = json.loads(open(RAW, encoding="utf-8").read())
+        final_n = data.get("final_n", 20000); coarse_n = data.get("coarse_n", 3000)
+        base_n = data.get("base_n", final_n)
+        finalists = set(data.get("finalists", []))
+        def _rp(label, n):
+            tag = label.replace(" ", "_").replace(",", "").replace("[", "").replace("]", "")
+            p = RUNDIR / f"{tag}_n{n}.jsonl"
+            return parse_metrics(p) if p.exists() else None
+        nb = _rp("PURE_RANDOM", base_n); B = nb if nb else data["baseline"]
+        no = _rp("T0 thr3 bmn12 (=old2)", base_n)
+        df, miss = {}, 0
+        for lab, oldm in data["candidates"].items():
+            n = final_n if lab in finalists else coarse_n
+            m = _rp(lab, n)
+            if m: df[lab] = m
+            else: df[lab] = oldm; miss += 1
+        data["baseline"] = B
+        if no: data["old2"] = no
+        data["candidates"] = df
+        open(RAW, "w", encoding="utf-8").write(json.dumps(data, ensure_ascii=False, indent=2))
+        print(f"[reparse] 重算 {len(df)} 候选+基线(缺 {miss} 回退缓存)，缓存已刷新", file=sys.stderr, flush=True)
     else:
         # 基线
         print("[基线] pure-random...", file=sys.stderr, flush=True)
@@ -432,7 +494,7 @@ def main():
               f" **视角 view={view}**：{'S_bomb 用单局真实炸率(occ_real, 地主20+底牌)' if view=='real' else 'S_bomb 用单局炸率(3×17 持有)'}。"
               f" 缓存 `sweep_raw.json`，改视角/权重 `py -3 sweep.py --rerank --view {view}` 秒重排。\n")
     md.append(f"> 口径：手数=人均最优手数(min-combo)；首叫/抗衡 P=sigmoid(V/40)；real 视角下地主=牌力最强座(竞叫赢家近似)。\n")
-    md.append(f"> 适应度(基线=纯随机)：`.28·S_bomb+.18·S_hand+.12·S_single+.20·S_susp+.10·S_div+.12·S_hit`。\n")
+    md.append(f"> 适应度(基线=纯随机)：`.28·S_bomb+.18·S_hand+.12·S_single+.20·S_susp+.10·S_div+.12·S_hit`；S_susp=首叫+抗衡+Delta-Power(0.34/0.33/0.33；双限带 首叫[1.26,1.40]/抗衡[1.30,1.45]/Δ[0.20,0.26])。\n")
     md.append("\n## 一、最优拆牌算法与校验证明\n")
     md.append(PROOF_SECTION)
     md.append("\n## 二、对照组基线\n")
@@ -503,10 +565,10 @@ def main():
     print(f"配置: {OUTJSON}", file=sys.stderr)
     print(f"\n=== Type1 TOP3 ===", file=sys.stderr)
     for lab, m, f in top1[:3]:
-        print(f"  {f['score']:.3f}  {lab}  bomb_occ={m['bomb_occ']:.3f} hands={m['hands']:.2f} hs={m['head_start']:.3f} res={m['resist']:.3f}", file=sys.stderr)
+        print(f"  {f['score']:.3f}  {lab}  bomb_occ={m['bomb_occ']:.3f} hands={m['hands']:.2f} hs={m['head_start']:.3f} res={m['resist']:.3f} dr={m['delta_ratio']:.3f}", file=sys.stderr)
     print(f"=== Type0 TOP3 ===", file=sys.stderr)
     for lab, m, f in top0[:3]:
-        print(f"  {f['score']:.3f}  {lab}  bomb_occ={m['bomb_occ']:.3f} hands={m['hands']:.2f} hs={m['head_start']:.3f} res={m['resist']:.3f}", file=sys.stderr)
+        print(f"  {f['score']:.3f}  {lab}  bomb_occ={m['bomb_occ']:.3f} hands={m['hands']:.2f} hs={m['head_start']:.3f} res={m['resist']:.3f} dr={m['delta_ratio']:.3f}", file=sys.stderr)
 
 if __name__ == "__main__":
     main()

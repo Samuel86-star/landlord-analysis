@@ -20,10 +20,17 @@
     ],
     "head_start": 1.327588217138618,
     "resist": 1.2989143730122172,
+    "delta_ratio": 0.25856332782217634,
     "landlord_bomb20": 0.49655,
     "table_real": 0.70125,
     "occ_real": 0.5404,
     "table_3x17": 0.56795,
+    "land_dens": [
+      0.55695,
+      0.39135,
+      0.0499,
+      0.0018
+    ],
     "n": 20000
   },
   "baseline_old2": {
@@ -47,10 +54,17 @@
     ],
     "head_start": 1.2562619856156052,
     "resist": 1.416965031338165,
+    "delta_ratio": 0.20558669675049585,
     "landlord_bomb20": 0.77055,
     "table_real": 1.4561,
     "occ_real": 0.7551,
     "table_3x17": 1.2584,
+    "land_dens": [
+      0.40595,
+      0.4359,
+      0.1405,
+      0.01765
+    ],
     "n": 20000
   },
   "weights": {
@@ -64,6 +78,77 @@
   "type1_top20": [
     {
       "rank": 1,
+      "label": "T1 with-pair cp[4, 6, 5, 2, 3] b14 s17 tv999",
+      "metrics": {
+        "bomb_held": 0.13993333333333333,
+        "bomb_split": 0.0675,
+        "hands": 6.163116666666666,
+        "singles": 2.6526666666666667,
+        "bigcards": 1.7769833333333334,
+        "value": 15.269233333333334,
+        "hit": 1.0,
+        "entropy": 1.5810967981314026,
+        "gap_val": 0.495775,
+        "gap_bomb": 0.0039,
+        "spread": 52.65695,
+        "bomb_occ": 0.35975,
+        "dens": [
+          0.64025,
+          0.3048,
+          0.05,
+          0.00495
+        ],
+        "head_start": 1.2535954973108039,
+        "resist": 1.4241387227921438,
+        "delta_ratio": 0.20778085951504174,
+        "landlord_bomb20": 0.6333,
+        "table_real": 0.7706,
+        "occ_real": 0.582,
+        "table_3x17": 0.4198,
+        "land_dens": [
+          0.4663,
+          0.43925,
+          0.08935,
+          0.0051
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.846,
+        "S_hand": 0.9014,
+        "S_single": 1.0,
+        "S_susp": 0.9689,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8729
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            6,
+            5,
+            2,
+            3
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 2,
       "label": "T1 with-pair cp[4, 6, 5, 2, 3] b8 s14 tv999",
       "metrics": {
         "bomb_held": 0.17951666666666666,
@@ -86,20 +171,28 @@
         ],
         "head_start": 1.2305206639364588,
         "resist": 1.4653810321531853,
+        "delta_ratio": 0.19158041914471421,
         "landlord_bomb20": 0.5964,
         "table_real": 0.808,
         "occ_real": 0.5284,
         "table_3x17": 0.53855,
+        "land_dens": [
+          0.5223,
+          0.37225,
+          0.0927,
+          0.01275
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.9556,
         "S_hand": 0.9859,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.7336,
+        "S_delta": 0.8316,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.925
+        "score": 0.8717
       },
       "strategy": {
         "MakeDealType": 1,
@@ -126,323 +219,7 @@
       }
     },
     {
-      "rank": 2,
-      "label": "T1 plane1st cp[6, 4, 5, 3, 2] b11 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.18171666666666667,
-        "bomb_split": 0.08185,
-        "hands": 5.5344,
-        "singles": 2.3422666666666667,
-        "bigcards": 1.8452333333333333,
-        "value": 25.449083333333334,
-        "hit": 1.0,
-        "entropy": 1.7020123373727416,
-        "gap_val": 0.0185875,
-        "gap_bomb": 0.003,
-        "spread": 54.86795,
-        "bomb_occ": 0.42945,
-        "dens": [
-          0.57055,
-          0.33425,
-          0.07735,
-          0.01785
-        ],
-        "head_start": 1.2264563010172453,
-        "resist": 1.470442334830992,
-        "landlord_bomb20": 0.57155,
-        "table_real": 0.7689,
-        "occ_real": 0.5512,
-        "table_3x17": 0.54515,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.96,
-        "S_hand": 0.9103,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.9127
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 11,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            6,
-            4,
-            5,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
       "rank": 3,
-      "label": "T1 no-bomb cp[4, 6, 5, 3, 2] b11 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.18358333333333332,
-        "bomb_split": 0.08198333333333334,
-        "hands": 5.5384,
-        "singles": 2.344,
-        "bigcards": 1.8453833333333334,
-        "value": 25.402633333333334,
-        "hit": 1.0,
-        "entropy": 1.7010345417075812,
-        "gap_val": 0.015,
-        "gap_bomb": 0.0031,
-        "spread": 54.863275,
-        "bomb_occ": 0.43195,
-        "dens": [
-          0.56805,
-          0.3342,
-          0.0794,
-          0.01835
-        ],
-        "head_start": 1.226673049279931,
-        "resist": 1.4700097532630545,
-        "landlord_bomb20": 0.5729,
-        "table_real": 0.77395,
-        "occ_real": 0.55275,
-        "table_3x17": 0.55075,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.9543,
-        "S_hand": 0.9125,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.9115
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 11,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            6,
-            5,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 4,
-      "label": "T1 straight1st cp[4, 5, 6, 3, 2] b11 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.18358333333333332,
-        "bomb_split": 0.08198333333333334,
-        "hands": 5.5386,
-        "singles": 2.3438666666666665,
-        "bigcards": 1.8453666666666666,
-        "value": 25.391466666666666,
-        "hit": 1.0,
-        "entropy": 1.700967986846316,
-        "gap_val": 0.017225,
-        "gap_bomb": 0.00325,
-        "spread": 54.87405,
-        "bomb_occ": 0.4319,
-        "dens": [
-          0.5681,
-          0.3341,
-          0.0795,
-          0.0183
-        ],
-        "head_start": 1.226779352678098,
-        "resist": 1.4697889818920846,
-        "landlord_bomb20": 0.5731,
-        "table_real": 0.774,
-        "occ_real": 0.5529,
-        "table_3x17": 0.55075,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.9537,
-        "S_hand": 0.9127,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.9113
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 11,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            5,
-            6,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 5,
-      "label": "T1 bomb-last cp[4, 6, 5, 3, 2, 13] b11 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.2035,
-        "bomb_split": 0.08283333333333333,
-        "hands": 5.51335,
-        "singles": 2.3211166666666667,
-        "bigcards": 1.8443166666666666,
-        "value": 25.6444,
-        "hit": 1.0,
-        "entropy": 1.7126761764191134,
-        "gap_val": -0.01795,
-        "gap_bomb": 0.002725,
-        "spread": 54.804125,
-        "bomb_occ": 0.45395,
-        "dens": [
-          0.54605,
-          0.3324,
-          0.09325,
-          0.0283
-        ],
-        "head_start": 1.2254327698391974,
-        "resist": 1.4722692274406914,
-        "landlord_bomb20": 0.59105,
-        "table_real": 0.8283,
-        "occ_real": 0.565,
-        "table_3x17": 0.6105,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.909,
-        "S_hand": 0.8983,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8962
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 11,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            6,
-            5,
-            3,
-            2,
-            13
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 6,
-      "label": "T1 with-pair cp[4, 6, 5, 2, 3] b10 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.14478333333333335,
-        "bomb_split": 0.0763,
-        "hands": 5.8415333333333335,
-        "singles": 2.4465333333333334,
-        "bigcards": 1.8450333333333333,
-        "value": 21.02785,
-        "hit": 1.0,
-        "entropy": 1.6241265329759154,
-        "gap_val": 0.4327375,
-        "gap_bomb": 0.000975,
-        "spread": 53.29325,
-        "bomb_occ": 0.3571,
-        "dens": [
-          0.6429,
-          0.29405,
-          0.0512,
-          0.01185
-        ],
-        "head_start": 1.2336280158803736,
-        "resist": 1.4596588641481476,
-        "landlord_bomb20": 0.5309,
-        "table_real": 0.6668,
-        "occ_real": 0.49155,
-        "table_3x17": 0.43435,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.8192,
-        "S_hand": 1.0,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8894
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 10,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            6,
-            5,
-            2,
-            3
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 7,
       "label": "T1 with-pair cp[4, 6, 5, 2, 3] b11 s15 tv999",
       "metrics": {
         "bomb_held": 0.14683333333333334,
@@ -465,20 +242,28 @@
         ],
         "head_start": 1.2468113323210255,
         "resist": 1.4360196562659673,
+        "delta_ratio": 0.20405149951973184,
         "landlord_bomb20": 0.5079,
         "table_real": 0.63885,
         "occ_real": 0.49295,
         "table_3x17": 0.4405,
+        "land_dens": [
+          0.55485,
+          0.3869,
+          0.05385,
+          0.0044
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.8244,
         "S_hand": 0.9601,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.9359,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.8836
+        "score": 0.8708
       },
       "strategy": {
         "MakeDealType": 1,
@@ -505,321 +290,7 @@
       }
     },
     {
-      "rank": 8,
-      "label": "T1 with-pair cp[4, 6, 5, 2, 3] b14 s17 tv999",
-      "metrics": {
-        "bomb_held": 0.13993333333333333,
-        "bomb_split": 0.0675,
-        "hands": 6.163116666666666,
-        "singles": 2.6526666666666667,
-        "bigcards": 1.7769833333333334,
-        "value": 15.269233333333334,
-        "hit": 1.0,
-        "entropy": 1.5810967981314026,
-        "gap_val": 0.495775,
-        "gap_bomb": 0.0039,
-        "spread": 52.65695,
-        "bomb_occ": 0.35975,
-        "dens": [
-          0.64025,
-          0.3048,
-          0.05,
-          0.00495
-        ],
-        "head_start": 1.2535954973108039,
-        "resist": 1.4241387227921438,
-        "landlord_bomb20": 0.6333,
-        "table_real": 0.7706,
-        "occ_real": 0.582,
-        "table_3x17": 0.4198,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.846,
-        "S_hand": 0.9014,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8791
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 14,
-        "BeginSelectBanker": 17,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            6,
-            5,
-            2,
-            3
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 9,
-      "label": "T1 plane1st cp[6, 4, 5, 3, 2] b14 s17 tv999",
-      "metrics": {
-        "bomb_held": 0.14961666666666668,
-        "bomb_split": 0.06731666666666666,
-        "hands": 5.648833333333333,
-        "singles": 2.3307166666666665,
-        "bigcards": 1.7877,
-        "value": 21.582666666666668,
-        "hit": 1.0,
-        "entropy": 1.7093106860657674,
-        "gap_val": 0.6669625,
-        "gap_bomb": 0.003725,
-        "spread": 54.2196,
-        "bomb_occ": 0.3789,
-        "dens": [
-          0.6211,
-          0.31535,
-          0.05735,
-          0.0062
-        ],
-        "head_start": 1.2383260797342441,
-        "resist": 1.4493248695091503,
-        "landlord_bomb20": 0.6503,
-        "table_real": 0.8144,
-        "occ_real": 0.60055,
-        "table_3x17": 0.44885,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.7774,
-        "S_hand": 0.9638,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8711
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 14,
-        "BeginSelectBanker": 17,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            6,
-            4,
-            5,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 10,
-      "label": "T1 straight1st cp[4, 5, 6, 3, 2] b14 s17 tv999",
-      "metrics": {
-        "bomb_held": 0.15281666666666666,
-        "bomb_split": 0.06728333333333333,
-        "hands": 5.65825,
-        "singles": 2.330966666666667,
-        "bigcards": 1.7869833333333334,
-        "value": 21.4502,
-        "hit": 1.0,
-        "entropy": 1.705182958034636,
-        "gap_val": 0.6273875,
-        "gap_bomb": 0.003625,
-        "spread": 54.068675,
-        "bomb_occ": 0.38505,
-        "dens": [
-          0.61495,
-          0.31865,
-          0.05965,
-          0.00675
-        ],
-        "head_start": 1.238159190089193,
-        "resist": 1.4497617020266498,
-        "landlord_bomb20": 0.65235,
-        "table_real": 0.8211,
-        "occ_real": 0.60255,
-        "table_3x17": 0.45845,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.77,
-        "S_hand": 0.9672,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8697
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 14,
-        "BeginSelectBanker": 17,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            5,
-            6,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 11,
-      "label": "T1 no-bomb cp[4, 6, 5, 3, 2] b14 s17 tv999",
-      "metrics": {
-        "bomb_held": 0.15285,
-        "bomb_split": 0.06726666666666667,
-        "hands": 5.6559333333333335,
-        "singles": 2.32965,
-        "bigcards": 1.7872666666666666,
-        "value": 21.508516666666665,
-        "hit": 1.0,
-        "entropy": 1.7062190735835416,
-        "gap_val": 0.6130875,
-        "gap_bomb": 0.00335,
-        "spread": 54.05515,
-        "bomb_occ": 0.3849,
-        "dens": [
-          0.6151,
-          0.3183,
-          0.0598,
-          0.0068
-        ],
-        "head_start": 1.237894477669736,
-        "resist": 1.4502440072152938,
-        "landlord_bomb20": 0.6521,
-        "table_real": 0.82195,
-        "occ_real": 0.60305,
-        "table_3x17": 0.45855,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.7681,
-        "S_hand": 0.9664,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.869
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 14,
-        "BeginSelectBanker": 17,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            6,
-            5,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 12,
-      "label": "T1 no-pair cp[4, 5, 3, 6] b14 s17 tv999",
-      "metrics": {
-        "bomb_held": 0.16998333333333332,
-        "bomb_split": 0.08718333333333333,
-        "hands": 5.91885,
-        "singles": 2.8301,
-        "bigcards": 1.8724833333333333,
-        "value": 19.418433333333333,
-        "hit": 1.0,
-        "entropy": 1.594780541001324,
-        "gap_val": 0.2707,
-        "gap_bomb": 0.003025,
-        "spread": 55.63535,
-        "bomb_occ": 0.4248,
-        "dens": [
-          0.5752,
-          0.34805,
-          0.0687,
-          0.00805
-        ],
-        "head_start": 1.2518197867857082,
-        "resist": 1.4261005443421981,
-        "landlord_bomb20": 0.4051,
-        "table_real": 0.58745,
-        "occ_real": 0.47215,
-        "table_3x17": 0.50995,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.7474,
-        "S_hand": 0.9939,
-        "S_single": 0.9988,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.868
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 14,
-        "BeginSelectBanker": 17,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            5,
-            3,
-            6
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 13,
+      "rank": 4,
       "label": "T1 wp-no3 cp[4, 6, 5, 2] b14 s17 tv999",
       "metrics": {
         "bomb_held": 0.14398333333333332,
@@ -842,10 +313,17 @@
         ],
         "head_start": 1.2708717146756172,
         "resist": 1.395669523950928,
+        "delta_ratio": 0.21634340114281603,
         "landlord_bomb20": 0.513,
         "table_real": 0.65505,
         "occ_real": 0.51645,
         "table_3x17": 0.43195,
+        "land_dens": [
+          0.5462,
+          0.3972,
+          0.054,
+          0.0026
+        ],
         "n": 20000
       },
       "fitness": {
@@ -853,6 +331,7 @@
         "S_hand": 0.726,
         "S_single": 0.9896,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.8646
@@ -881,196 +360,646 @@
       }
     },
     {
+      "rank": 5,
+      "label": "T1 no-pair cp[4, 5, 3, 6] b14 s17 tv999",
+      "metrics": {
+        "bomb_held": 0.16998333333333332,
+        "bomb_split": 0.08718333333333333,
+        "hands": 5.91885,
+        "singles": 2.8301,
+        "bigcards": 1.8724833333333333,
+        "value": 19.418433333333333,
+        "hit": 1.0,
+        "entropy": 1.594780541001324,
+        "gap_val": 0.2707,
+        "gap_bomb": 0.003025,
+        "spread": 55.63535,
+        "bomb_occ": 0.4248,
+        "dens": [
+          0.5752,
+          0.34805,
+          0.0687,
+          0.00805
+        ],
+        "head_start": 1.2518197867857082,
+        "resist": 1.4261005443421981,
+        "delta_ratio": 0.20723021202664962,
+        "landlord_bomb20": 0.4051,
+        "table_real": 0.58745,
+        "occ_real": 0.47215,
+        "table_3x17": 0.50995,
+        "land_dens": [
+          0.63015,
+          0.3359,
+          0.03265,
+          0.0013
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.7474,
+        "S_hand": 0.9939,
+        "S_single": 0.9988,
+        "S_susp": 0.9603,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8601
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            5,
+            3,
+            6
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 6,
+      "label": "T1 straight1st cp[4, 5, 6, 3, 2] b11 s15 tv999",
+      "metrics": {
+        "bomb_held": 0.18358333333333332,
+        "bomb_split": 0.08198333333333334,
+        "hands": 5.5386,
+        "singles": 2.3438666666666665,
+        "bigcards": 1.8453666666666666,
+        "value": 25.391466666666666,
+        "hit": 1.0,
+        "entropy": 1.700967986846316,
+        "gap_val": 0.017225,
+        "gap_bomb": 0.00325,
+        "spread": 54.87405,
+        "bomb_occ": 0.4319,
+        "dens": [
+          0.5681,
+          0.3341,
+          0.0795,
+          0.0183
+        ],
+        "head_start": 1.226779352678098,
+        "resist": 1.4697889818920846,
+        "delta_ratio": 0.1951327044036754,
+        "landlord_bomb20": 0.5731,
+        "table_real": 0.774,
+        "occ_real": 0.5529,
+        "table_3x17": 0.55075,
+        "land_dens": [
+          0.5144,
+          0.40475,
+          0.07445,
+          0.0064
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.9537,
+        "S_hand": 0.9127,
+        "S_single": 1.0,
+        "S_susp": 0.7194,
+        "S_delta": 0.9027,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8552
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 11,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            5,
+            6,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 7,
+      "label": "T1 plane1st cp[6, 4, 5, 3, 2] b11 s15 tv999",
+      "metrics": {
+        "bomb_held": 0.18171666666666667,
+        "bomb_split": 0.08185,
+        "hands": 5.5344,
+        "singles": 2.3422666666666667,
+        "bigcards": 1.8452333333333333,
+        "value": 25.449083333333334,
+        "hit": 1.0,
+        "entropy": 1.7020123373727416,
+        "gap_val": 0.0185875,
+        "gap_bomb": 0.003,
+        "spread": 54.86795,
+        "bomb_occ": 0.42945,
+        "dens": [
+          0.57055,
+          0.33425,
+          0.07735,
+          0.01785
+        ],
+        "head_start": 1.2264563010172453,
+        "resist": 1.470442334830992,
+        "delta_ratio": 0.19474969650506135,
+        "landlord_bomb20": 0.57155,
+        "table_real": 0.7689,
+        "occ_real": 0.5512,
+        "table_3x17": 0.54515,
+        "land_dens": [
+          0.51555,
+          0.404,
+          0.07405,
+          0.0064
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.96,
+        "S_hand": 0.9103,
+        "S_single": 1.0,
+        "S_susp": 0.7125,
+        "S_delta": 0.895,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8552
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 11,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            6,
+            4,
+            5,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 8,
+      "label": "T1 no-bomb cp[4, 6, 5, 3, 2] b11 s15 tv999",
+      "metrics": {
+        "bomb_held": 0.18358333333333332,
+        "bomb_split": 0.08198333333333334,
+        "hands": 5.5384,
+        "singles": 2.344,
+        "bigcards": 1.8453833333333334,
+        "value": 25.402633333333334,
+        "hit": 1.0,
+        "entropy": 1.7010345417075812,
+        "gap_val": 0.015,
+        "gap_bomb": 0.0031,
+        "spread": 54.863275,
+        "bomb_occ": 0.43195,
+        "dens": [
+          0.56805,
+          0.3342,
+          0.0794,
+          0.01835
+        ],
+        "head_start": 1.226673049279931,
+        "resist": 1.4700097532630545,
+        "delta_ratio": 0.19496660487824727,
+        "landlord_bomb20": 0.5729,
+        "table_real": 0.77395,
+        "occ_real": 0.55275,
+        "table_3x17": 0.55075,
+        "land_dens": [
+          0.5147,
+          0.4043,
+          0.07465,
+          0.00635
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.9543,
+        "S_hand": 0.9125,
+        "S_single": 1.0,
+        "S_susp": 0.7169,
+        "S_delta": 0.8993,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8548
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 11,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            6,
+            5,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 9,
+      "label": "T1 with-pair cp[4, 6, 5, 2, 3] b10 s15 tv999",
+      "metrics": {
+        "bomb_held": 0.14478333333333335,
+        "bomb_split": 0.0763,
+        "hands": 5.8415333333333335,
+        "singles": 2.4465333333333334,
+        "bigcards": 1.8450333333333333,
+        "value": 21.02785,
+        "hit": 1.0,
+        "entropy": 1.6241265329759154,
+        "gap_val": 0.4327375,
+        "gap_bomb": 0.000975,
+        "spread": 53.29325,
+        "bomb_occ": 0.3571,
+        "dens": [
+          0.6429,
+          0.29405,
+          0.0512,
+          0.01185
+        ],
+        "head_start": 1.2336280158803736,
+        "resist": 1.4596588641481476,
+        "delta_ratio": 0.1951495484745553,
+        "landlord_bomb20": 0.5309,
+        "table_real": 0.6668,
+        "occ_real": 0.49155,
+        "table_3x17": 0.43435,
+        "land_dens": [
+          0.54945,
+          0.37735,
+          0.0662,
+          0.007
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.8192,
+        "S_hand": 1.0,
+        "S_single": 1.0,
+        "S_susp": 0.7974,
+        "S_delta": 0.903,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8489
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 10,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            6,
+            5,
+            2,
+            3
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 10,
+      "label": "T1 plane1st cp[6, 4, 5, 3, 2] b14 s17 tv999",
+      "metrics": {
+        "bomb_held": 0.14961666666666668,
+        "bomb_split": 0.06731666666666666,
+        "hands": 5.648833333333333,
+        "singles": 2.3307166666666665,
+        "bigcards": 1.7877,
+        "value": 21.582666666666668,
+        "hit": 1.0,
+        "entropy": 1.7093106860657674,
+        "gap_val": 0.6669625,
+        "gap_bomb": 0.003725,
+        "spread": 54.2196,
+        "bomb_occ": 0.3789,
+        "dens": [
+          0.6211,
+          0.31535,
+          0.05735,
+          0.0062
+        ],
+        "head_start": 1.2383260797342441,
+        "resist": 1.4493248695091503,
+        "delta_ratio": 0.19776410307123124,
+        "landlord_bomb20": 0.6503,
+        "table_real": 0.8144,
+        "occ_real": 0.60055,
+        "table_3x17": 0.44885,
+        "land_dens": [
+          0.45885,
+          0.43825,
+          0.09675,
+          0.00615
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.7774,
+        "S_hand": 0.9638,
+        "S_single": 1.0,
+        "S_susp": 0.88,
+        "S_delta": 0.9553,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8471
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            6,
+            4,
+            5,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 11,
+      "label": "T1 straight1st cp[4, 5, 6, 3, 2] b14 s17 tv999",
+      "metrics": {
+        "bomb_held": 0.15281666666666666,
+        "bomb_split": 0.06728333333333333,
+        "hands": 5.65825,
+        "singles": 2.330966666666667,
+        "bigcards": 1.7869833333333334,
+        "value": 21.4502,
+        "hit": 1.0,
+        "entropy": 1.705182958034636,
+        "gap_val": 0.6273875,
+        "gap_bomb": 0.003625,
+        "spread": 54.068675,
+        "bomb_occ": 0.38505,
+        "dens": [
+          0.61495,
+          0.31865,
+          0.05965,
+          0.00675
+        ],
+        "head_start": 1.238159190089193,
+        "resist": 1.4497617020266498,
+        "delta_ratio": 0.1977127171410926,
+        "landlord_bomb20": 0.65235,
+        "table_real": 0.8211,
+        "occ_real": 0.60255,
+        "table_3x17": 0.45845,
+        "land_dens": [
+          0.4573,
+          0.43915,
+          0.09755,
+          0.006
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.77,
+        "S_hand": 0.9672,
+        "S_single": 1.0,
+        "S_susp": 0.8788,
+        "S_delta": 0.9543,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8455
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            5,
+            6,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 12,
+      "label": "T1 no-bomb cp[4, 6, 5, 3, 2] b14 s17 tv999",
+      "metrics": {
+        "bomb_held": 0.15285,
+        "bomb_split": 0.06726666666666667,
+        "hands": 5.6559333333333335,
+        "singles": 2.32965,
+        "bigcards": 1.7872666666666666,
+        "value": 21.508516666666665,
+        "hit": 1.0,
+        "entropy": 1.7062190735835416,
+        "gap_val": 0.6130875,
+        "gap_bomb": 0.00335,
+        "spread": 54.05515,
+        "bomb_occ": 0.3849,
+        "dens": [
+          0.6151,
+          0.3183,
+          0.0598,
+          0.0068
+        ],
+        "head_start": 1.237894477669736,
+        "resist": 1.4502440072152938,
+        "delta_ratio": 0.19736064073409093,
+        "landlord_bomb20": 0.6521,
+        "table_real": 0.82195,
+        "occ_real": 0.60305,
+        "table_3x17": 0.45855,
+        "land_dens": [
+          0.4574,
+          0.4393,
+          0.0972,
+          0.0061
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.7681,
+        "S_hand": 0.9664,
+        "S_single": 1.0,
+        "S_susp": 0.8741,
+        "S_delta": 0.9472,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8438
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            6,
+            5,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 13,
+      "label": "T1 bomb-last cp[4, 6, 5, 3, 2, 13] b11 s15 tv999",
+      "metrics": {
+        "bomb_held": 0.2035,
+        "bomb_split": 0.08283333333333333,
+        "hands": 5.51335,
+        "singles": 2.3211166666666667,
+        "bigcards": 1.8443166666666666,
+        "value": 25.6444,
+        "hit": 1.0,
+        "entropy": 1.7126761764191134,
+        "gap_val": -0.01795,
+        "gap_bomb": 0.002725,
+        "spread": 54.804125,
+        "bomb_occ": 0.45395,
+        "dens": [
+          0.54605,
+          0.3324,
+          0.09325,
+          0.0283
+        ],
+        "head_start": 1.2254327698391974,
+        "resist": 1.4722692274406914,
+        "delta_ratio": 0.19415760300307652,
+        "landlord_bomb20": 0.59105,
+        "table_real": 0.8283,
+        "occ_real": 0.565,
+        "table_3x17": 0.6105,
+        "land_dens": [
+          0.5057,
+          0.4057,
+          0.08075,
+          0.00785
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.909,
+        "S_hand": 0.8983,
+        "S_single": 1.0,
+        "S_susp": 0.6956,
+        "S_delta": 0.8832,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.8353
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 11,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 999,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            6,
+            5,
+            3,
+            2,
+            13
+          ]
+        ]
+      }
+    },
+    {
       "rank": 14,
-      "label": "T1 straight1st cp[4, 5, 6, 3, 2] b10 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.19536666666666666,
-        "bomb_split": 0.07868333333333333,
-        "hands": 5.2579,
-        "singles": 2.0818,
-        "bigcards": 1.8414166666666667,
-        "value": 28.399216666666668,
-        "hit": 1.0,
-        "entropy": 1.7633861085358093,
-        "gap_val": 0.394525,
-        "gap_bomb": 0.005125,
-        "spread": 54.704825,
-        "bomb_occ": 0.4456,
-        "dens": [
-          0.5544,
-          0.33255,
-          0.09035,
-          0.0227
-        ],
-        "head_start": 1.2156852258355302,
-        "resist": 1.4908641428747458,
-        "landlord_bomb20": 0.60985,
-        "table_real": 0.84425,
-        "occ_real": 0.57455,
-        "table_3x17": 0.5861,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.8736,
-        "S_hand": 0.7118,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8527
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 10,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            5,
-            6,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 15,
-      "label": "T1 plane1st cp[6, 4, 5, 3, 2] b10 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.19445,
-        "bomb_split": 0.07883333333333334,
-        "hands": 5.2546,
-        "singles": 2.0808666666666666,
-        "bigcards": 1.8415,
-        "value": 28.435666666666666,
-        "hit": 1.0,
-        "entropy": 1.76397726522451,
-        "gap_val": 0.4106375,
-        "gap_bomb": 0.00505,
-        "spread": 54.77105,
-        "bomb_occ": 0.4443,
-        "dens": [
-          0.5557,
-          0.3323,
-          0.08975,
-          0.02225
-        ],
-        "head_start": 1.2157328909075793,
-        "resist": 1.4907345243495917,
-        "landlord_bomb20": 0.6104,
-        "table_real": 0.8423,
-        "occ_real": 0.57415,
-        "table_3x17": 0.58335,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.8751,
-        "S_hand": 0.7091,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8527
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 10,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            6,
-            4,
-            5,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 16,
-      "label": "T1 no-bomb cp[4, 6, 5, 3, 2] b10 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.19556666666666667,
-        "bomb_split": 0.07873333333333334,
-        "hands": 5.257216666666666,
-        "singles": 2.0815333333333332,
-        "bigcards": 1.84145,
-        "value": 28.41345,
-        "hit": 1.0,
-        "entropy": 1.7635448426798963,
-        "gap_val": 0.4152875,
-        "gap_bomb": 0.005125,
-        "spread": 54.725175,
-        "bomb_occ": 0.446,
-        "dens": [
-          0.554,
-          0.3328,
-          0.0905,
-          0.0227
-        ],
-        "head_start": 1.215717300900969,
-        "resist": 1.4907980598494526,
-        "landlord_bomb20": 0.61,
-        "table_real": 0.84475,
-        "occ_real": 0.57485,
-        "table_3x17": 0.5867,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.8725,
-        "S_hand": 0.7113,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8523
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 10,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            6,
-            5,
-            3,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 17,
       "label": "T1 bomb-last cp[4, 6, 5, 3, 2, 13] b14 s17 tv999",
       "metrics": {
         "bomb_held": 0.18175,
@@ -1093,20 +1022,28 @@
         ],
         "head_start": 1.2357933234141314,
         "resist": 1.4539753985358086,
+        "delta_ratio": 0.19618064875773664,
         "landlord_bomb20": 0.67545,
         "table_real": 0.8994,
         "occ_real": 0.62265,
         "table_3x17": 0.54525,
+        "land_dens": [
+          0.44595,
+          0.441,
+          0.1049,
+          0.00815
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.6956,
         "S_hand": 0.9488,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.8397,
+        "S_delta": 0.9236,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.8456
+        "score": 0.8135
       },
       "strategy": {
         "MakeDealType": 1,
@@ -1134,71 +1071,7 @@
       }
     },
     {
-      "rank": 18,
-      "label": "T1 bomb-last cp[4, 6, 5, 3, 2, 13] b10 s15 tv999",
-      "metrics": {
-        "bomb_held": 0.23913333333333334,
-        "bomb_split": 0.08043333333333333,
-        "hands": 5.2041,
-        "singles": 2.03565,
-        "bigcards": 1.83955,
-        "value": 28.894683333333333,
-        "hit": 1.0,
-        "entropy": 1.7888101377758385,
-        "gap_val": 0.3329,
-        "gap_bomb": 0.0043,
-        "spread": 54.63185,
-        "bomb_occ": 0.4864,
-        "dens": [
-          0.5136,
-          0.32335,
-          0.1133,
-          0.04975
-        ],
-        "head_start": 1.2134354030219423,
-        "resist": 1.4948666006496125,
-        "landlord_bomb20": 0.6461,
-        "table_real": 0.9602,
-        "occ_real": 0.5972,
-        "table_3x17": 0.7174,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.7898,
-        "S_hand": 0.6666,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.8211
-      },
-      "strategy": {
-        "MakeDealType": 1,
-        "BeginMakeNum": 10,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 5,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 6,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 4,
-        "TargetValue": 999,
-        "TargetRound": 10,
-        "CouPaiStrategy": [
-          [
-            4,
-            6,
-            5,
-            3,
-            2,
-            13
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 19,
+      "rank": 15,
       "label": "T1 no-pair cp[4, 5, 3, 6] b14 s17 tv0.6",
       "metrics": {
         "bomb_held": 0.14266666666666666,
@@ -1221,10 +1094,17 @@
         ],
         "head_start": 1.2810398872581934,
         "resist": 1.3754284341219656,
+        "delta_ratio": 0.23040597696163026,
         "landlord_bomb20": 0.7716666666666666,
         "table_real": 0.8986666666666666,
         "occ_real": 0.639,
         "table_3x17": 0.428,
+        "land_dens": [
+          0.4033333333333333,
+          0.43566666666666665,
+          0.148,
+          0.013
+        ],
         "n": 3000
       },
       "fitness": {
@@ -1232,6 +1112,7 @@
         "S_hand": 0.7723,
         "S_single": 1.0,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.7968
@@ -1260,7 +1141,7 @@
       }
     },
     {
-      "rank": 20,
+      "rank": 16,
       "label": "T1 wp-no3 cp[4, 6, 5, 2] b11 s15 tv999",
       "metrics": {
         "bomb_held": 0.12677777777777777,
@@ -1283,10 +1164,17 @@
         ],
         "head_start": 1.261813661119141,
         "resist": 1.4111790984443786,
+        "delta_ratio": 0.21079310417839278,
         "landlord_bomb20": 0.4106666666666667,
         "table_real": 0.5176666666666667,
         "occ_real": 0.43366666666666664,
         "table_3x17": 0.38033333333333336,
+        "land_dens": [
+          0.6216666666666667,
+          0.348,
+          0.028333333333333332,
+          0.002
+        ],
         "n": 3000
       },
       "fitness": {
@@ -1294,6 +1182,7 @@
         "S_hand": 0.8147,
         "S_single": 1.0,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.796
@@ -1317,6 +1206,291 @@
             6,
             5,
             2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 17,
+      "label": "T1 no-bomb cp[4, 6, 5, 3, 2] b14 s17 tv0.6",
+      "metrics": {
+        "bomb_held": 0.12411111111111112,
+        "bomb_split": 0.06855555555555555,
+        "hands": 6.355222222222222,
+        "singles": 2.736222222222222,
+        "bigcards": 1.789,
+        "value": 11.193111111111111,
+        "hit": 1.0,
+        "entropy": 1.6288347227432844,
+        "gap_val": 0.7034166666666667,
+        "gap_bomb": 0.006666666666666667,
+        "spread": 54.06483333333333,
+        "bomb_occ": 0.3313333333333333,
+        "dens": [
+          0.6686666666666666,
+          0.29233333333333333,
+          0.037,
+          0.002
+        ],
+        "head_start": 1.2763394506748387,
+        "resist": 1.3835462083695569,
+        "delta_ratio": 0.22397741633335072,
+        "landlord_bomb20": 0.7876666666666666,
+        "table_real": 0.9076666666666666,
+        "occ_real": 0.6543333333333333,
+        "table_3x17": 0.37233333333333335,
+        "land_dens": [
+          0.38233333333333336,
+          0.4613333333333333,
+          0.14366666666666666,
+          0.012666666666666666
+        ],
+        "n": 3000
+      },
+      "fitness": {
+        "S_bomb": 0.5783,
+        "S_hand": 0.7676,
+        "S_single": 1.0,
+        "S_susp": 1.0,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.7801
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 0.6,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            6,
+            5,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 18,
+      "label": "T1 straight1st cp[4, 5, 6, 3, 2] b14 s17 tv0.6",
+      "metrics": {
+        "bomb_held": 0.12411111111111112,
+        "bomb_split": 0.06855555555555555,
+        "hands": 6.355222222222222,
+        "singles": 2.736222222222222,
+        "bigcards": 1.789,
+        "value": 11.193111111111111,
+        "hit": 1.0,
+        "entropy": 1.6288347227432844,
+        "gap_val": 0.7034166666666667,
+        "gap_bomb": 0.006666666666666667,
+        "spread": 54.06483333333333,
+        "bomb_occ": 0.3313333333333333,
+        "dens": [
+          0.6686666666666666,
+          0.29233333333333333,
+          0.037,
+          0.002
+        ],
+        "head_start": 1.2763394506748387,
+        "resist": 1.3835462083695569,
+        "delta_ratio": 0.22397741633335072,
+        "landlord_bomb20": 0.7876666666666666,
+        "table_real": 0.9076666666666666,
+        "occ_real": 0.6543333333333333,
+        "table_3x17": 0.37233333333333335,
+        "land_dens": [
+          0.38233333333333336,
+          0.4613333333333333,
+          0.14366666666666666,
+          0.012666666666666666
+        ],
+        "n": 3000
+      },
+      "fitness": {
+        "S_bomb": 0.5783,
+        "S_hand": 0.7676,
+        "S_single": 1.0,
+        "S_susp": 1.0,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.7801
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 0.6,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            5,
+            6,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 19,
+      "label": "T1 plane1st cp[6, 4, 5, 3, 2] b14 s17 tv0.6",
+      "metrics": {
+        "bomb_held": 0.12322222222222222,
+        "bomb_split": 0.06855555555555555,
+        "hands": 6.360333333333333,
+        "singles": 2.7425555555555556,
+        "bigcards": 1.7897777777777777,
+        "value": 11.129333333333333,
+        "hit": 1.0,
+        "entropy": 1.6281109715396014,
+        "gap_val": 0.7570833333333333,
+        "gap_bomb": 0.006666666666666667,
+        "spread": 53.9945,
+        "bomb_occ": 0.3293333333333333,
+        "dens": [
+          0.6706666666666666,
+          0.291,
+          0.036333333333333336,
+          0.002
+        ],
+        "head_start": 1.2762343718850522,
+        "resist": 1.3838364536917052,
+        "delta_ratio": 0.22400875233779613,
+        "landlord_bomb20": 0.7873333333333333,
+        "table_real": 0.9056666666666666,
+        "occ_real": 0.6536666666666666,
+        "table_3x17": 0.36966666666666664,
+        "land_dens": [
+          0.38233333333333336,
+          0.46166666666666667,
+          0.14333333333333334,
+          0.012666666666666666
+        ],
+        "n": 3000
+      },
+      "fitness": {
+        "S_bomb": 0.5808,
+        "S_hand": 0.7635,
+        "S_single": 1.0,
+        "S_susp": 1.0,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.7801
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 0.6,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            6,
+            4,
+            5,
+            3,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 20,
+      "label": "T1 bomb-last cp[4, 6, 5, 3, 2, 13] b14 s17 tv0.6",
+      "metrics": {
+        "bomb_held": 0.12422222222222222,
+        "bomb_split": 0.06855555555555555,
+        "hands": 6.355111111111111,
+        "singles": 2.736111111111111,
+        "bigcards": 1.789,
+        "value": 11.192444444444444,
+        "hit": 1.0,
+        "entropy": 1.6288937857208339,
+        "gap_val": 0.7044166666666667,
+        "gap_bomb": 0.006666666666666667,
+        "spread": 54.066833333333335,
+        "bomb_occ": 0.33166666666666667,
+        "dens": [
+          0.6683333333333333,
+          0.2926666666666667,
+          0.037,
+          0.002
+        ],
+        "head_start": 1.2763505130675787,
+        "resist": 1.3835296473659207,
+        "delta_ratio": 0.22397741633335072,
+        "landlord_bomb20": 0.788,
+        "table_real": 0.9083333333333333,
+        "occ_real": 0.6546666666666666,
+        "table_3x17": 0.37266666666666665,
+        "land_dens": [
+          0.382,
+          0.46166666666666667,
+          0.14366666666666666,
+          0.012666666666666666
+        ],
+        "n": 3000
+      },
+      "fitness": {
+        "S_bomb": 0.5771,
+        "S_hand": 0.7677,
+        "S_single": 1.0,
+        "S_susp": 1.0,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.7798
+      },
+      "strategy": {
+        "MakeDealType": 1,
+        "BeginMakeNum": 14,
+        "BeginSelectBanker": 17,
+        "FirstChairHandCount": 5,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 6,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 4,
+        "TargetValue": 0.6,
+        "TargetRound": 10,
+        "CouPaiStrategy": [
+          [
+            4,
+            6,
+            5,
+            3,
+            2,
+            13
           ]
         ]
       }
@@ -1347,10 +1521,17 @@
         ],
         "head_start": 1.28036748196855,
         "resist": 1.3752932107308775,
+        "delta_ratio": 0.2240360805170276,
         "landlord_bomb20": 0.62685,
         "table_real": 1.0787,
         "occ_real": 0.6724,
         "table_3x17": 0.9072,
+        "land_dens": [
+          0.48075,
+          0.4181,
+          0.0948,
+          0.00635
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1358,6 +1539,7 @@
         "S_hand": 0.6295,
         "S_single": 0.9312,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.7283
@@ -1411,10 +1593,17 @@
         ],
         "head_start": 1.284899698409784,
         "resist": 1.3674011662728633,
+        "delta_ratio": 0.22767920154640192,
         "landlord_bomb20": 0.6117,
         "table_real": 1.04735,
         "occ_real": 0.6637,
         "table_3x17": 0.881,
+        "land_dens": [
+          0.4893,
+          0.4151,
+          0.09025,
+          0.00535
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1422,6 +1611,7 @@
         "S_hand": 0.5648,
         "S_single": 0.9099,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.7231
@@ -1475,20 +1665,28 @@
         ],
         "head_start": 1.2591028317004063,
         "resist": 1.411735222209345,
+        "delta_ratio": 0.20818897535096134,
         "landlord_bomb20": 0.75715,
         "table_real": 1.4254,
         "occ_real": 0.75145,
         "table_3x17": 1.2291,
+        "land_dens": [
+          0.4117,
+          0.43555,
+          0.13705,
+          0.0157
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.2189,
         "S_hand": 0.9719,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.9956,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.7162
+        "score": 0.7154
       },
       "strategy": {
         "MakeDealType": 0,
@@ -1539,20 +1737,28 @@
         ],
         "head_start": 1.2562619856156052,
         "resist": 1.416965031338165,
+        "delta_ratio": 0.20558669675049585,
         "landlord_bomb20": 0.77055,
         "table_real": 1.4561,
         "occ_real": 0.7551,
         "table_3x17": 1.2584,
+        "land_dens": [
+          0.40595,
+          0.4359,
+          0.1405,
+          0.01765
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.2054,
         "S_hand": 0.9916,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.9818,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.716
+        "score": 0.7124
       },
       "strategy": {
         "MakeDealType": 0,
@@ -1603,10 +1809,17 @@
         ],
         "head_start": 1.2767920935989963,
         "resist": 1.381331696400388,
+        "delta_ratio": 0.22308469814104165,
         "landlord_bomb20": 0.6595,
         "table_real": 1.12745,
         "occ_real": 0.6951,
         "table_3x17": 0.9493,
+        "land_dens": [
+          0.4576,
+          0.4321,
+          0.10355,
+          0.00675
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1614,6 +1827,7 @@
         "S_hand": 0.64,
         "S_single": 0.9421,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.7079
@@ -1667,10 +1881,17 @@
         ],
         "head_start": 1.2763351218701053,
         "resist": 1.3818923981380082,
+        "delta_ratio": 0.22432407523322836,
         "landlord_bomb20": 0.6604,
         "table_real": 1.1198,
         "occ_real": 0.69575,
         "table_3x17": 0.94325,
+        "land_dens": [
+          0.4547,
+          0.4365,
+          0.1025,
+          0.0063
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1678,6 +1899,7 @@
         "S_hand": 0.6306,
         "S_single": 0.9377,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.705
@@ -1731,10 +1953,17 @@
         ],
         "head_start": 1.2854479480557264,
         "resist": 1.366212857662965,
+        "delta_ratio": 0.23062169094745286,
         "landlord_bomb20": 0.68215,
         "table_real": 1.14795,
         "occ_real": 0.70425,
         "table_3x17": 0.9684,
+        "land_dens": [
+          0.44115,
+          0.44275,
+          0.109,
+          0.0071
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1742,6 +1971,7 @@
         "S_hand": 0.6554,
         "S_single": 0.9467,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.7018
@@ -1795,10 +2025,17 @@
         ],
         "head_start": 1.2804698342602336,
         "resist": 1.3746623914474965,
+        "delta_ratio": 0.22807712169454977,
         "landlord_bomb20": 0.68225,
         "table_real": 1.14795,
         "occ_real": 0.70515,
         "table_3x17": 0.96935,
+        "land_dens": [
+          0.4397,
+          0.44535,
+          0.108,
+          0.00695
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1806,6 +2043,7 @@
         "S_hand": 0.6547,
         "S_single": 0.9483,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.7009
@@ -1859,10 +2097,17 @@
         ],
         "head_start": 1.2805752066185794,
         "resist": 1.3743646383128119,
+        "delta_ratio": 0.22920378524322174,
         "landlord_bomb20": 0.6836,
         "table_real": 1.1456,
         "occ_real": 0.70745,
         "table_3x17": 0.96875,
+        "land_dens": [
+          0.4365,
+          0.44975,
+          0.1074,
+          0.00635
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1870,6 +2115,7 @@
         "S_hand": 0.6383,
         "S_single": 0.9425,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.6949
@@ -1923,10 +2169,17 @@
         ],
         "head_start": 1.284007280815703,
         "resist": 1.3688066616921541,
+        "delta_ratio": 0.22906463061869772,
         "landlord_bomb20": 0.64135,
         "table_real": 1.0785,
         "occ_real": 0.68485,
         "table_3x17": 0.9077,
+        "land_dens": [
+          0.4658,
+          0.4321,
+          0.09715,
+          0.00495
+        ],
         "n": 20000
       },
       "fitness": {
@@ -1934,6 +2187,7 @@
         "S_hand": 0.5287,
         "S_single": 0.9051,
         "S_susp": 1.0,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
         "score": 0.6941
@@ -1965,134 +2219,6 @@
     },
     {
       "rank": 11,
-      "label": "T0 thr1 bmn12",
-      "metrics": {
-        "bomb_held": 0.4419166666666667,
-        "bomb_split": 0.08818333333333334,
-        "hands": 5.924633333333333,
-        "singles": 2.49225,
-        "bigcards": 1.8899166666666667,
-        "value": 15.728266666666666,
-        "hit": 0.9997166666666667,
-        "entropy": 1.75416704064885,
-        "gap_val": 8.092625,
-        "gap_bomb": 0.0433,
-        "spread": 52.4813,
-        "bomb_occ": 0.7266,
-        "dens": [
-          0.2734,
-          0.3374,
-          0.2355,
-          0.1537
-        ],
-        "head_start": 1.2513203926559358,
-        "resist": 1.4261134509600888,
-        "landlord_bomb20": 0.82155,
-        "table_real": 1.5365,
-        "occ_real": 0.77975,
-        "table_3x17": 1.32575,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.1142,
-        "S_hand": 0.993,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.6907
-      },
-      "strategy": {
-        "MakeDealType": 0,
-        "BeginMakeNum": 12,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 4,
-        "FirstChairBombCount": 3,
-        "FirstChairBigCardsCount": 4,
-        "OtherChairHandCount": 5,
-        "OtherChairBombCount": 3,
-        "OtherChairBigCardsCount": 3,
-        "BigCardsTo": 3,
-        "TargetValue": 0.5,
-        "TargetRound": 5,
-        "CouPaiStrategy": [
-          [
-            3,
-            4,
-            13,
-            6,
-            5,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 12,
-      "label": "T0 thr4 bmn12",
-      "metrics": {
-        "bomb_held": 0.43985,
-        "bomb_split": 0.09045,
-        "hands": 5.922733333333333,
-        "singles": 2.4978166666666666,
-        "bigcards": 1.8899166666666667,
-        "value": 16.132233333333332,
-        "hit": 0.9997666666666667,
-        "entropy": 1.7526421841519444,
-        "gap_val": 8.2151875,
-        "gap_bomb": 0.042975,
-        "spread": 52.67175,
-        "bomb_occ": 0.7291,
-        "dens": [
-          0.2709,
-          0.34145,
-          0.2376,
-          0.15005
-        ],
-        "head_start": 1.250385434926329,
-        "resist": 1.4268625132024104,
-        "landlord_bomb20": 0.81655,
-        "table_real": 1.53025,
-        "occ_real": 0.7826,
-        "table_3x17": 1.31955,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0.1036,
-        "S_hand": 0.9933,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.6878
-      },
-      "strategy": {
-        "MakeDealType": 0,
-        "BeginMakeNum": 12,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 6,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 7,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 3,
-        "TargetValue": 0.5,
-        "TargetRound": 5,
-        "CouPaiStrategy": [
-          [
-            3,
-            4,
-            13,
-            6,
-            5,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 13,
       "label": "T0 thr7 bmn12",
       "metrics": {
         "bomb_held": 0.4294,
@@ -2115,20 +2241,28 @@
         ],
         "head_start": 1.259264169394567,
         "resist": 1.4112667314935565,
+        "delta_ratio": 0.20980748982809083,
         "landlord_bomb20": 0.80415,
         "table_real": 1.49225,
         "occ_real": 0.7796,
         "table_3x17": 1.2882,
+        "land_dens": [
+          0.37775,
+          0.4569,
+          0.1492,
+          0.01615
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.1147,
         "S_hand": 0.9595,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.9964,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.6848
+        "score": 0.6841
       },
       "strategy": {
         "MakeDealType": 0,
@@ -2156,7 +2290,7 @@
       }
     },
     {
-      "rank": 14,
+      "rank": 12,
       "label": "T0 thr0 bmn12",
       "metrics": {
         "bomb_held": 0.45031666666666664,
@@ -2179,20 +2313,28 @@
         ],
         "head_start": 1.2589594620150637,
         "resist": 1.412415588662666,
+        "delta_ratio": 0.21068526053393108,
         "landlord_bomb20": 0.84155,
         "table_real": 1.5638,
         "occ_real": 0.78625,
         "table_3x17": 1.35095,
+        "land_dens": [
+          0.36375,
+          0.4539,
+          0.16015,
+          0.0222
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.0901,
         "S_hand": 0.9951,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.9949,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.6843
+        "score": 0.6833
       },
       "strategy": {
         "MakeDealType": 0,
@@ -2205,6 +2347,150 @@
         "OtherChairBombCount": 3,
         "OtherChairBigCardsCount": 5,
         "BigCardsTo": 4,
+        "TargetValue": 0.5,
+        "TargetRound": 5,
+        "CouPaiStrategy": [
+          [
+            3,
+            4,
+            13,
+            6,
+            5,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 13,
+      "label": "T0 thr1 bmn12",
+      "metrics": {
+        "bomb_held": 0.4419166666666667,
+        "bomb_split": 0.08818333333333334,
+        "hands": 5.924633333333333,
+        "singles": 2.49225,
+        "bigcards": 1.8899166666666667,
+        "value": 15.728266666666666,
+        "hit": 0.9997166666666667,
+        "entropy": 1.75416704064885,
+        "gap_val": 8.092625,
+        "gap_bomb": 0.0433,
+        "spread": 52.4813,
+        "bomb_occ": 0.7266,
+        "dens": [
+          0.2734,
+          0.3374,
+          0.2355,
+          0.1537
+        ],
+        "head_start": 1.2513203926559358,
+        "resist": 1.4261134509600888,
+        "delta_ratio": 0.20457014419695205,
+        "landlord_bomb20": 0.82155,
+        "table_real": 1.5365,
+        "occ_real": 0.77975,
+        "table_3x17": 1.32575,
+        "land_dens": [
+          0.37555,
+          0.44885,
+          0.1548,
+          0.0208
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.1142,
+        "S_hand": 0.993,
+        "S_single": 1.0,
+        "S_susp": 0.9578,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.6823
+      },
+      "strategy": {
+        "MakeDealType": 0,
+        "BeginMakeNum": 12,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 4,
+        "FirstChairBombCount": 3,
+        "FirstChairBigCardsCount": 4,
+        "OtherChairHandCount": 5,
+        "OtherChairBombCount": 3,
+        "OtherChairBigCardsCount": 3,
+        "BigCardsTo": 3,
+        "TargetValue": 0.5,
+        "TargetRound": 5,
+        "CouPaiStrategy": [
+          [
+            3,
+            4,
+            13,
+            6,
+            5,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 14,
+      "label": "T0 thr4 bmn12",
+      "metrics": {
+        "bomb_held": 0.43985,
+        "bomb_split": 0.09045,
+        "hands": 5.922733333333333,
+        "singles": 2.4978166666666666,
+        "bigcards": 1.8899166666666667,
+        "value": 16.132233333333332,
+        "hit": 0.9997666666666667,
+        "entropy": 1.7526421841519444,
+        "gap_val": 8.2151875,
+        "gap_bomb": 0.042975,
+        "spread": 52.67175,
+        "bomb_occ": 0.7291,
+        "dens": [
+          0.2709,
+          0.34145,
+          0.2376,
+          0.15005
+        ],
+        "head_start": 1.250385434926329,
+        "resist": 1.4268625132024104,
+        "delta_ratio": 0.20411869452858294,
+        "landlord_bomb20": 0.81655,
+        "table_real": 1.53025,
+        "occ_real": 0.7826,
+        "table_3x17": 1.31955,
+        "land_dens": [
+          0.37695,
+          0.44895,
+          0.1551,
+          0.019
+        ],
+        "n": 20000
+      },
+      "fitness": {
+        "S_bomb": 0.1036,
+        "S_hand": 0.9933,
+        "S_single": 1.0,
+        "S_susp": 0.9533,
+        "S_delta": 1.0,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.6785
+      },
+      "strategy": {
+        "MakeDealType": 0,
+        "BeginMakeNum": 12,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 6,
+        "FirstChairBombCount": 2,
+        "FirstChairBigCardsCount": 5,
+        "OtherChairHandCount": 7,
+        "OtherChairBombCount": 2,
+        "OtherChairBigCardsCount": 4,
+        "BigCardsTo": 3,
         "TargetValue": 0.5,
         "TargetRound": 5,
         "CouPaiStrategy": [
@@ -2243,20 +2529,28 @@
         ],
         "head_start": 1.255229784369646,
         "resist": 1.4185361593172756,
+        "delta_ratio": 0.20926930116393247,
         "landlord_bomb20": 0.8438,
         "table_real": 1.5681,
         "occ_real": 0.791,
         "table_3x17": 1.35845,
+        "land_dens": [
+          0.36095,
+          0.456,
+          0.16205,
+          0.021
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.0725,
         "S_hand": 0.9969,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.9768,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.6798
+        "score": 0.6751
       },
       "strategy": {
         "MakeDealType": 0,
@@ -2307,20 +2601,28 @@
         ],
         "head_start": 1.2561659769161277,
         "resist": 1.4164421244417544,
+        "delta_ratio": 0.21038399591753484,
         "landlord_bomb20": 0.8435,
         "table_real": 1.56355,
         "occ_real": 0.792,
         "table_3x17": 1.35335,
+        "land_dens": [
+          0.35875,
+          0.459,
+          0.16265,
+          0.0196
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.0688,
         "S_hand": 0.9946,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.9814,
+        "S_delta": 1.0,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.6783
+        "score": 0.6746
       },
       "strategy": {
         "MakeDealType": 0,
@@ -2371,20 +2673,28 @@
         ],
         "head_start": 1.2383109155586751,
         "resist": 1.4493382531840573,
+        "delta_ratio": 0.19556611880798339,
         "landlord_bomb20": 0.9903,
         "table_real": 1.9734,
         "occ_real": 0.83855,
         "table_3x17": 1.73855,
+        "land_dens": [
+          0.302,
+          0.4475,
+          0.21055,
+          0.03995
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0,
         "S_hand": 0.8999,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.8654,
+        "S_delta": 0.9113,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.642
+        "score": 0.6151
       },
       "strategy": {
         "MakeDealType": 0,
@@ -2435,20 +2745,28 @@
         ],
         "head_start": 1.237644932849232,
         "resist": 1.450851026663446,
+        "delta_ratio": 0.19219485933633487,
         "landlord_bomb20": 0.94595,
         "table_real": 1.8975,
         "occ_real": 0.8095,
         "table_3x17": 1.6663,
+        "land_dens": [
+          0.3321,
+          0.43,
+          0.1998,
+          0.0381
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0.0041,
         "S_hand": 0.8611,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.8362,
+        "S_delta": 0.8439,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.6361
+        "score": 0.6034
       },
       "strategy": {
         "MakeDealType": 0,
@@ -2477,70 +2795,6 @@
     },
     {
       "rank": 19,
-      "label": "T0 thr4 bmn10",
-      "metrics": {
-        "bomb_held": 0.6077333333333333,
-        "bomb_split": 0.09766666666666667,
-        "hands": 5.32985,
-        "singles": 1.9446666666666668,
-        "bigcards": 1.8899166666666667,
-        "value": 22.225,
-        "hit": 0.9999666666666667,
-        "entropy": 1.8945683905751896,
-        "gap_val": 7.5472,
-        "gap_bomb": 0.047075,
-        "spread": 51.9758,
-        "bomb_occ": 0.8142,
-        "dens": [
-          0.1858,
-          0.28085,
-          0.2395,
-          0.29385
-        ],
-        "head_start": 1.2264847848611915,
-        "resist": 1.4707586207090406,
-        "landlord_bomb20": 1.03505,
-        "table_real": 2.07175,
-        "occ_real": 0.8521,
-        "table_3x17": 1.8232,
-        "n": 20000
-      },
-      "fitness": {
-        "S_bomb": 0,
-        "S_hand": 0.7701,
-        "S_single": 1.0,
-        "S_susp": 1.0,
-        "S_div": 1.0,
-        "S_hit": 0.5,
-        "score": 0.6186
-      },
-      "strategy": {
-        "MakeDealType": 0,
-        "BeginMakeNum": 10,
-        "BeginSelectBanker": 15,
-        "FirstChairHandCount": 6,
-        "FirstChairBombCount": 2,
-        "FirstChairBigCardsCount": 5,
-        "OtherChairHandCount": 7,
-        "OtherChairBombCount": 2,
-        "OtherChairBigCardsCount": 4,
-        "BigCardsTo": 3,
-        "TargetValue": 0.5,
-        "TargetRound": 5,
-        "CouPaiStrategy": [
-          [
-            3,
-            4,
-            13,
-            6,
-            5,
-            2
-          ]
-        ]
-      }
-    },
-    {
-      "rank": 20,
       "label": "T0 thr5 bmn10",
       "metrics": {
         "bomb_held": 0.6193,
@@ -2563,20 +2817,28 @@
         ],
         "head_start": 1.2309027387831997,
         "resist": 1.4624142817832007,
+        "delta_ratio": 0.19223856603374423,
         "landlord_bomb20": 1.0576,
         "table_real": 2.10495,
         "occ_real": 0.85735,
         "table_3x17": 1.8579,
+        "land_dens": [
+          0.27185,
+          0.45145,
+          0.2263,
+          0.0504
+        ],
         "n": 20000
       },
       "fitness": {
         "S_bomb": 0,
         "S_hand": 0.765,
         "S_single": 1.0,
-        "S_susp": 1.0,
+        "S_susp": 0.7528,
+        "S_delta": 0.8448,
         "S_div": 1.0,
         "S_hit": 0.5,
-        "score": 0.6177
+        "score": 0.5683
       },
       "strategy": {
         "MakeDealType": 0,
@@ -2586,6 +2848,78 @@
         "FirstChairBombCount": 3,
         "FirstChairBigCardsCount": 6,
         "OtherChairHandCount": 7,
+        "OtherChairBombCount": 3,
+        "OtherChairBigCardsCount": 5,
+        "BigCardsTo": 4,
+        "TargetValue": 0.5,
+        "TargetRound": 5,
+        "CouPaiStrategy": [
+          [
+            3,
+            4,
+            13,
+            6,
+            5,
+            2
+          ]
+        ]
+      }
+    },
+    {
+      "rank": 20,
+      "label": "T0 thr0 bmn10",
+      "metrics": {
+        "bomb_held": 0.6331111111111111,
+        "bomb_split": 0.10444444444444445,
+        "hands": 5.278333333333333,
+        "singles": 1.894111111111111,
+        "bigcards": 1.8882222222222222,
+        "value": 23.009888888888888,
+        "hit": 1.0,
+        "entropy": 1.9091097449550263,
+        "gap_val": 6.69325,
+        "gap_bomb": 0.05583333333333333,
+        "spread": 53.35633333333333,
+        "bomb_occ": 0.8266666666666667,
+        "dens": [
+          0.17333333333333334,
+          0.265,
+          0.24833333333333332,
+          0.31333333333333335
+        ],
+        "head_start": 1.2304966683385354,
+        "resist": 1.4645590360061307,
+        "delta_ratio": 0.19069033141316055,
+        "landlord_bomb20": 1.0616666666666668,
+        "table_real": 2.144,
+        "occ_real": 0.8583333333333333,
+        "table_3x17": 1.8993333333333333,
+        "land_dens": [
+          0.272,
+          0.44966666666666666,
+          0.22466666666666665,
+          0.05366666666666667
+        ],
+        "n": 3000
+      },
+      "fitness": {
+        "S_bomb": 0,
+        "S_hand": 0.7287,
+        "S_single": 1.0,
+        "S_susp": 0.7312,
+        "S_delta": 0.8138,
+        "S_div": 1.0,
+        "S_hit": 0.5,
+        "score": 0.5574
+      },
+      "strategy": {
+        "MakeDealType": 0,
+        "BeginMakeNum": 10,
+        "BeginSelectBanker": 15,
+        "FirstChairHandCount": 3,
+        "FirstChairBombCount": 3,
+        "FirstChairBigCardsCount": 6,
+        "OtherChairHandCount": 4,
         "OtherChairBombCount": 3,
         "OtherChairBigCardsCount": 5,
         "BigCardsTo": 4,
