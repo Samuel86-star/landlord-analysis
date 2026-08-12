@@ -194,9 +194,52 @@ A/B 揭示**两个独立轴**：
 
 - 配置 JSON：`algorithm/native/previous/makedeal.json`（`MakeDealStrategy.<name>`，可原样粘入生效）。
 - 重排：`py -3 -u algorithm/native/extracted/sweep.py --rerank --view real --compare`。
-- 线上校验：`py -3 -u ops/py/sr_exec.py -f ops/py/tmp/ddz_bid_<grab|liuju|landlord_winrate>.sql`（old2 基线窗 TODO 见 SQL 注释）。
+- 线上校验：`py -3 -u ops/py/sr_exec.py -f ops/py/tmp/ddz_bid_<grab|liuju|landlord_winrate|mag_stats|bomb_bet_dist>.sql`（old2 基线日 2026-07-30，已实测确认）。
 - 切点监控：$\Delta$、$S_{res}$、地主20炸、无人抢率四项联合，任一破带即复审。
+
+## 6. 理论倍数预测（bomb-driven，线上标定闭环）
+
+### 6.1 倍数分解与主导因子
+
+线上 `magnification`（理论倍数，含底分 3）分解：
+
+$$\text{倍数} = 3 \times f_{\text{grab}} \times \underbrace{2^{n_{\text{bomb}}}}_{\text{打出炸}} \times f_{\text{spring}} \times f_{\text{加倍}}$$
+
+线上标定（new/new2/old2，全真人桌）证实：**倍数分化几乎全由炸弹因子 $E[2^{n}]$ 驱动**。
+
+| 策略 | 理论倍数 | 炸弹因子 $E[2^n]$ | 打出炸率 |
+|---|---|---|---|
+| new | 8.26 | 1.40 | 30.4% |
+| new2 | 11.91 | 1.74 | 48.1% |
+| old2 | 26.53 | 3.22 | 67.9% |
+
+> 炸弹因子 1.40→1.74→3.22 与倍数 8.3→11.9→26.5 同步——**少炸=低倍，二者绑定**。抢牌/春天因子跨策略近常数（$f_{\text{grab}}\approx1.27$、$f_{\text{spring}}\approx1.04$）；加倍因子随炸弹负载升（new 1.48 / new2 1.74 / old2 1.90）。
+
+### 6.2 sim → 线上折扣（持有炸 → 打出炸）
+
+线上打出炸率 ≈ sim `occ_real` × 折扣 $\rho$；$\rho$ 随炸弹负载递增（炸多的局更常把炸打出）：
+
+| 策略 | sim occ_real | 线上打出炸率 | 折扣 $\rho$ |
+|---|---|---|---|
+| new | 0.406 | 0.304 | 0.75 |
+| new2 | 0.582 | 0.481 | 0.83 |
+| old2 | 0.755 | 0.679 | 0.90 |
+
+### 6.3 倍数预测公式与候选区间
+
+$$\widehat{\text{倍数}} \approx \text{倍数}_{\text{new}} \times \frac{\widehat{E[2^{n}]}}{1.40},\qquad \widehat{E[2^{n}]} = E\!\left[2^{\text{played\_bombs}}\right]\text{，由 }occ\_real\times\rho\text{ 反推打出炸分布}$$
+
+| 候选 | sim occ_real | 预测打出炸率 | 预测 $E[2^n]$ | **预测理论倍数** |
+|---|---|---|---|---|
+| new | 0.406 | 0.30 | 1.40 | ~7.5-8.3（实测标定） |
+| **wp-no3 b10s15** | 0.394 | ~0.30 | ~1.38 | **~7.4-8.1（≈new）** |
+| **with-pair b11s15** | 0.493 | ~0.41 | ~1.60 | **~9-11（真·中间值）** |
+| new2 | 0.582 | 0.48 | 1.74 | ~11.9（实测标定） |
+
+> **用法**：换配置时跑 sim 取 `occ_real` → 经 $\rho$ 反推打出炸分布 → $E[2^n]$ → 代入上式得倍数。
+> **关键判读**：wp-no3 倍数 ≈ new（设计上"底牌炸≈new"→ 倍数必然 new-like）；要"倍数中间值"选 with-pair b11s15（~9-11）。**少炸与低倍不可分割**——降 coin-flippy 即降倍数。
+> ⚠️ 加倍因子 $f_{\text{加倍}}$ 为行为项，上表用同档平衡度近似；精确值需 A/B。
 
 ---
 
-> **文档版本** v1.0（2026-08-07）｜ 维护：发牌策略调优 ｜ 闭环依据：2026-08-05 crossover A/B（new/new2，全真人桌 N≈70k）。
+> **文档版本** v1.1（2026-08-12）｜ 维护：发牌策略调优 ｜ 闭环依据：2026-08-05 crossover A/B + 2026-07-30 old2 基线 + 理论倍数 bomb-driven 标定。
