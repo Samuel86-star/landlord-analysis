@@ -9,6 +9,7 @@
 | 适用范围 | `docs/analysis/`、`docs/knowledge/`、`ops/py/`、`starrocks/` |
 | 依据 | [AI 数据分析智能体审查](../review/data-analysis-agent/2026-09-04-review.md) |
 | 实施计划 | [离线安全改造计划](../plan/2026-09-04-data-analysis-agent-offline-safety.md) |
+| 验证状态 | 离线验证通过，等待公司网络联调 |
 
 ## 二、背景与问题
 
