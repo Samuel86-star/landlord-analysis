@@ -46,6 +46,34 @@ class StarRocksClientConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "CLOUDBEAVER_ALLOW_HTTP=1"):
             StarRocksClient()
 
+    @patch.dict(
+        os.environ,
+        {
+            **VALID_ENV,
+            "CLOUDBEAVER_BASE_URL": "http://flowops.example.internal/api/gql",
+            "CLOUDBEAVER_ALLOW_HTTP": "1",
+        },
+        clear=True,
+    )
+    def test_http_opt_in_allows_http(self):
+        self.assertEqual(
+            StarRocksClient().base_url,
+            "http://flowops.example.internal/api/gql",
+        )
+
+    @patch.dict(
+        os.environ,
+        {
+            **VALID_ENV,
+            "CLOUDBEAVER_BASE_URL": "ftp://flowops.example.internal/api/gql",
+            "CLOUDBEAVER_ALLOW_HTTP": "1",
+        },
+        clear=True,
+    )
+    def test_http_opt_in_does_not_allow_other_schemes(self):
+        with self.assertRaisesRegex(RuntimeError, "CLOUDBEAVER_BASE_URL"):
+            StarRocksClient()
+
     @patch.dict(os.environ, VALID_ENV, clear=True)
     def test_login_failure_does_not_echo_authentication_response(self):
         client = StarRocksClient()
@@ -58,3 +86,11 @@ class StarRocksClientConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "CloudBeaver login failed") as error:
             client.login()
         self.assertNotIn("hidden", str(error.exception))
+
+    @patch.dict(os.environ, VALID_ENV, clear=True)
+    def test_login_transport_failure_does_not_echo_response_content(self):
+        client = StarRocksClient()
+        client.gql = Mock(side_effect=Exception("hidden response content"))
+        with self.assertRaisesRegex(RuntimeError, "^CloudBeaver login failed$") as error:
+            client.login()
+        self.assertNotIn("hidden response content", str(error.exception))

@@ -41,11 +41,14 @@ class StarRocksClient:
         self.username = _required_env("CLOUDBEAVER_USERNAME")
         self.password_hash = _required_env("CLOUDBEAVER_PASSWORD_HASH")
         self.project_id = _required_env("CLOUDBEAVER_PROJECT_ID")
-        if (
-            urlparse(self.base_url).scheme != "https"
-            and os.environ.get("CLOUDBEAVER_ALLOW_HTTP") != "1"
+        scheme = urlparse(self.base_url).scheme
+        if scheme != "https" and not (
+            scheme == "http" and os.environ.get("CLOUDBEAVER_ALLOW_HTTP") == "1"
         ):
-            raise RuntimeError("CLOUDBEAVER_ALLOW_HTTP=1 is required for non-HTTPS URLs")
+            raise RuntimeError(
+                "CLOUDBEAVER_BASE_URL must use HTTPS; "
+                "CLOUDBEAVER_ALLOW_HTTP=1 permits HTTP"
+            )
         self.s = requests.Session()
         # flowops 是内网域名，强制忽略环境变量里的代理设置（HTTP_PROXY / HTTPS_PROXY 等），
         # 避免在配了代理的机器上走代理失败。团队任何机器都能直连内网，无需代理软件。
@@ -71,12 +74,15 @@ class StarRocksClient:
 
     def login(self):
         """登录 CloudBeaver"""
-        self.gql("mutation { session: openSession(defaultLocale: \"zh\") { createTime valid } }")
-        res = self.gql("""
-            query login($p: ID!, $c: Object) {
-                authInfo: authLogin(provider: $p, credentials: $c) { authStatus }
-            }
-        """, {"p": "local", "c": {"user": self.username, "password": self.password_hash}})
+        try:
+            self.gql("mutation { session: openSession(defaultLocale: \"zh\") { createTime valid } }")
+            res = self.gql("""
+                query login($p: ID!, $c: Object) {
+                    authInfo: authLogin(provider: $p, credentials: $c) { authStatus }
+                }
+            """, {"p": "local", "c": {"user": self.username, "password": self.password_hash}})
+        except Exception:
+            raise RuntimeError("CloudBeaver login failed") from None
         if res.get("data", {}).get("authInfo", {}).get("authStatus") != "SUCCESS":
             raise RuntimeError("CloudBeaver login failed")
         return self
