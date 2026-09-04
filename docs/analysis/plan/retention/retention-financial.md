@@ -532,13 +532,13 @@ user_profile_tags AS (
     -- 2. 标签固化：服务费负担分组（INNER JOIN，限 start_money>0）+ D1 目标日期
     SELECT
         r.uid, r.reg_date, r.app_id,
-        s.total_fee_paid * 100.0 / s.start_money AS fee_burden_pct,
+        s.total_fee_paid * 100.0 / NULLIF(s.start_money, 0) AS fee_burden_pct,
         s.game_count,
         CASE
-            WHEN s.total_fee_paid * 100.0 / s.start_money <= 1   THEN 'A: 极轻(<1%)'
-            WHEN s.total_fee_paid * 100.0 / s.start_money <= 5   THEN 'B: 轻(1-5%)'
-            WHEN s.total_fee_paid * 100.0 / s.start_money <= 15  THEN 'C: 中(5-15%)'
-            WHEN s.total_fee_paid * 100.0 / s.start_money <= 30  THEN 'D: 重(15-30%)'
+            WHEN s.total_fee_paid * 100.0 / NULLIF(s.start_money, 0) <= 1   THEN 'A: 极轻(<1%)'
+            WHEN s.total_fee_paid * 100.0 / NULLIF(s.start_money, 0) <= 5   THEN 'B: 轻(1-5%)'
+            WHEN s.total_fee_paid * 100.0 / NULLIF(s.start_money, 0) <= 15  THEN 'C: 中(5-15%)'
+            WHEN s.total_fee_paid * 100.0 / NULLIF(s.start_money, 0) <= 30  THEN 'D: 重(15-30%)'
             ELSE                                                   'E: 极重(>30%)'
         END AS fee_burden_group,
         DATE_ADD(r.reg_date, INTERVAL 1 DAY) AS d1_target

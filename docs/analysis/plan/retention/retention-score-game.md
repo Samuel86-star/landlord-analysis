@@ -57,15 +57,15 @@
 ```sql
 -- 次留（Day1）
 COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END)
-  * 100.0 / COUNT(DISTINCT r.uid)
+  * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0)
 
 -- 7留（Day7）
 COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END)
-  * 100.0 / COUNT(DISTINCT r.uid)
+  * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0)
 
 -- 30留（Day30）
 COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY) THEN r.uid END)
-  * 100.0 / COUNT(DISTINCT r.uid)
+  * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0)
 ```
 
 ### 1.4 通用 WITH 子句（各查询复用）
@@ -130,13 +130,13 @@ user_behavior_tags AS (
 -- 3. 极速矩阵聚合：无需再次去重，直接加和求平均
 SELECT
     COUNT(*) AS total_reg,
-    ROUND(SUM(is_score) * 100.0 / COUNT(*), 2) AS score_game_participation_pct,
-    ROUND(SUM(is_silver) * 100.0 / COUNT(*), 2) AS silver_game_participation_pct,
+    ROUND(SUM(is_score) * 100.0 / NULLIF(COUNT(*), 0), 2) AS score_game_participation_pct,
+    ROUND(SUM(is_silver) * 100.0 / NULLIF(COUNT(*), 0), 2) AS silver_game_participation_pct,
     -- 逻辑重组，利用标签直接判定各分区占比
-    ROUND(SUM(CASE WHEN is_score = 1 AND is_silver = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS score_only_pct,
-    ROUND(SUM(is_silver = 1 AND is_score = 0) * 100.0 / COUNT(*), 2) AS silver_only_pct,
-    ROUND(SUM(CASE WHEN is_score = 1 AND is_silver = 1 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS both_pct,
-    ROUND(SUM(CASE WHEN is_score = 0 AND is_silver = 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS no_game_pct
+    ROUND(SUM(CASE WHEN is_score = 1 AND is_silver = 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS score_only_pct,
+    ROUND(SUM(is_silver = 1 AND is_score = 0) * 100.0 / NULLIF(COUNT(*), 0), 2) AS silver_only_pct,
+    ROUND(SUM(CASE WHEN is_score = 1 AND is_silver = 1 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS both_pct,
+    ROUND(SUM(CASE WHEN is_score = 0 AND is_silver = 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS no_game_pct
 FROM user_behavior_tags;
 ```
 
@@ -186,10 +186,10 @@ all_events_stream AS (
 SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     segment_label,
     COUNT(DISTINCT uid) AS user_count,
-    ROUND(SUM(is_d1) * 100.0 / COUNT(DISTINCT uid), 2) AS day1_rate,
-    ROUND(SUM(is_d4) * 100.0 / COUNT(DISTINCT uid), 2) AS day4_rate,
-    ROUND(SUM(is_d7) * 100.0 / COUNT(DISTINCT uid), 2) AS day7_rate,
-    ROUND(SUM(is_d30) * 100.0 / COUNT(DISTINCT uid), 2) AS day30_rate
+    ROUND(SUM(is_d1) * 100.0 / NULLIF(COUNT(DISTINCT uid), 0), 2) AS day1_rate,
+    ROUND(SUM(is_d4) * 100.0 / NULLIF(COUNT(DISTINCT uid), 0), 2) AS day4_rate,
+    ROUND(SUM(is_d7) * 100.0 / NULLIF(COUNT(DISTINCT uid), 0), 2) AS day7_rate,
+    ROUND(SUM(is_d30) * 100.0 / NULLIF(COUNT(DISTINCT uid), 0), 2) AS day30_rate
 FROM all_events_stream
 GROUP BY segment_label
 ORDER BY segment_label;
@@ -290,8 +290,8 @@ user_behavior_tags AS (
 SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     channel,
     COUNT(*) AS total_reg,
-    ROUND(SUM(is_score) * 100.0 / COUNT(*), 2) AS score_participation_pct,
-    ROUND(SUM(is_silver) * 100.0 / COUNT(*), 2) AS silver_participation_pct
+    ROUND(SUM(is_score) * 100.0 / NULLIF(COUNT(*), 0), 2) AS score_participation_pct,
+    ROUND(SUM(is_silver) * 100.0 / NULLIF(COUNT(*), 0), 2) AS silver_participation_pct
 FROM user_behavior_tags
 GROUP BY channel
 ORDER BY score_participation_pct DESC;
@@ -333,7 +333,7 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     platform,
     client_lang,
     COUNT(*) AS reg_users,
-    ROUND(SUM(CASE WHEN max_game_count > 0 THEN 1 ELSE 0 END) * 100.0 / COUNT(*), 2) AS score_participation_pct,
+    ROUND(SUM(CASE WHEN max_game_count > 0 THEN 1 ELSE 0 END) * 100.0 / NULLIF(COUNT(*), 0), 2) AS score_participation_pct,
     ROUND(AVG(NULLIF(max_game_count, 0)), 1) AS avg_score_games
 FROM user_behavior_flatten
 GROUP BY platform, client_lang
