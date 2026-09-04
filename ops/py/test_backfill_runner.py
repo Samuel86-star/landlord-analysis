@@ -38,6 +38,12 @@ class CheckedRowCountTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "verification count"):
             checked_row_count({"results": []})
 
+    def test_nonempty_malformed_rows_fail(self):
+        with self.assertRaisesRegex(RuntimeError, "verification count"):
+            checked_row_count(
+                {"results": [{"resultSet": {"columns": [], "rows": ["12"]}}]}
+            )
+
 
 class RunBackfillTest(unittest.TestCase):
     def test_zero_verification_count_stops_after_delete_insert_and_count(self):

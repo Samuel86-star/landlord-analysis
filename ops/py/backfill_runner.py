@@ -69,6 +69,10 @@ def parse_args(table_label, default_app_id):
 def checked_row_count(result, allow_zero=False):
     try:
         rows = result["results"][0]["resultSet"]["rows"]
+        if not isinstance(rows, list) or not rows or any(
+            not isinstance(row, list) or not row for row in rows
+        ):
+            raise TypeError
         count = int(rows[0][0])
     except (KeyError, IndexError, TypeError, ValueError) as exc:
         raise RuntimeError("Could not read verification count") from exc
