@@ -21,6 +21,7 @@ CloudBeaver / FlowOps StarRocks 查询客户端
 import argparse
 import json
 import os
+import re
 import sys
 import time
 from urllib.parse import urlparse
@@ -33,6 +34,24 @@ def _required_env(name: str) -> str:
     if not value:
         raise RuntimeError("Missing required environment variable: {}".format(name))
     return value
+
+
+DDL_KEYWORDS = frozenset({"CREATE", "ALTER", "DROP", "TRUNCATE"})
+
+
+# ponytail: conservative semicolon handling; use a real tokenizer only if valid
+# string-literal semicolons become a recurring query requirement.
+def validate_sql(sql):
+    cleaned = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    cleaned = re.sub(r"--[^\r\n]*", " ", cleaned).strip()
+    statements = [part.strip() for part in cleaned.split(";") if part.strip()]
+    if len(statements) != 1:
+        raise ValueError("Only a single SQL statement is allowed")
+    match = re.match(r"([A-Za-z]+)", statements[0])
+    if not match:
+        raise ValueError("SQL statement keyword not found")
+    if match.group(1).upper() in DDL_KEYWORDS:
+        raise ValueError("DDL is forbidden in sr_exec.py; run it manually in CloudBeaver")
 
 
 class StarRocksClient:
@@ -111,6 +130,7 @@ class StarRocksClient:
         filter: 可选 CloudBeaver SQLDataFilter dict，如 {"offset": N, "limit": M}，
                 用于分页/限制结果集（突破默认 200 行/页）。见 query_paged。
         """
+        validate_sql(sql)
         if filter is not None:
             res = self.gql(
                 "mutation execSql($cid: ID!, $ctx: ID!, $sql: String!, $filter: SQLDataFilter)"

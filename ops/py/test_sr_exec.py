@@ -10,7 +10,7 @@ try:
 except ModuleNotFoundError:
     sys.modules["requests"] = Mock()
 
-from sr_exec import StarRocksClient
+from sr_exec import StarRocksClient, validate_sql
 
 
 VALID_ENV = {
@@ -94,3 +94,21 @@ class StarRocksClientConfigTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, "^CloudBeaver login failed$") as error:
             client.login()
         self.assertNotIn("hidden response content", str(error.exception))
+
+
+class SqlValidationTest(unittest.TestCase):
+    def test_select_with_leading_comments_is_allowed(self):
+        validate_sql("-- purpose\n/* source */\nSELECT 1;")
+
+    def test_cte_query_is_allowed(self):
+        validate_sql("WITH sample AS (SELECT 1 AS id) SELECT id FROM sample")
+
+    def test_ddl_is_rejected_case_insensitively(self):
+        for keyword in ("CREATE", "alter", "Drop", "TRUNCATE"):
+            with self.subTest(keyword=keyword):
+                with self.assertRaisesRegex(ValueError, "DDL is forbidden"):
+                    validate_sql("{} TABLE unsafe_target".format(keyword))
+
+    def test_multiple_statements_are_rejected(self):
+        with self.assertRaisesRegex(ValueError, "single SQL statement"):
+            validate_sql("SELECT 1; SELECT 2;")
