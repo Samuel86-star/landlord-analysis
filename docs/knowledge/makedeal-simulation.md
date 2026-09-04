@@ -55,6 +55,10 @@ py -3 algorithm/native/extracted/sweep.py --rerank   # 改适应度权重后秒�
 - 适应度（基线=纯随机）：`.28·S_bomb(单局炸率抱随机)+.18·S_hand+.12·S_single+.20·S_susp(首叫+抗衡)+.10·S_div+.12·S_hit`，权重在 `sweep.py` 的 `W` dict。
 - 产物：`top20_report.md`（完整 TOP20 + 算法证明）、`top20_configs.json`（可落地 JSON）、`sweep_raw.json`（指标缓存）。
 
+### 实验留档
+
+每项推荐均须按[实验模板](../makedeal-strategies/_experiment-template.md)留档：源仓 commit、分析仓快照 commit、配置版本或摘要、运行环境与构建类型、样本量、训练与独立复验种子范围，以及可直接执行的完整命令。
+
 ## 4. 与线上口径的关系（对账必读）
 
 **线上持有炸弹 = 从 `hand_cards` 解析**：DWS `tcy_temp.dws_ddz_daily_game` **无 `bomb_cnt` 列**（早期文档误记），持有炸弹须从 `hand_cards`（如 `6,q,8,7,...`）解析——四张同点 + 王炸。打出炸弹 → `bomb_bet`（≠持有，受玩家决策影响）。
