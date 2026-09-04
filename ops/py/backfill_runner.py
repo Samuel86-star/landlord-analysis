@@ -66,6 +66,19 @@ def parse_args(table_label, default_app_id):
     return args
 
 
+def checked_row_count(result, allow_zero=False):
+    try:
+        rows = result["results"][0]["resultSet"]["rows"]
+        count = int(rows[0][0])
+    except (KeyError, IndexError, TypeError, ValueError) as exc:
+        raise RuntimeError("Could not read verification count") from exc
+    if count < 0:
+        raise RuntimeError("Invalid verification count: {}".format(count))
+    if count == 0 and not allow_zero:
+        raise RuntimeError("Verification returned 0 rows")
+    return count
+
+
 def run_backfill(
     table_label,
     delete_template,
@@ -73,6 +86,7 @@ def run_backfill(
     check_template,
     default_app_id=1880053,
     depends_on=(),
+    allow_zero=False,
 ):
     args = parse_args(table_label, default_app_id)
 
@@ -120,11 +134,7 @@ def run_backfill(
             check_result = client.execute(
                 check_template.format(dt=dt, dt_int=dt_int, dt_next_int=dt_next_int, app_id=args.app_id)
             )
-            rows = (
-                check_result.get("results", [{}])[0]
-                .get("resultSet", {})
-                .get("rows", [["?"]])[0][0]
-            )
+            rows = checked_row_count(check_result, allow_zero)
             elapsed = time.time() - t0
             print(
                 "[{:3d}/{}] {}  OK  ({} rows, {:.1f}s)".format(

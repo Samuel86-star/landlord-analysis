@@ -72,7 +72,7 @@ py -3 -u .\daily_backfill.py --start 20260617 --end 20260617 --dry-run
 
 特性：
 - **失败即停**：某张表失败立刻停下来报错，提示从哪一层用 `--layer N` 续跑（避免下游空跑）
-- **0 行警告**：行数为 0 的表打 `⚠️ WARNING` 并汇总到结尾，需人工确认（见 [troubleshooting.md](../docs/lessons/troubleshooting.md)）
+- **0 行默认失败**：COUNT 校验为 0 时子进程以 code 1 退出，调度器随即停止，避免下游空跑
 - **日志**：每天写 `logs/backfill_YYYY-MM-DD.log`，含每张表完整 stdout 便于回溯
 - **幂等**：每张表是 `DELETE + INSERT`，重跑同一天不会重复
 
@@ -189,6 +189,8 @@ py -3 -u .\sr_exec.py -f check_data.sql
 ### backfill_runner.py：内部模板
 
 被所有 batch 脚本 import。封装"按天循环 + DELETE + INSERT + COUNT 校验 + 失败即停"的标准流程。模板占位符：`{dt}`（YYYY-MM-DD）、`{dt_int}`（YYYYMMDD 整数）、`{dt_next_int}`（次日 YYYYMMDD，跨天扫描用）、`{app_id}`。
+
+COUNT 校验为 0 行默认失败；只有确认允许空表的单表脚本才能显式传入 `allow_zero=True`。失败时子进程返回 code 1，调度器会停止后续任务。
 
 新增表回填脚本时，复制现有 batch 脚本（如 `batch_insert_daily_reg.py`）改 SQL 即可，不用碰底层逻辑。
 
