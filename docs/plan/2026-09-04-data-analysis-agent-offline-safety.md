@@ -230,7 +230,7 @@ Add this deliberate limitation beside the implementation:
 
 - [ ] **Step 4: Call validation at the shared submission boundary**
 
-Add `validate_sql(sql)` as the first statement of `_submit_and_wait`. Do not add duplicate checks in `main`, `execute`, `query`, or the 18 batch scripts.
+Add `validate_sql(sql)` as the first statement of `_submit_and_wait`. Do not add duplicate checks in `main`, `execute`, `query`, or the 20 batch scripts.
 
 - [ ] **Step 5: Run all `sr_exec` tests**
 
@@ -257,7 +257,7 @@ git commit -m "fix(data): block DDL in SQL execution path"
 
 - Produces: `checked_row_count(result: dict, allow_zero: bool = False) -> int`.
 - Modifies: `run_backfill(..., depends_on=(), allow_zero=False)`.
-- Compatibility: all 18 existing callers inherit the safe default without modification.
+- Compatibility: all 20 existing callers inherit the safe default without modification.
 
 - [ ] **Step 1: Write failing count validation tests**
 

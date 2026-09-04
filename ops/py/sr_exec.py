@@ -42,12 +42,15 @@ DDL_KEYWORDS = frozenset({"CREATE", "ALTER", "DROP", "TRUNCATE"})
 # ponytail: conservative semicolon handling; use a real tokenizer only if valid
 # string-literal semicolons become a recurring query requirement.
 def validate_sql(sql):
-    cleaned = re.sub(r"/\*.*?\*/", " ", sql, flags=re.DOTALL)
+    statement, delimiter, suffix = sql.partition(";")
+    if delimiter:
+        trailing = re.sub(r"/\*.*?\*/", " ", suffix, flags=re.DOTALL)
+        trailing = re.sub(r"--[^\r\n]*", " ", trailing)
+        if ";" in suffix or trailing.strip():
+            raise ValueError("Only a single SQL statement is allowed")
+    cleaned = re.sub(r"/\*.*?\*/", " ", statement, flags=re.DOTALL)
     cleaned = re.sub(r"--[^\r\n]*", " ", cleaned).strip()
-    statements = [part.strip() for part in cleaned.split(";") if part.strip()]
-    if len(statements) != 1:
-        raise ValueError("Only a single SQL statement is allowed")
-    match = re.match(r"([A-Za-z]+)", statements[0])
+    match = re.match(r"([A-Za-z]+)", cleaned)
     if not match:
         raise ValueError("SQL statement keyword not found")
     if match.group(1).upper() in DDL_KEYWORDS:

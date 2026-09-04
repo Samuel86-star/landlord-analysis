@@ -10,7 +10,7 @@ py/
 ├── daily_retention.py           # 调度器二：每日刷留存（3 张表，35 天回扫）
 ├── backfill_runner.py           # 共享回填工具（按天 DELETE+INSERT，被各 batch 脚本复用）
 ├── sr_exec.py                   # StarRocks 客户端（CloudBeaver GraphQL，连库执行 SQL）
-├── batch_insert_*.py            # 18 个单表回填脚本（被调度器调用，也可单独跑）
+├── batch_insert_*.py            # 20 个单表回填脚本（18 个被调度器调用，也可单独跑）
 ├── check_data.sql               # 校验脚本：一次查 15 张表的当天行数
 └── logs/                        # 调度器运行日志（.gitignore 排除，自动生成）
 ```

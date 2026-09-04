@@ -112,3 +112,36 @@ class SqlValidationTest(unittest.TestCase):
     def test_multiple_statements_are_rejected(self):
         with self.assertRaisesRegex(ValueError, "single SQL statement"):
             validate_sql("SELECT 1; SELECT 2;")
+
+    def test_line_comment_marker_in_literal_cannot_hide_ddl(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "^Only a single SQL statement is allowed$",
+        ):
+            validate_sql("SELECT '--'; DROP TABLE unsafe_target; -- trailing")
+
+    def test_block_comment_marker_in_literal_cannot_hide_ddl(self):
+        with self.assertRaisesRegex(
+            ValueError,
+            "^Only a single SQL statement is allowed$",
+        ):
+            validate_sql("SELECT '/*'; DROP TABLE unsafe_target; /* trailing */")
+
+    def test_terminal_semicolon_with_trailing_comment_is_allowed(self):
+        validate_sql("SELECT 1; -- trailing")
+
+    def test_rejected_sql_is_not_submitted(self):
+        client = StarRocksClient.__new__(StarRocksClient)
+        client.conn_id = "connection"
+        client.ctx_id = "context"
+        client.gql = Mock()
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "^Only a single SQL statement is allowed$",
+        ):
+            client._submit_and_wait(
+                "SELECT '--'; DROP TABLE unsafe_target; -- trailing"
+            )
+
+        client.gql.assert_not_called()
