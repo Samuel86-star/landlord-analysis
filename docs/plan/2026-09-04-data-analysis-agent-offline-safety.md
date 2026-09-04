@@ -213,7 +213,7 @@ def validate_sql(sql):
     cleaned = re.sub(r"--[^\r\n]*", " ", cleaned).strip()
     statements = [part.strip() for part in cleaned.split(";") if part.strip()]
     if len(statements) != 1:
-        raise ValueError("Exactly one SQL statement is required")
+        raise ValueError("Only a single SQL statement is allowed")
     match = re.match(r"([A-Za-z]+)", statements[0])
     if not match:
         raise ValueError("SQL statement keyword not found")
@@ -462,4 +462,3 @@ git commit -m "docs(data): define analysis input and result contracts"
 - **公司网络集成计划**：验证 CloudBeaver 连接、HTTPS、权限和 StarRocks 恢复语义。恢复方案必须基于实际能力重新设计，并在用户给出准确安全表、日期及写入授权后执行。
 - **真实分析评估计划**：集成验证通过后，使用 Spec 规定的 5 至 10 个真实任务验证任务契约、SQL、质检和结论溯源。
 - **Project Skill 计划**：真实任务证明流程稳定后，再创建 `.agents/skills/data-analysis-agent/SKILL.md`；首版只编排现有流程，不新增脚本。
-
