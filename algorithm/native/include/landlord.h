@@ -15,6 +15,7 @@
 #include <cassert>
 #include <fstream>
 #include <cstdlib>
+#include <cstdint>
 
 namespace landlord {
 
@@ -237,7 +238,7 @@ struct Combo {
             case ComboType::TRIPLE_WITH_SINGLE:    return 4;
             case ComboType::TRIPLE_WITH_PAIR:      return 5;
             case ComboType::STRAIGHT:              return static_cast<int>(mainRanks.size());
-            case ComboType::CONSECUTIVE_PAIRS:     return static_cast<int>(mainRanks.size());
+            case ComboType::CONSECUTIVE_PAIRS:     return static_cast<int>(mainRanks.size()) * 2;
             case ComboType::PLANE:                 return static_cast<int>(mainRanks.size()) * 3;
             case ComboType::PLANE_WITH_SINGLES:    return static_cast<int>(mainRanks.size()) * 3 + static_cast<int>(wingRanks.size());
             case ComboType::PLANE_WITH_PAIRS:      return static_cast<int>(mainRanks.size()) * 3 + static_cast<int>(wingRanks.size()) * 2;
@@ -1035,16 +1036,22 @@ class ShuffleDealStrategy {
 public:
     ShuffleDealStrategy()
         : handScorer_()
-        , comboExtractor_(handScorer_) {}
+        , comboExtractor_(handScorer_)
+        , rng_(std::random_device{}()) {}
 
-    ShuffleDealStrategy(const DefaultHandCardsScoringStrategy& hs,
-                        const DefaultComboExtractor& ce)
-        : handScorer_(hs), comboExtractor_(ce) {}
+    explicit ShuffleDealStrategy(std::uint32_t seed)
+        : handScorer_()
+        , comboExtractor_(handScorer_)
+        , rng_(seed) {}
+
+    ShuffleDealStrategy(const ShuffleDealStrategy&) = delete;
+    ShuffleDealStrategy& operator=(const ShuffleDealStrategy&) = delete;
+    ShuffleDealStrategy(ShuffleDealStrategy&&) = delete;
+    ShuffleDealStrategy& operator=(ShuffleDealStrategy&&) = delete;
 
     inline std::vector<Card> shuffle() {
         auto deck = Deck::fullDeck();
-        static thread_local std::mt19937 rng(std::random_device{}());
-        std::shuffle(deck.begin(), deck.end(), rng);
+        std::shuffle(deck.begin(), deck.end(), rng_);
         return deck;
     }
 
@@ -1149,7 +1156,6 @@ public:
         double landlordAdv          = calcMaxLandlordAdvantage(dealData, seatScores);
         auto structureFeats         = calcAllStructureFeatures(dealData);
 
-        int problematicSeat = -1;
         int reshuffleCnt    = 0;
 
         while (reshuffleCnt < maxReshuffleTimes
@@ -1161,22 +1167,9 @@ public:
                             maxPotentialLandlordVal, maxLandlordAdvVal,
                             maxSingles, maxBombs)) {
 
-            double currentLower = relaxThreshold(lowerThreshold, reshuffleCnt, relaxStep);
-            double currentUpper = relaxThreshold(upperThreshold, reshuffleCnt, relaxStep);
-            problematicSeat = findProblematicSeat(seatScores, currentLower, currentUpper);
-
             ++reshuffleCnt;
             shuffledCards = shuffle();
             dealData      = dealCards(shuffledCards);
-
-            if (problematicSeat >= 0) {
-                double quickScore = calcHandStrengthScores(dealData.getHandCards(problematicSeat));
-                double nextLower  = relaxThreshold(lowerThreshold, reshuffleCnt, relaxStep);
-                double nextUpper  = relaxThreshold(upperThreshold, reshuffleCnt, relaxStep);
-                if (quickScore < nextLower || quickScore > nextUpper) {
-                    continue;
-                }
-            }
 
             seatScores          = calcAllSeatHandStrength(dealData);
             potentialLandlord   = calcPotentialLandlordScore(dealData);
@@ -1199,6 +1192,7 @@ public:
 private:
     DefaultHandCardsScoringStrategy handScorer_;
     DefaultComboExtractor           comboExtractor_;
+    std::mt19937                    rng_;
 
     inline EvaluatedDealData shuffleAndDealSimple() {
         auto shuffledCards = shuffle();
@@ -1246,13 +1240,6 @@ private:
         return false;
     }
 
-    static int findProblematicSeat(const std::array<double, 3>& scores,
-                                   double lower, double upper) {
-        for (int i = 0; i < 3; ++i) {
-            if (scores[i] < lower || scores[i] > upper) return i;
-        }
-        return -1;
-    }
 };
 
 // ============================================================

@@ -136,17 +136,7 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 - `threshold-relax-step`：放宽步长，默认 `0.15`（每次放宽 15%）
 - `max-reshuffle-times`：最大重洗次数，默认 `5`，超过后接受当前结果
 
-### 4.2 快速失败（Fast-Fail）
-
-重洗循环中引入「定向检查」优化：
-
-1. 当某次判定为极端局面时，记录触发原因的具体座位（`problematicSeat`）
-2. 下一轮重洗后，**优先只计算该座位的牌力**
-3. 若该座位仍然超限，直接跳过完整的全局计算，进入下一次重洗
-
-**效果**：在「同一座位反复触发阈值」的场景下，减少约 60%~70% 的无效计算。
-
-> 注：当触发原因是「三家极差过大」（非单一座位问题）时，`problematicSeat = -1`，退化为完整计算，不影响正确性。
+每一局被接受或达到最大重洗次数后返回的牌都会完整评估，确保返回分值始终与返回手牌一致。
 
 ---
 
@@ -222,7 +212,7 @@ landlord.shuffle-strategy.version=dealing_filter_v2
 
 | 类名 | 职责 |
 |---|---|
-| `DefaultReshuffleDealStrategy` | 核心重洗入口，整合五维检测逻辑与快速失败优化 |
+| `DefaultReshuffleDealStrategy` | 核心重洗入口，整合五维检测逻辑与完整评估 |
 | `AbstractShuffleDealStrategy` | 基类，提供牌力计算、结构特征统计等通用方法 |
 | `ShuffleStrategyDecisionProperties` | 配置属性类，对应所有 `application.properties` 参数 |
 | `DealDistributionSampler` | 采样工具，用于统计基线分布、输出推荐阈值（非生产逻辑） |

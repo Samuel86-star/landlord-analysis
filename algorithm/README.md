@@ -7,8 +7,8 @@
 | 项 | 值 |
 |---|---|
 | 源仓库 | https://github.com/Samuel86-star/landlord.git |
-| 快照 commit | `71599ad` (main) |
-| 快照日期 | 2026-07-30 |
+| 快照 commit | `e4be61a` (`codex/dealing-agent-foundation`) |
+| 快照日期 | 2026-09-05 |
 | 坐标 | `com.mamba.landlord:landlord-algorithm:0.0.1-SNAPSHOT` |
 | 技术栈 | Spring Boot 4.0.3 / Java 21 + C++（native） |
 | 对应方案 | [docs/tech/algorithm-snapshot-plan.md](../docs/tech/algorithm-snapshot-plan.md) |
@@ -33,4 +33,4 @@
 
 ## 更新方法
 
-源仓库演进后：在 landlord-algorithm 提交 → 记录新 commit → 用 `rsync` 重新覆盖本目录 → 更新上方「快照 commit / 日期」→ 在 analysis 提交。完整命令见 [docs/tech/algorithm-snapshot-plan.md](../docs/tech/algorithm-snapshot-plan.md)。
+源仓库演进后：在 landlord-algorithm 提交并记录 source base/head → 按 commit 差异清单增量合入本目录并保留 analysis 专用资产 → 更新上方「快照 commit / 日期」→ 验证后在 analysis 提交。完整步骤见 [docs/tech/algorithm-snapshot-plan.md](../docs/tech/algorithm-snapshot-plan.md)。

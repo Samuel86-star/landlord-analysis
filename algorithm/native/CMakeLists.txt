@@ -13,6 +13,11 @@ endif()
 include_directories(include)
 
 add_executable(landlord_test test/main_test.cpp)
+enable_testing()
+add_test(NAME landlord_test COMMAND landlord_test)
+set_tests_properties(landlord_test PROPERTIES
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+)
 add_executable(landlord_sampler test/sampler_test.cpp)
 add_executable(power_split_test extracted/power_split_test.cpp)
 add_executable(split_vs_power extracted/verify_split_vs_power.cpp)

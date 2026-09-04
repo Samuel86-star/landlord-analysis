@@ -29,8 +29,6 @@ import java.util.List;
  *       补充 V_total 无法识别的「大单牌堆」「炸弹泛滥」等极端结构。</li>
  * </ol>
  * 每次重洗后通过 {@link #relaxThreshold} 对阈值做渐进式放宽，防止因阈值过严导致死循环。
- * 快速失败优化：若上轮有明确的问题座位，下轮重洗后优先只校验该座位，确认仍超范围则直接进入
- * 下一轮，跳过其他两家及复杂指标的计算。
  * </p>
  * <p>
  * 所有阈值均从 {@link ShuffleStrategyDecisionProperties} 读取，建议通过
@@ -56,8 +54,7 @@ public class DefaultReshuffleDealStrategy extends DefaultShuffleDealStrategy
      * <ol>
      *   <li>洗牌并发牌。</li>
      *   <li>计算三家手牌牌力、潜在地主牌力、地主优势、手牌结构特征。</li>
-     *   <li>调用 {@link #isExtreme} 判断是否需要重洗；若需要则记录问题座位，触发重洗。</li>
-     *   <li>重洗时使用「快速失败」：若上轮有明确问题座位，先只算该家；确认仍超范围则跳过全量计算。</li>
+     *   <li>调用 {@link #isExtreme} 判断是否需要重洗。</li>
      *   <li>每轮重洗后通过 {@link #relaxThreshold} 放宽阈值，最多重洗 maxReshuffleTimes 次。</li>
      * </ol>
      * </p>
@@ -92,8 +89,6 @@ public class DefaultReshuffleDealStrategy extends DefaultShuffleDealStrategy
         double landlordAdvantage = calcMaxLandlordAdvantage(dealData, seatScores);
         int[][] structureFeatures = calcAllStructureFeatures(dealData);
 
-        // 记录上轮触发重洗的问题座位（用于快速失败优化），-1 表示无法定位到单一座位
-        int problematicSeat = -1;
         int reshuffleCnt = 0;
 
         while (reshuffleCnt < maxReshuffleTimes
@@ -106,25 +101,9 @@ public class DefaultReshuffleDealStrategy extends DefaultShuffleDealStrategy
                              maxLandlordAdvantage,
                              maxSingles, maxBombs)) {
 
-            // 记录本轮问题座位，供下轮快速失败使用
-            double currentLower = relaxThreshold(lowerThreshold, reshuffleCnt, relaxStep);
-            double currentUpper = relaxThreshold(upperThreshold, reshuffleCnt, relaxStep);
-            problematicSeat = findProblematicSeat(seatScores, currentLower, currentUpper);
-
             reshuffleCnt++;
             shuffledCards = shuffle();
             dealData = dealCards(shuffledCards);
-
-            // 快速失败：若上轮有明确问题座位，先只校验该座位，避免无效全量计算
-            if (problematicSeat >= 0) {
-                double quickScore = calcHandStrengthScores(dealData.getHandCards(problematicSeat));
-                double nextLower = relaxThreshold(lowerThreshold, reshuffleCnt, relaxStep);
-                double nextUpper = relaxThreshold(upperThreshold, reshuffleCnt, relaxStep);
-                if (quickScore < nextLower || quickScore > nextUpper) {
-                    // 该座位仍然超出范围，直接进入下一轮，保留旧的全量数据使循环条件继续为 true
-                    continue;
-                }
-            }
 
             // 全量重新计算三家牌力与所有均衡性指标
             seatScores = calcAllSeatHandStrength(dealData);
@@ -220,25 +199,4 @@ public class DefaultReshuffleDealStrategy extends DefaultShuffleDealStrategy
         return false;
     }
 
-    /**
-     * 找出本次触发上下阈值极端判断的问题座位。
-     * <p>
-     * 仅对「任一家手牌牌力超出阈值」这种情况能定位到单一座位；
-     * 极差超限、结构特征超限等情况无法定位，返回 -1。
-     * 返回值供「快速失败」优化使用：下轮重洗后优先只校验该座位。
-     * </p>
-     *
-     * @param scores 三家手牌牌力值
-     * @param lower  当前下阈值（已含 relax）
-     * @param upper  当前上阈值（已含 relax）
-     * @return 问题座位号（0/1/2），无法定位时返回 -1
-     */
-    private static int findProblematicSeat(double[] scores, double lower, double upper) {
-        for (int i = 0; i < scores.length; i++) {
-            if (scores[i] < lower || scores[i] > upper) {
-                return i;
-            }
-        }
-        return -1;
-    }
 }

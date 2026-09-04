@@ -49,25 +49,37 @@
     - 统计所有对局的重洗总次数，计算平均重洗次数 `avgReshufflesPerDeal`。
     - 使用极宽松的断言（`avgReshufflesPerDeal >= 0.0`）作为基本健壮性检查，核心用途是观察运行时间与重洗频率的粗略基线。
 
+- **`ScoringAndSplittingBenchmarkTest`**
+  - 使用 `@Tag("benchmark")` 标记，仅在开启 benchmark profile 时运行。
+  - 覆盖 Combo 评分、整手牌评分、单路径拆牌、双路径提取及完整洗牌发牌的吞吐量基线。
+
+  Benchmark 吞吐量阈值取决于记录基线的机器性能，仅用于性能观察，不是正确性断言。
+
 ### 3. 测试运行命令
 
-- **日常开发：只跑普通单测（不含 benchmark）**
+- **日常开发：只跑普通单测（不含 `ShuffleAndScoringBenchmarkTest` 与 `ScoringAndSplittingBenchmarkTest`）**
 
 ```bash
-mvn test -DskipITs
+mvn test
 ```
 
-- **带 benchmark 的完整回归（包含模拟 / 性能测试）**
+- **带 benchmark 的完整回归（包含 `ShuffleAndScoringBenchmarkTest` 与 `ScoringAndSplittingBenchmarkTest`）**
 
 ```bash
-mvn test -Pbenchmark -DskipITs
+mvn test -Pbenchmark
+```
+
+**Native 算法测试**
+
+```bash
+cmake -S native -B native/build-release -DCMAKE_BUILD_TYPE=Release
+cmake --build native/build-release --target landlord_test
+ctest --test-dir native/build-release --output-on-failure
 ```
 
 说明：
 
-- `-DskipITs`：沿用当前项目约定，跳过集成测试模块（如果后续引入 IT 模块，可按需调整）。
 - 默认情况下，`pom.xml` 中的 `maven-surefire-plugin` 会通过：
   - `<excludedGroups>benchmark</excludedGroups>` 排除所有带 `@Tag("benchmark")` 的测试。
 - 当通过 `-Pbenchmark` 启用 benchmark profile 时：
   - 会在该 profile 中覆盖 surefire 配置，清空 `excludedGroups`，从而让 benchmark 测试也参与执行。
-

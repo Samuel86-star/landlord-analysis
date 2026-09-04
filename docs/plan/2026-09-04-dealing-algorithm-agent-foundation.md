@@ -675,88 +675,115 @@ git commit -m "docs(algorithm): define reproducible experiment contract"
 
 **Files:**
 
-- Replace from verified source: `algorithm/`
+- Incrementally sync the 13 files changed by source commits `71599ad..e4be61a` into `algorithm/`
 - Modify after sync: `algorithm/README.md:5-14`
 - Modify: `docs/tech/algorithm-snapshot-plan.md`
-- Modify if commands changed: `docs/review/dealing-algorithm-agent/2026-09-04-review.md`
+- Preserve: `algorithm/native/extracted/`, `algorithm/native/previous/`, `shuffle_prng_compare*` and all other analysis-only assets
+- Preserve unless a historical statement becomes false for its reviewed revision: `docs/review/dealing-algorithm-agent/2026-09-04-review.md`
 
 **Interfaces:**
 
-- Consumes: clean, tested source repository HEAD from Tasks 1–6。
+- Consumes: tested source repository commits `71599ad..e4be61a` from Tasks 1–6。
 - Produces: analysis repository snapshot traceable to one source commit。
 
 - [ ] **Step 1: Record the verified source commit**
 
-In the source repository run:
+In the verified source worktree run:
 
 ```bash
-git status --short
-git rev-parse HEAD
-git log -1 --oneline
+git -C /private/tmp/landlord-dealing-agent status --short
+git -C /private/tmp/landlord-dealing-agent rev-parse HEAD
+git -C /private/tmp/landlord-dealing-agent log -1 --oneline
 ```
 
-Expected: clean working tree and one explicit source commit hash containing Tasks 1–6.
+Expected: `e4be61a` is HEAD and contains Tasks 1–6. Build directories may be untracked; there must be no tracked source changes, and synchronization reads commit objects rather than the mutable worktree.
 
-- [ ] **Step 2: Preview the snapshot synchronization**
+- [ ] **Step 2: Derive and review the exact manifest**
 
-From the analysis repository, preview the sync with:
+Run:
 
 ```bash
-rsync -a --delete --dry-run \
-  --exclude='.git/' \
-  --exclude='.gitmodules' \
-  --exclude='.gitattributes' \
-  --exclude='.idea/' \
-  --exclude='.vscode/' \
-  --exclude='.cursor/' \
-  --exclude='.claude/' \
-  --exclude='target/' \
-  --exclude='native/build*/' \
-  --exclude='native/sampler' \
-  --exclude='native/test_main' \
-  --exclude='.DS_Store' \
-  --exclude='HELP.md' \
-  --exclude='/README.md' \
-  /Users/maerun/Projects/landlord/ \
-  /Users/maerun/Projects/landlord-analysis/algorithm/
+git -C /private/tmp/landlord-dealing-agent diff --name-status 71599ad..e4be61a
 ```
 
-Review every deletion and confirm `algorithm/native/previous/` changes, if any, have an explicit source and impact record. The root `README.md` exclusion preserves the analysis repository's snapshot metadata file.
+Expected manifest:
 
-- [ ] **Step 3: Obtain user approval and perform the documented synchronization**
+| 状态 | 源仓路径 |
+| ---- | ---- |
+| A | `docs/cross-language-regression-vectors.md` |
+| M | `docs/deal-balancing-prd.md` |
+| M | `docs/testing-strategy-and-commands.md` |
+| M | `native/CMakeLists.txt` |
+| M | `native/include/landlord.h` |
+| M | `native/test/main_test.cpp` |
+| M | `pom.xml` |
+| M | `src/main/java/com/mamba/landlord/algorithm/shuffle/strategy/DefaultReshuffleDealStrategy.java` |
+| M | `src/main/java/com/mamba/landlord/core/model/Combo.java` |
+| M | `src/test/java/com/mamba/landlord/algorithm/shuffle/strategy/DefaultReshuffleDealStrategyTest.java` |
+| M | `src/test/java/com/mamba/landlord/benchmark/ScoringAndSplittingBenchmarkTest.java` |
+| M | `src/test/java/com/mamba/landlord/benchmark/ShuffleAndScoringBenchmarkTest.java` |
+| A | `src/test/java/com/mamba/landlord/core/model/ComboTest.java` |
 
-Run the exact command from Step 2 without `--dry-run` only after approval. Record the command in `docs/tech/algorithm-snapshot-plan.md` so later synchronizations use the same exclusions; do not manually copy selected files.
+- [ ] **Step 3: Classify target divergence against source base**
 
-- [ ] **Step 4: Update snapshot metadata**
+For each modified path, compare `algorithm/<path>` with `git -C /private/tmp/landlord-dealing-agent show 71599ad:<path>`.
 
-Set `algorithm/README.md` “快照 commit” to the exact `git rev-parse HEAD` value from Step 1 and “快照日期” to the actual sync date. Keep the read-only warning.
+Expected:
 
-- [ ] **Step 5: Run the complete snapshot verification**
+- Base-equal: `docs/testing-strategy-and-commands.md`, `pom.xml`, both Java main files, the reshuffle Java test and both benchmark tests. Apply only each file's final `71599ad..e4be61a` delta.
+- Diverged: `docs/deal-balancing-prd.md`, `native/CMakeLists.txt`, `native/include/landlord.h`, `native/test/main_test.cpp`. Merge only Tasks 1–6 hunks while preserving analysis-only threshold calibration, extracted-tool targets, scoring rules and scoring tests.
+- New: add the two `A` files from the manifest.
+
+- [ ] **Step 4: Apply the incremental synchronization**
+
+Use `apply_patch` for the 13 manifest files. Do not run deletion-based full-tree synchronization. Do not modify or delete `.git`, `.superpowers/`, build outputs, `native/extracted/`, `native/previous/`, `shuffle_prng_compare*` or any path absent from the manifest.
+
+- [ ] **Step 5: Update snapshot metadata and synchronization documentation**
+
+Set `algorithm/README.md` “快照 commit” to `e4be61a` and “快照日期” to `2026-09-05`. Keep the read-only warning. Update `docs/tech/algorithm-snapshot-plan.md` and this task to retain the safe manifest-and-merge procedure.
+
+- [ ] **Step 6: Run the complete snapshot verification**
 
 ```bash
 cd algorithm
-mvn test
+./mvnw test
 cmake -S native -B native/build-release -DCMAKE_BUILD_TYPE=Release
 cmake --build native/build-release --target landlord_test
 ctest --test-dir native/build-release --output-on-failure
 ```
 
-Expected: Maven succeeds without benchmark classes; CTest discovers one test and succeeds in Release mode.
+Expected: Maven succeeds with 62 tests and no benchmark classes: 60 from the verified source suite plus two preserved analysis-only scoring regressions. CTest discovers exactly one test and succeeds in Release mode.
 
-- [ ] **Step 6: Check documentation and diff integrity**
+- [ ] **Step 7: Check documentation, preservation and diff integrity**
 
 ```bash
 git diff --check
 git status --short
 git diff --stat
+git diff -- algorithm/native/extracted algorithm/native/previous
 ```
 
-Expected: no whitespace errors; changes are limited to the synchronized algorithm snapshot, experiment documentation, confirmed Spec and this plan. Pre-existing unrelated files remain untouched.
+Expected: no whitespace errors; only the 13 source-manifest files, snapshot README and the two synchronization documents changed. Protected paths have no tracked diff, and the pre-existing untracked `algorithm/native/extracted/harness` remains untouched.
 
-- [ ] **Step 7: Commit Task 8 in the analysis repository**
+- [ ] **Step 8: Commit Task 8 in the analysis repository**
 
 ```bash
-git add algorithm docs/knowledge/makedeal-simulation.md docs/makedeal-strategies/_experiment-template.md docs/tech/algorithm-snapshot-plan.md docs/spec/2026-09-04-dealing-algorithm-agent-design.md docs/plan/2026-09-04-dealing-algorithm-agent-foundation.md
+git add algorithm/README.md \
+  algorithm/docs/cross-language-regression-vectors.md \
+  algorithm/docs/deal-balancing-prd.md \
+  algorithm/docs/testing-strategy-and-commands.md \
+  algorithm/native/CMakeLists.txt \
+  algorithm/native/include/landlord.h \
+  algorithm/native/test/main_test.cpp \
+  algorithm/pom.xml \
+  algorithm/src/main/java/com/mamba/landlord/algorithm/shuffle/strategy/DefaultReshuffleDealStrategy.java \
+  algorithm/src/main/java/com/mamba/landlord/core/model/Combo.java \
+  algorithm/src/test/java/com/mamba/landlord/algorithm/shuffle/strategy/DefaultReshuffleDealStrategyTest.java \
+  algorithm/src/test/java/com/mamba/landlord/benchmark/ScoringAndSplittingBenchmarkTest.java \
+  algorithm/src/test/java/com/mamba/landlord/benchmark/ShuffleAndScoringBenchmarkTest.java \
+  algorithm/src/test/java/com/mamba/landlord/core/model/ComboTest.java \
+  docs/tech/algorithm-snapshot-plan.md \
+  docs/plan/2026-09-04-dealing-algorithm-agent-foundation.md
 git commit -m "fix(algorithm): sync verified dealing foundation"
 ```
 

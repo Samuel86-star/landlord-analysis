@@ -1,10 +1,18 @@
 package com.mamba.landlord.algorithm.shuffle.strategy;
 
+import com.mamba.landlord.algorithm.scoring.strategy.DefaultHandCardsScoringStrategy;
+import com.mamba.landlord.algorithm.splitter.DefaultComboExtractor;
 import com.mamba.landlord.core.holder.ShuffleStrategyDecisionHolder;
+import com.mamba.landlord.core.model.Card;
+import com.mamba.landlord.core.model.Deck;
 import com.mamba.landlord.core.model.EvaluatedDealData;
 import com.mamba.landlord.core.properties.ShuffleStrategyDecisionProperties;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
+
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -21,6 +29,47 @@ import static org.junit.jupiter.api.Assertions.*;
  * </p>
  */
 class DefaultReshuffleDealStrategyTest {
+
+    private static final class SequenceStrategy extends DefaultReshuffleDealStrategy {
+        private final List<List<Card>> decks;
+        private int index;
+
+        private SequenceStrategy() {
+            List<Card> first = Deck.copyFullDeckCards();
+            List<Card> second = new ArrayList<>(first);
+            Collections.reverse(second);
+            decks = List.of(first, second);
+        }
+
+        @Override
+        public List<Card> shuffle() {
+            return decks.get(index++);
+        }
+    }
+
+    private static double recomputeScore(List<Card> cards) {
+        DefaultHandCardsScoringStrategy scorer = new DefaultHandCardsScoringStrategy();
+        DefaultComboExtractor extractor = new DefaultComboExtractor(scorer);
+        return scorer.calcTotalHandScore(cards, extractor.extractAllCombos(cards));
+    }
+
+    @Test
+    void returnedScoresAlwaysBelongToReturnedHandsAfterMaxReshuffles() {
+        ShuffleStrategyDecisionProperties props = new ShuffleStrategyDecisionProperties();
+        props.setEnabled(true);
+        props.setLowerThreshold(100_000.0);
+        props.setUpperThreshold(100_001.0);
+        props.setMaxReshuffleTimes(1);
+        props.setThresholdRelaxStep(0.0);
+        ShuffleStrategyDecisionHolder.set(props);
+
+        EvaluatedDealData data = new SequenceStrategy().shuffleAndDeal();
+
+        assertEquals(1, data.getReshuffleCnt());
+        assertEquals(recomputeScore(data.getHandCards(0)), data.getHandStrengthPlayer0(), 0.001);
+        assertEquals(recomputeScore(data.getHandCards(1)), data.getHandStrengthPlayer1(), 0.001);
+        assertEquals(recomputeScore(data.getHandCards(2)), data.getHandStrengthPlayer2(), 0.001);
+    }
 
     @Test
     @DisplayName("当关闭过滤时，应直接复用默认策略结果且不发生重洗")

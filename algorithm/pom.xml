@@ -109,7 +109,7 @@
 						<version>3.5.4</version>
 						<configuration>
 							<!-- 基准测试模式下，同时运行普通测试和带 benchmark 标签的测试 -->
-							<excludedGroups/>
+							<excludedGroups combine.self="override"/>
 						</configuration>
 					</plugin>
 				</plugins>

@@ -123,7 +123,8 @@ public record Combo(ComboType type, List<Rank> mainRanks, List<Rank> wingRanks) 
             case TRIPLE -> 3;
             case TRIPLE_WITH_SINGLE -> 4;
             case TRIPLE_WITH_PAIR -> 5;
-            case STRAIGHT, CONSECUTIVE_PAIRS -> mainRanks.size();
+            case STRAIGHT -> mainRanks.size();
+            case CONSECUTIVE_PAIRS -> mainRanks.size() * 2;
             case PLANE -> mainRanks.size() * 3;
             case PLANE_WITH_SINGLES -> mainRanks.size() * 3 + wingRanks.size();
             case PLANE_WITH_PAIRS -> mainRanks.size() * 3 + wingRanks.size() * 2;

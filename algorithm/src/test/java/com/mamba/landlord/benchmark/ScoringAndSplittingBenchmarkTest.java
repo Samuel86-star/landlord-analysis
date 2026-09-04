@@ -11,6 +11,7 @@ import com.mamba.landlord.core.model.Deck;
 import com.mamba.landlord.core.model.Rank;
 import com.mamba.landlord.core.model.Suit;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -25,6 +26,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 评分与拆牌环节的 Benchmark 测试。
  * 分别对 Combo 评分、整手牌评分、拆牌、双路径提取进行吞吐量测试。
  */
+@Tag("benchmark")
 class ScoringAndSplittingBenchmarkTest {
 
     private static final Logger log = LoggerFactory.getLogger(ScoringAndSplittingBenchmarkTest.class);

@@ -5,6 +5,7 @@ import com.mamba.landlord.algorithm.shuffle.DealDistributionSampler.DealSampleRe
 import com.mamba.landlord.algorithm.shuffle.strategy.DefaultReshuffleDealStrategy;
 import com.mamba.landlord.core.holder.ShuffleStrategyDecisionHolder;
 import com.mamba.landlord.core.properties.ShuffleStrategyDecisionProperties;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -21,6 +22,7 @@ import org.slf4j.LoggerFactory;
  * </ol>
  * </p>
  */
+@Tag("benchmark")
 class ShuffleAndScoringBenchmarkTest {
 
     private static final Logger log = LoggerFactory.getLogger(ShuffleAndScoringBenchmarkTest.class);
@@ -107,4 +109,3 @@ class ShuffleAndScoringBenchmarkTest {
         assert avgReshufflesPerDeal >= 0.0;
     }
 }
-
