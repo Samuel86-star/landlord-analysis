@@ -162,6 +162,20 @@ py -3 -u .\sr_exec.py -f my_query.sql
 - INSERT/DELETE 完成后校验 `statusMessage`（拦"任务真没跑"，但拦不住 strict mode 静默回滚——后者必须 SELECT COUNT 复核）
 - `-f` 读 SQL 文件强制 utf-8（避免 Windows GBK 解码失败）
 
+#### sr_exec.py 配置
+
+`sr_exec.py` 从环境变量读取连接配置。真实值必须放在 shell 环境或被 Git 忽略的本地文件中，不能提交到仓库。
+
+| 环境变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `CLOUDBEAVER_BASE_URL` | 是 | CloudBeaver GraphQL HTTPS 地址 |
+| `CLOUDBEAVER_USERNAME` | 是 | CloudBeaver 登录账号 |
+| `CLOUDBEAVER_PASSWORD_HASH` | 是 | CloudBeaver 密码摘要 |
+| `CLOUDBEAVER_PROJECT_ID` | 是 | CloudBeaver 项目 ID |
+| `CLOUDBEAVER_ALLOW_HTTP` | 否 | 仅限已记录的受限内网例外；设为 `1` 才允许 HTTP |
+
+此前提交过的凭据必须从公司网络完成轮换。
+
 ### check_data.sql：行数校验
 
 一次性查 15 张表指定日期的行数，按表名排序输出。改日期方式：
@@ -192,7 +206,7 @@ py -3 -u .\sr_exec.py -f check_data.sql
 
 - Windows + PowerShell + Python 3（用 `py -3` 调用，不要直接用 `python`）
 - macOS：见上方「跨平台：macOS 用户」，配置 `py` 函数 + 路径改用 `./`
-- 能直连 `flowops.tcy365.net:7788`（内网，无需代理）
+- 能从公司网络直连 CloudBeaver（内网，无需代理）
 - 已安装 `requests` 和 `pandas`：`py -3 -m pip install requests pandas`（macOS 用 `uv pip install requests pandas`）
 - DDL 操作（CREATE/ALTER/DROP）禁止走脚本，必须在 CloudBeaver 网页端手动执行（详见根目录 [CLAUDE.md](../CLAUDE.md)）
 

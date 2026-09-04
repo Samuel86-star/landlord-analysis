@@ -18,15 +18,34 @@ CloudBeaver / FlowOps StarRocks 查询客户端
     3. -f 读 SQL 文件强制 utf-8，不依赖系统 locale（Windows 下默认 GBK 会炸）。
 """
 
-import requests, json, time, sys, argparse
+import argparse
+import json
+import os
+import sys
+import time
+from urllib.parse import urlparse
 
-BASE = "http://flowops.tcy365.net:7788/api/gql"
-USERNAME = "caohh"
-# 密码已做 MD5 处理，与 CloudBeaver 前端一致
-PASSWORD_HASH = "AE7810A8EB5BF4D967CFA9F63B34E770"
+import requests
+
+
+def _required_env(name: str) -> str:
+    value = os.environ.get(name, "").strip()
+    if not value:
+        raise RuntimeError("Missing required environment variable: {}".format(name))
+    return value
+
 
 class StarRocksClient:
     def __init__(self):
+        self.base_url = _required_env("CLOUDBEAVER_BASE_URL")
+        self.username = _required_env("CLOUDBEAVER_USERNAME")
+        self.password_hash = _required_env("CLOUDBEAVER_PASSWORD_HASH")
+        self.project_id = _required_env("CLOUDBEAVER_PROJECT_ID")
+        if (
+            urlparse(self.base_url).scheme != "https"
+            and os.environ.get("CLOUDBEAVER_ALLOW_HTTP") != "1"
+        ):
+            raise RuntimeError("CLOUDBEAVER_ALLOW_HTTP=1 is required for non-HTTPS URLs")
         self.s = requests.Session()
         # flowops 是内网域名，强制忽略环境变量里的代理设置（HTTP_PROXY / HTTPS_PROXY 等），
         # 避免在配了代理的机器上走代理失败。团队任何机器都能直连内网，无需代理软件。
@@ -40,7 +59,7 @@ class StarRocksClient:
             body["variables"] = variables
         if op_name:
             body["operationName"] = op_name
-        r = self.s.post(BASE, json=body, timeout=60)
+        r = self.s.post(self.base_url, json=body, timeout=60)
         # 端点异常（如被本机代理 fake-ip 劫持返回 HTML 403/502）时，r.json() 会抛
         # 晦涩的 JSONDecodeError(char 0)。先校验状态码/内容类型，给出可定位的报错。
         if r.status_code != 200 or "json" not in (r.headers.get("content-type") or "").lower():
@@ -57,14 +76,18 @@ class StarRocksClient:
             query login($p: ID!, $c: Object) {
                 authInfo: authLogin(provider: $p, credentials: $c) { authStatus }
             }
-        """, {"p": "local", "c": {"user": USERNAME, "password": PASSWORD_HASH}})
+        """, {"p": "local", "c": {"user": self.username, "password": self.password_hash}})
         if res.get("data", {}).get("authInfo", {}).get("authStatus") != "SUCCESS":
-            raise Exception(f"Login failed: {res}")
+            raise RuntimeError("CloudBeaver login failed")
         return self
 
     def connect(self):
         """获取 StarRocks 连接并创建 SQL 上下文"""
-        res = self.gql("query { connections: userConnections(projectIds: [\"u_caohh\"]) { id name } }")
+        res = self.gql(
+            "query connections($projectId: ID!) { "
+            "connections: userConnections(projectIds: [$projectId]) { id name } }",
+            {"projectId": self.project_id},
+        )
         conns = res.get("data", {}).get("connections", [])
         if not conns:
             raise Exception("No connections found")
