@@ -1,5 +1,7 @@
 import os
+import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,6 +12,38 @@ from verify_offline import build_steps, run_steps
 
 
 class OfflineVerificationTest(unittest.TestCase):
+    def test_compile_step_overrides_unwritable_inherited_cache(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            source_dir = root / "ops" / "py"
+            source_dir.mkdir(parents=True)
+            (source_dir / "probe.py").write_text("value = 1\n", encoding="utf-8")
+            inherited_prefix = root / "unwritable-cache"
+            inherited_prefix.touch()
+
+            compile_command = next(
+                command
+                for name, command in build_steps(root)
+                if name == "Python compile check"
+            )
+            local_prefix = root / "ops" / "py" / "__pycache__"
+            environment = os.environ.copy()
+            environment["PYTHONPYCACHEPREFIX"] = str(inherited_prefix)
+            result = subprocess.run(
+                compile_command,
+                cwd=root,
+                env=environment,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertEqual(
+                compile_command[1:3],
+                ["-X", "pycache_prefix={}".format(local_prefix)],
+            )
+            self.assertTrue(list(local_prefix.rglob("*.pyc")))
+
     def test_build_steps_has_the_fixed_order(self):
         root = Path("/repo")
         steps = build_steps(root)

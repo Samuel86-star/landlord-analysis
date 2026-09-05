@@ -17,7 +17,18 @@ def build_steps(root):
             "Python unit tests",
             [sys.executable, "-m", "unittest", "discover", "-s", "ops/py", "-p", "test_*.py", "-v"],
         ),
-        ("Python compile check", [sys.executable, "-m", "compileall", "-q", "ops/py"]),
+        (
+            "Python compile check",
+            [
+                sys.executable,
+                "-X",
+                "pycache_prefix={}".format(root / "ops" / "py" / "__pycache__"),
+                "-m",
+                "compileall",
+                "-q",
+                "ops/py",
+            ],
+        ),
         ("Java unit tests", [str(wrapper), "test"]),
         ("Java benchmark profile", [str(wrapper), "-Pbenchmark", "test"]),
         (
