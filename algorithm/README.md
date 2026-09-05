@@ -26,10 +26,10 @@
 - **native/** — C++ 高性能采样器（header-only `include/landlord.h` + `test/`）。
 - **docs/** — 评价标准、发牌平衡 PRD、拆牌决策规则、测试策略、rules。
 
-## 构建（仅参考，勿在 analysis 内构建）
+## 构建与验证
 
-- Java：`mvn test`（benchmark 用 `mvn test -Pbenchmark`）
-- C++：`cd native && cmake … && make`（产物 `sampler` / `test_main` 已从快照排除）
+- 本仓只允许通过根目录 `python3 ops/py/verify_offline.py` 验证快照；生成物已加入忽略规则。
+- 算法实现修改仍必须在权威源仓完成，验证后按 commit 差异同步到本目录。
 
 ## 更新方法
 

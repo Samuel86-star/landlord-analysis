@@ -1,6 +1,6 @@
 # AI 数据分析智能体离线安全改造 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **执行状态：已完成（离线范围）。** 下方未勾选框保留为原始实施步骤，不再表示当前待办；后续事项以文末 Deferred Plans 和本轮 handoff 为准。
 
 **Goal:** 完成家庭网络可验证的凭据隔离、SQL 安全拦截、回填失败判定、防零除修正和分析契约。
 
@@ -9,6 +9,8 @@
 **Tech Stack:** Python 3 标准库、`requests`、`unittest`、StarRocks、CloudBeaver GraphQL、Markdown
 
 **Spec:** `docs/spec/2026-09-04-data-analysis-agent-design.md`
+
+**完成提交范围:** `e968fb6..d86fe20`
 
 ## Global Constraints
 

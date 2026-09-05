@@ -1,6 +1,6 @@
 # 项目基础设施离线闭环 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **执行状态：已完成（离线范围）。** 下方未勾选框保留为原始实施步骤，不再表示当前待办；公司网络事项仍按验收清单执行。
 
 **Goal:** 建立可失败、可复现的统一离线验证入口，更新基础设施 Review 生命周期，并把公司网络事项隔离为明确的在线验收清单。
 
@@ -9,6 +9,10 @@
 **Tech Stack:** Python 3 标准库、`unittest`、Maven Wrapper、CMake、CTest、Markdown
 
 **Spec:** `docs/spec/2026-09-05-project-foundation-design.md`
+
+**完成提交:** `9c6054c..9f73413`
+
+**实施偏差:** 当前验证器为 macOS 沙箱指定项目内 Python 缓存；Maven 使用 `-o -f algorithm/pom.xml`；CMake build/CTest 显式选择 Release。当前命令以 `ops/py/verify_offline.py` 为准，计划中的早期命令片段仅保留为实施记录。
 
 ## Global Constraints
 
@@ -378,7 +382,7 @@ Create `docs/tech/project-foundation-corp-network-checklist.md` with:
 | ---- | ---- | ---- | ---- | ---- |
 | `PF-SEC-01B` | 轮换历史暴露凭据 | 旧凭据登录失败，新凭据登录成功 | 未执行 | |
 | `PF-SEC-01D` | 验证 HTTPS、证书链与失败响应 | HTTPS 登录和代表性只读查询成功，未使用 HTTP 例外；登录失败、查询失败和超时不泄露认证材料 | 未执行 | |
-| `PF-SEC-02` | 验证最小权限 | 查询账号可读目标 DWS，DDL 与未授权写入被服务端拒绝 | 未执行 | |
+| `PF-SEC-02` | 验证最小权限 | 查询账号可读目标 DWS，DDL 与未授权写入被服务端拒绝；如保留写入账号，确认其用途、授权范围和审批边界 | 未执行 | |
 
 允许的状态只有 `未执行`、`通过`、`失败`。任何一项为 `未执行` 或 `失败` 时，对应 Review 状态保持 `BLOCKED_BY_CORP_NETWORK`。
 

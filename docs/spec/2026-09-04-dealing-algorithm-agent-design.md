@@ -9,6 +9,7 @@
 | 适用范围 | `algorithm/`、`docs/makedeal-strategies/`、相关算法分析与验证流程 |
 | 依据 | [斗地主发牌算法智能体审查](../review/dealing-algorithm-agent/2026-09-04-review.md) |
 | 实施计划 | [阶段 A/B 基础实施计划](../plan/2026-09-04-dealing-algorithm-agent-foundation.md) |
+| 验证状态 | 阶段 A/B 离线验证通过；阶段 C/D 未启动 |
 
 ## 二、背景与问题
 

@@ -1,6 +1,6 @@
 # 工作交接：牌力评分算法对齐 PRD
 
-> 交接日期 2026-07-31。本文件供新 session 接手用；改动已全部落地 `main` 并推送 origin。
+> 交接日期 2026-07-31。状态更新于 2026-09-05：源仓修复与本仓只读快照同步已完成；本文件保留历史背景，当前待办以[最新 handoff](../handoff/2026-09-05-session-handoff.md)为准。
 
 ## 一、背景与目标
 
@@ -39,12 +39,10 @@ worktree 与 `worktree-cardpower-pairwing-heldbomb` 本地/远端分支**已清�
 
 ## 五、未完成 / 后续（按优先级）
 
-1. **【让数仓真正生效，最重要】** 本次只改了 `landlord-analysis` 的参考快照（main）。**数仓 `card_power` / `card_power_final`（`dws_ddz_firstday_game` / `dws_ddz_daily_game`）也用这套 PRD 算法**（用户确认）。要让改动生效：
-   - ① 把 `d42956b` 等移植回**源仓库 `Samuel86-star/landlord`**（注意：`algorithm/` 是只读快照，源仓库才是本体）；
-   - ② 更新**数仓 ETL** 的牌力计算到新版本；
-   - ③ 上线。**上线日 = 第二个版本切点**（继 2026-06-15 bug 修复之后），切点前后 `card_power` 不可直接比较。详见 memory `project_cardpower-formula-prd-change-2026-07`。
+1. **【让数仓真正生效，最重要】** 源仓修复和本仓快照同步已经完成；当前快照为 `e4be61a`。仍需更新**数仓 ETL** 的牌力计算并上线。**上线日 = 第二个版本切点**（继 2026-06-15 bug 修复之后），切点前后 `card_power` 不可直接比较。详见 memory `project_cardpower-formula-prd-change-2026-07`。
 2. **application.properties 四维过滤仍禁用**：potential/advantage/singles/bombs 现为 `Infinity/0/0/0`（原作刻意禁用），注释标了推荐值 92/113/8/2。是否启用 = 产品/运维决策（启用会扩大发牌过滤范围、增加重洗率）。
-3. **源仓库未同步**：本次直接改了快照，没走「源仓库改 → rsync 重新生成快照」的标准流程（见 `algorithm/README.md` + `docs/tech/algorithm-snapshot-plan.md`）。源仓库仍是旧实现。
+
+原“源仓库未同步”事项已完成：修复已在源仓提交，并按 `71599ad..e4be61a` 的差异清单同步到本仓快照；后续继续遵循 `algorithm/README.md` 与 `docs/tech/algorithm-snapshot-plan.md`。
 
 ## 六、关键文件
 

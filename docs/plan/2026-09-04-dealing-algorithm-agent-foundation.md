@@ -1,6 +1,6 @@
 # 斗地主发牌算法智能体基础能力 Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **执行状态：已完成（阶段 A/B）。** 下方未勾选框保留为原始实施步骤，不再表示当前待办；阶段 C/D 仍受文末真实任务门槛约束。
 
 **Goal:** 修复 Java/C++ 发牌结果正确性和测试入口，并建立可复现、可追溯的算法实验基础。
 
@@ -9,6 +9,8 @@
 **Tech Stack:** Java 21、JUnit 5、Maven、C++11、CMake/CTest、Python 3 标准库、Markdown
 
 **Spec:** `docs/spec/2026-09-04-dealing-algorithm-agent-design.md`
+
+**完成提交:** 源仓 `e4be61a`；本仓快照 `7508dcc`
 
 ## Global Constraints
 

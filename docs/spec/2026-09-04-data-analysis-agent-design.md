@@ -10,6 +10,7 @@
 | 依据 | [AI 数据分析智能体审查](../review/data-analysis-agent/2026-09-04-review.md) |
 | 实施计划 | [离线安全改造计划](../plan/2026-09-04-data-analysis-agent-offline-safety.md) |
 | 验证状态 | 离线验证通过，等待公司网络联调 |
+| 阶段状态 | 阶段 A 已完成；阶段 B 等待公司网络；阶段 C/D 未启动 |
 
 ## 二、背景与问题
 
