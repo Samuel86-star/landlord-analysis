@@ -48,8 +48,14 @@ def build_steps(root):
             "C++ Release configure",
             ["cmake", "-S", str(native), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release"],
         ),
-        ("C++ Release build", ["cmake", "--build", str(build), "--target", "landlord_test"]),
-        ("C++ CTest", ["ctest", "--test-dir", str(build), "--output-on-failure"]),
+        (
+            "C++ Release build",
+            ["cmake", "--build", str(build), "--target", "landlord_test", "--config", "Release"],
+        ),
+        (
+            "C++ CTest",
+            ["ctest", "--test-dir", str(build), "--output-on-failure", "-C", "Release"],
+        ),
     ]
 
 

@@ -12,6 +12,20 @@ from verify_offline import build_steps, run_steps
 
 
 class OfflineVerificationTest(unittest.TestCase):
+    def test_cpp_steps_select_release_configuration(self):
+        root = Path("/repo")
+        steps = dict(build_steps(root))
+        build = str(root / "algorithm" / "native" / "build-release")
+
+        self.assertEqual(
+            steps["C++ Release build"],
+            ["cmake", "--build", build, "--target", "landlord_test", "--config", "Release"],
+        )
+        self.assertEqual(
+            steps["C++ CTest"],
+            ["ctest", "--test-dir", build, "--output-on-failure", "-C", "Release"],
+        )
+
     def test_java_steps_are_offline_and_target_algorithm_pom(self):
         root = Path("/repo")
         steps = dict(build_steps(root))
