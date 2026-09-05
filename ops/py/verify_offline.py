@@ -29,8 +29,21 @@ def build_steps(root):
                 "ops/py",
             ],
         ),
-        ("Java unit tests", [str(wrapper), "test"]),
-        ("Java benchmark profile", [str(wrapper), "-Pbenchmark", "test"]),
+        (
+            "Java unit tests",
+            [str(wrapper), "-o", "-f", str(root / "algorithm" / "pom.xml"), "test"],
+        ),
+        (
+            "Java benchmark profile",
+            [
+                str(wrapper),
+                "-o",
+                "-f",
+                str(root / "algorithm" / "pom.xml"),
+                "-Pbenchmark",
+                "test",
+            ],
+        ),
         (
             "C++ Release configure",
             ["cmake", "-S", str(native), "-B", str(build), "-DCMAKE_BUILD_TYPE=Release"],

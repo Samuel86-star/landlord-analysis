@@ -12,6 +12,18 @@ from verify_offline import build_steps, run_steps
 
 
 class OfflineVerificationTest(unittest.TestCase):
+    def test_java_steps_are_offline_and_target_algorithm_pom(self):
+        root = Path("/repo")
+        steps = dict(build_steps(root))
+        pom = str(root / "algorithm" / "pom.xml")
+        wrapper = str(root / "algorithm" / ("mvnw.cmd" if os.name == "nt" else "mvnw"))
+
+        self.assertEqual(steps["Java unit tests"], [wrapper, "-o", "-f", pom, "test"])
+        self.assertEqual(
+            steps["Java benchmark profile"],
+            [wrapper, "-o", "-f", pom, "-Pbenchmark", "test"],
+        )
+
     def test_compile_step_overrides_unwritable_inherited_cache(self):
         with tempfile.TemporaryDirectory() as temp:
             root = Path(temp)
