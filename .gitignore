@@ -25,6 +25,6 @@ ops/py/first-classic-beginner/output/
 
 # algorithm 只读快照：防止在 analysis 内构建产生的产物误提交
 algorithm/target/
-algorithm/native/build/
+algorithm/native/build*/
 algorithm/native/sampler
 algorithm/native/test_main

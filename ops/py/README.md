@@ -176,6 +176,18 @@ py -3 -u .\sr_exec.py -f my_query.sql
 
 此前提交过的凭据必须从公司网络完成轮换。
 
+#### 项目离线全量验证
+
+从仓库根目录执行：
+
+```bash
+python3 ops/py/verify_offline.py
+```
+
+该命令依次运行 Python 单元测试与编译检查、Java 普通测试、Java benchmark profile、C++ Release 构建和 CTest。任一步失败都会立即停止并返回非零退出码。
+
+该入口不会读取 CloudBeaver 配置、执行 SQL 或访问公司数仓。通过只代表离线验证完成，不能标记为公司网络集成通过。
+
 ### check_data.sql：行数校验
 
 一次性查 15 张表指定日期的行数，按表名排序输出。改日期方式：

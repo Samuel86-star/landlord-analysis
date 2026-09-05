@@ -5,6 +5,7 @@
 *.exe
 *.obj
 *.o
+/harness
 
 # 运行日志
 err.txt
