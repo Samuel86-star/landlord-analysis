@@ -10,6 +10,7 @@ import com.mamba.landlord.core.model.*;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Random;
 import java.util.random.RandomGenerator;
 
 /**
@@ -21,13 +22,23 @@ import java.util.random.RandomGenerator;
  */
 public class DefaultShuffleDealStrategy extends AbstractShuffleDealStrategy implements IShuffleDealStrategy, IShuffleStrategy, IDealStrategy {
 
+    private final RandomGenerator randomGenerator;
+
     public DefaultShuffleDealStrategy(IHandCardsScoringStrategy handCardsScoringStrategy,
                                      IComboExtractor comboExtractor) {
         super(handCardsScoringStrategy, comboExtractor);
+        this.randomGenerator = RandomGenerator.getDefault();
     }
 
     public DefaultShuffleDealStrategy() {
         super();
+        this.randomGenerator = RandomGenerator.getDefault();
+    }
+
+    /** 仅供需要可复现实验的采样与测试使用。 */
+    public DefaultShuffleDealStrategy(long seed) {
+        super();
+        this.randomGenerator = new Random(seed);
     }
     /**
      * 洗牌并发牌，计算三家牌力后直接返回，不做任何均衡性过滤或重洗。
@@ -60,8 +71,7 @@ public class DefaultShuffleDealStrategy extends AbstractShuffleDealStrategy impl
         // 获取标准 54 张牌的可变副本（Deck 内部缓存不可变列表，此处复制以便原地打乱）
         List<Card> deckCards = Deck.copyFullDeckCards();
         // 使用 JDK 默认随机数生成器就地打乱
-        Collections.shuffle(deckCards, RandomGenerator.getDefault());
+        Collections.shuffle(deckCards, randomGenerator);
         return deckCards;
     }
 }
-

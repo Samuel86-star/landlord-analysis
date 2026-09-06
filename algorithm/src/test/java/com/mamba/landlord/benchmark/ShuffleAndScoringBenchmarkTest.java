@@ -3,6 +3,7 @@ package com.mamba.landlord.benchmark;
 import com.mamba.landlord.algorithm.shuffle.DealDistributionSampler;
 import com.mamba.landlord.algorithm.shuffle.DealDistributionSampler.DealSampleResult;
 import com.mamba.landlord.algorithm.shuffle.strategy.DefaultReshuffleDealStrategy;
+import com.mamba.landlord.algorithm.shuffle.strategy.DefaultShuffleDealStrategy;
 import com.mamba.landlord.core.holder.ShuffleStrategyDecisionHolder;
 import com.mamba.landlord.core.properties.ShuffleStrategyDecisionProperties;
 import org.junit.jupiter.api.Tag;
@@ -36,21 +37,22 @@ class ShuffleAndScoringBenchmarkTest {
      */
     @Test
     void sampleBaselineDistribution() {
-        int sampleRounds = 100_000;
+        int sampleRounds = Integer.getInteger("landlord.sampler.rounds", 100_000);
+        long seed = Long.getLong("landlord.sampler.seed", 20260906L);
 
         // 关闭过滤，对原始随机发牌进行无干扰采样
         ShuffleStrategyDecisionProperties props = new ShuffleStrategyDecisionProperties();
         props.setEnabled(false);
         ShuffleStrategyDecisionHolder.set(props);
 
-        DefaultReshuffleDealStrategy strategy = new DefaultReshuffleDealStrategy();
+        DefaultShuffleDealStrategy strategy = new DefaultShuffleDealStrategy(seed);
 
         // 使用 DealDistributionSampler 完成采样与分位点计算
         DealDistributionSampler sampler = new DealDistributionSampler(strategy);
         DealSampleResult result = sampler.sample(sampleRounds);
 
         // 打印详细分位点分布，供深度分析
-        log.info("[ShuffleAndScoringBenchmark] sampleRounds={}", sampleRounds);
+        log.info("[ShuffleAndScoringBenchmark] sampleRounds={}, seed={}", sampleRounds, seed);
         result.printDetailedDistribution();
 
         // 打印推荐阈值，格式对应 application.properties 配置项

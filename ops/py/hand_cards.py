@@ -14,7 +14,7 @@ def _normalize(token: str) -> str:
     return token
 
 
-def tokenize_hand_cards(hand_cards: str) -> list[str]:
+def tokenize_hand_cards(hand_cards: str | None) -> list[str]:
     """Parse current comma-separated and legacy compact hand-card strings."""
     if not isinstance(hand_cards, str) or not hand_cards.strip():
         return []
@@ -31,15 +31,20 @@ def tokenize_hand_cards(hand_cards: str) -> list[str]:
     return tokens
 
 
-def count_held_bombs(hand_cards: str) -> int:
+def count_held_bombs(hand_cards: str | None) -> int | None:
     """Count four-of-a-kind ranks plus the joker rocket in a dealt hand."""
-    counts = Counter(tokenize_hand_cards(hand_cards))
+    tokens = tokenize_hand_cards(hand_cards)
+    if not tokens:
+        return None
+    counts = Counter(tokens)
     rank_bombs = sum(count >= 4 for rank, count in counts.items() if rank not in {"sj", "bj"})
     return rank_bombs + int(counts["sj"] > 0 and counts["bj"] > 0)
 
 
-def parse_king_status(hand_cards: str) -> str:
+def parse_king_status(hand_cards: str | None) -> str | None:
     tokens = tokenize_hand_cards(hand_cards)
+    if not tokens:
+        return None
     has_small = "sj" in tokens
     has_big = "bj" in tokens
     if has_small and has_big:

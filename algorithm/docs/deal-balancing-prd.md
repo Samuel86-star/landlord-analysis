@@ -66,8 +66,8 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 
 | 参数 | 含义 | 推荐值 |
 |---|---|---|
-| `lower-threshold` | 三家中最弱一家的牌力下限（低于此值触发） | `-68.0`（P5） |
-| `upper-threshold` | 三家中最强一家的牌力上限（高于此值触发） | `74.0`（P95） |
+| `lower-threshold` | 三家中最弱一家的牌力下限（低于此值触发） | `-66.0`（P5） |
+| `upper-threshold` | 三家中最强一家的牌力上限（高于此值触发） | `75.0`（P95） |
 
 **检测逻辑**：任意一家手牌 V_total 超出 `[lower, upper]` 区间即触发重洗。
 
@@ -77,7 +77,7 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 
 | 参数 | 含义 | 推荐值 |
 |---|---|---|
-| `max-spread` | 三家牌力最大值与最小值之差的上限 | `113.0`（P95） |
+| `max-spread` | 三家牌力最大值与最小值之差的上限 | `112.0`（双种子 P95 上界） |
 
 **检测逻辑**：`max(scores) - min(scores) > max-spread` 触发重洗。
 
@@ -89,7 +89,7 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 
 | 参数 | 含义 | 推荐值 |
 |---|---|---|
-| `max-potential-landlord-score` | 任意一家手牌 + 底牌后的最高牌力上限 | `94.0`（P95） |
+| `max-potential-landlord-score` | 任意一家手牌 + 底牌后的最高牌力上限 | `95.0`（P95） |
 
 **检测逻辑**：枚举三家分别拿走底牌后的手牌牌力，取最大值，超过阈值触发重洗。
 
@@ -101,7 +101,7 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 
 | 参数 | 含义 | 推荐值 |
 |---|---|---|
-| `max-landlord-advantage` | 潜在地主牌力 - 两个农民手牌均值 的上限 | `114.5`（P95） |
+| `max-landlord-advantage` | 潜在地主牌力 - 两个农民手牌均值 的上限 | `114.0`（双种子 P95 上界） |
 
 **检测逻辑**：枚举三种叫地主方案，计算每种方案的 `landlordScore - avgFarmerScore`，取最大值，超过阈值触发重洗。
 
@@ -146,24 +146,30 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 
 ### 使用方式
 
-运行测试 `ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution`，输出如下（10 万局；2026-07-31 按现行评分公式重采样）：
+运行测试 `ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution`。2026-09-06 使用种子
+`20260906` 与 `20260907` 各采样 10 万局；下列为种子 `20260906` 的输出。配置取两组 P5/P95 的保守上界：
+
+```bash
+./mvnw -q -Pbenchmark -Dtest=ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution \
+  -Dlandlord.sampler.seed=20260906 -Dlandlord.sampler.rounds=100000 test
+```
 
 ```
 ===== DealDistributionSampler 详细分布 =====
-minScore（最差一家）： P5=-68.0 P50=-35.0 P95=-2.0  P99=12.0
-maxScore（最强一家）： P5=-18.0 P50=18.0  P95=74.0  P99=97.0
-spread（极差）      ： P5=14.0  P50=53.0  P95=112.0 P99=140.0
-potentialLandlord  ： P5=-5.0  P50=35.0  P95=92.0  P99=116.0
-landlordAdvantage  ： P5=13.5  P50=54.5  P95=113.0 P99=139.5
+minScore（最差一家）： P5=-66.0 P50=-34.0 P95=0.0   P99=13.0
+maxScore（最强一家）： P5=-18.0 P50=19.0  P95=75.0  P99=99.0
+spread（极差）      ： P5=14.0  P50=52.0  P95=111.0 P99=139.0
+potentialLandlord  ： P5=-3.0  P50=38.0  P95=95.0  P99=117.0
+landlordAdvantage  ： P5=14.5  P50=55.0  P95=113.5 P99=140.5
 maxSingles（单牌数）： P5=4.0   P50=6.0   P95=8.0   P99=9.0
 maxBombs（炸弹数） ： P5=0.0   P50=0.0   P95=1.0   P99=2.0
 ============================================
 ===== DealDistributionSampler 推荐阈值 =====
-# landlord.shuffle-strategy.lower-threshold=-68.0
-# landlord.shuffle-strategy.upper-threshold=74.0
+# landlord.shuffle-strategy.lower-threshold=-66.0
+# landlord.shuffle-strategy.upper-threshold=75.0
 # landlord.shuffle-strategy.max-spread=112.0
-# landlord.shuffle-strategy.max-potential-landlord-score=92.0
-# landlord.shuffle-strategy.max-landlord-advantage=113.0
+# landlord.shuffle-strategy.max-potential-landlord-score=95.0
+# landlord.shuffle-strategy.max-landlord-advantage=114.0
 # landlord.shuffle-strategy.max-singles-per-hand=8
 # landlord.shuffle-strategy.max-bombs-per-hand=2
 ============================================
@@ -179,8 +185,6 @@ maxBombs（炸弹数） ： P5=0.0   P50=0.0   P95=1.0   P99=2.0
 
 > **重要**：评分公式或拆牌策略每次有变更，必须重新运行采样测试更新基线，旧阈值不能复用。
 
-> ✅ **基线已于 2026-07-31 重新采样**：在产品 PRD §4.1.2/§4.1.3 新评分公式（对子翼 `基础分+1`、控制牌加成按手牌持有）下重跑 Java `sampleBaselineDistribution`（10 万局）。相较旧基线，仅 spread 113→112、potential 94→92、advantage 114.5→113 各降 1~2，upper/lower/singles/bombs 不变；C++ `sampler_test` 10k 局复核分布一致。
-
 ---
 
 ## 六、配置项汇总
@@ -190,11 +194,11 @@ maxBombs（炸弹数） ： P5=0.0   P50=0.0   P95=1.0   P99=2.0
 landlord.shuffle-strategy.enabled=true
 
 # ===== 五维均衡性阈值（基于10万局P95/P99采样） =====
-landlord.shuffle-strategy.lower-threshold=-68.0
-landlord.shuffle-strategy.upper-threshold=74.0
+landlord.shuffle-strategy.lower-threshold=-66.0
+landlord.shuffle-strategy.upper-threshold=75.0
 landlord.shuffle-strategy.max-spread=112.0
-landlord.shuffle-strategy.max-potential-landlord-score=92.0
-landlord.shuffle-strategy.max-landlord-advantage=113.0
+landlord.shuffle-strategy.max-potential-landlord-score=95.0
+landlord.shuffle-strategy.max-landlord-advantage=114.0
 landlord.shuffle-strategy.max-singles-per-hand=8
 landlord.shuffle-strategy.max-bombs-per-hand=2
 

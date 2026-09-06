@@ -49,6 +49,41 @@ class SplitterRegressionTest {
         assertEquals(hand.size(), combos.stream().mapToInt(Combo::length).sum());
     }
 
+    @Test
+    void tripleUsesOnlyAnotherRankAsPairWing() {
+        assertEquals(List.of(Combo.tripleWithPair(Rank.FIVE, Rank.KING)),
+            extractor.extractAllCombos(tripleWithPair(Rank.FIVE, Rank.KING)));
+        assertEquals(List.of(Combo.tripleWithPair(Rank.KING, Rank.ACE)),
+            extractor.extractAllCombos(tripleWithPair(Rank.KING, Rank.ACE)));
+        assertEquals(List.of(Combo.tripleWithPair(Rank.ACE, Rank.THREE)),
+            extractor.extractAllCombos(tripleWithPair(Rank.ACE, Rank.THREE)));
+    }
+
+    @Test
+    void longStraightStillPreservesTwoBomb() {
+        List<Card> hand = List.of(
+            card(Rank.THREE), card(Rank.FOUR), card(Rank.FIVE), card(Rank.SIX), card(Rank.SEVEN),
+            card(Rank.EIGHT), card(Rank.NINE), card(Rank.TEN), card(Rank.JACK), card(Rank.QUEEN),
+            card(Rank.KING), card(Rank.ACE),
+            new Card(Rank.TWO, Suit.SPADE), new Card(Rank.TWO, Suit.HEART),
+            new Card(Rank.TWO, Suit.CLUB), new Card(Rank.TWO, Suit.DIAMOND),
+            new Card(Rank.SMALL_JOKER, Suit.NONE)
+        );
+
+        List<Combo> combos = extractor.extractAllCombos(hand);
+
+        assertTrue(combos.stream().anyMatch(combo -> combo.type() == ComboType.BOMB
+            && combo.mainRanks().equals(List.of(Rank.TWO))));
+        assertEquals(hand.size(), combos.stream().mapToInt(Combo::length).sum());
+    }
+
+    private static List<Card> tripleWithPair(Rank triple, Rank pair) {
+        return List.of(
+            new Card(triple, Suit.SPADE), new Card(triple, Suit.HEART), new Card(triple, Suit.CLUB),
+            new Card(pair, Suit.SPADE), new Card(pair, Suit.HEART)
+        );
+    }
+
     private static Card card(Rank rank) {
         return new Card(rank, Suit.SPADE);
     }

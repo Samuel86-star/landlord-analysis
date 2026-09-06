@@ -23,6 +23,11 @@ class HandCardParserTest(unittest.TestCase):
     def test_counts_rank_bombs_and_rocket(self):
         self.assertEqual(hand_cards.count_held_bombs("3,3,3,3,10,sj,bj"), 2)
 
+    def test_missing_hand_is_not_classified_as_no_bomb_or_no_king(self):
+        for value in (None, "", "   "):
+            self.assertIsNone(hand_cards.count_held_bombs(value))
+            self.assertIsNone(hand_cards.parse_king_status(value))
+
     def test_rejects_unknown_card_tokens(self):
         with self.assertRaisesRegex(ValueError, "invalid hand card"):
             hand_cards.tokenize_hand_cards("3,4,x")

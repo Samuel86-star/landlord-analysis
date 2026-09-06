@@ -223,6 +223,56 @@ void testStrongStraightStillComparesBombPreservingSplit() {
     std::cout << "[PASS] testStrongStraightStillComparesBombPreservingSplit" << std::endl;
 }
 
+void testTripleUsesOnlyAnotherRankAsPairWing() {
+    DefaultHandCardsScoringStrategy scorer;
+    DefaultComboExtractor extractor(scorer);
+    const std::vector<std::pair<Rank, Rank>> vectors = {
+        {Rank::FIVE, Rank::KING}, {Rank::KING, Rank::ACE}, {Rank::ACE, Rank::THREE}
+    };
+
+    for (const auto& vector : vectors) {
+        std::vector<Card> hand = {
+            {vector.first, Suit::SPADE}, {vector.first, Suit::HEART}, {vector.first, Suit::CLUB},
+            {vector.second, Suit::SPADE}, {vector.second, Suit::HEART}
+        };
+        auto combos = extractor.extractAllCombos(hand);
+        CHECK(combos.size() == 1);
+        CHECK(combos[0].type == ComboType::TRIPLE_WITH_PAIR);
+        CHECK(combos[0].mainRanks == std::vector<Rank>{vector.first});
+        CHECK(combos[0].wingRanks == std::vector<Rank>{vector.second});
+        CHECK(combos[0].length() == static_cast<int>(hand.size()));
+    }
+    std::cout << "[PASS] testTripleUsesOnlyAnotherRankAsPairWing" << std::endl;
+}
+
+void testLongStraightStillPreservesTwoBomb() {
+    DefaultHandCardsScoringStrategy scorer;
+    DefaultComboExtractor extractor(scorer);
+    std::vector<Card> hand = {
+        {Rank::THREE, Suit::SPADE}, {Rank::FOUR, Suit::SPADE},
+        {Rank::FIVE, Suit::SPADE}, {Rank::SIX, Suit::SPADE}, {Rank::SEVEN, Suit::SPADE},
+        {Rank::EIGHT, Suit::SPADE}, {Rank::NINE, Suit::SPADE}, {Rank::TEN, Suit::SPADE},
+        {Rank::JACK, Suit::SPADE}, {Rank::QUEEN, Suit::SPADE}, {Rank::KING, Suit::SPADE},
+        {Rank::ACE, Suit::SPADE},
+        {Rank::TWO, Suit::SPADE}, {Rank::TWO, Suit::HEART},
+        {Rank::TWO, Suit::CLUB}, {Rank::TWO, Suit::DIAMOND},
+        {Rank::SMALL_JOKER, Suit::NONE}
+    };
+
+    auto combos = extractor.extractAllCombos(hand);
+    bool hasTwoBomb = false;
+    int cardCount = 0;
+    for (const auto& combo : combos) {
+        cardCount += combo.length();
+        hasTwoBomb = hasTwoBomb || (combo.type == ComboType::BOMB
+            && combo.mainRanks == std::vector<Rank>{Rank::TWO});
+    }
+
+    CHECK(hasTwoBomb);
+    CHECK(cardCount == static_cast<int>(hand.size()));
+    std::cout << "[PASS] testLongStraightStillPreservesTwoBomb" << std::endl;
+}
+
 void testDealCards() {
     ShuffleDealStrategy strategy;
     auto shuffled = strategy.shuffle();
@@ -402,6 +452,8 @@ int main() {
     testHandScoring();
     testIsolatedTripleDoesNotUseItselfAsPairWing();
     testStrongStraightStillComparesBombPreservingSplit();
+    testTripleUsesOnlyAnotherRankAsPairWing();
+    testLongStraightStillPreservesTwoBomb();
     testDealCards();
     testShuffleAndDeal();
     testShuffleAndDealWithReshuffle();

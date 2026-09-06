@@ -46,3 +46,13 @@ py/first-classic-beginner/
 - Cohort：首次经典对局在 4484 / 12074（合并不拆分），且发生在 `reg_date` 当日
 - 过滤：`robot != 1`、`play_mode BETWEEN 1 AND 6`、局序 `ORDER BY game_datetime, resultguid`
 - 牌力分桶：前 3 局合并的 P25/P50/P75，不硬编码阈值
+
+## 历史窗口重算
+
+`shuffle_times` 缺失值与空手牌口径修复不会自动改写已落库分区。重算当前 v2 窗口前先预览，确认后回填 DWS，再重跑分析：
+
+```powershell
+py -3 -u ops/py/batch_insert_ddz_daily_game.py --start 20260625 --end 20260701 --dry-run
+py -3 -u ops/py/batch_insert_ddz_daily_game.py --start 20260625 --end 20260701
+py -3 -u ops/py/first-classic-beginner/run_analysis.py
+```

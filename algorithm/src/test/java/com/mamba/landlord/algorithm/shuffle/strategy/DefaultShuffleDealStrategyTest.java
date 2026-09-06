@@ -37,6 +37,16 @@ class DefaultShuffleDealStrategyTest {
     }
 
     @Test
+    @DisplayName("相同种子应产生相同洗牌序列")
+    void seededShuffleShouldBeReproducible() {
+        DefaultShuffleDealStrategy first = new DefaultShuffleDealStrategy(20260906L);
+        DefaultShuffleDealStrategy second = new DefaultShuffleDealStrategy(20260906L);
+
+        assertEquals(first.shuffle(), second.shuffle());
+        assertEquals(first.shuffle(), second.shuffle());
+    }
+
+    @Test
     @DisplayName("dealCards 应按 17/17/17/3 分发手牌和底牌")
     void dealCardsShouldSplitAs17_17_17_3() {
         List<Card> shuffled = Deck.copyFullDeckCards();
@@ -78,4 +88,3 @@ class DefaultShuffleDealStrategyTest {
         assertEquals(0, evaluated.getReshuffleCnt(), "默认策略不包含重洗逻辑，次数应为 0");
     }
 }
-

@@ -151,7 +151,8 @@ def module_d(df: pd.DataFrame) -> None:
 
 # ---------- 模块 E：持有炸弹分析（替代手牌结构） ----------
 def module_e(df: pd.DataFrame) -> None:
-    g = df.groupby("game_seq")
+    valid = df[df["bomb_cnt"].notna()]
+    g = valid.groupby("game_seq")
     out = pd.DataFrame({
         "user_count": g["uid"].nunique(),
         "bomb_hold_rate": g["has_bomb"].mean().round(4),
@@ -159,10 +160,10 @@ def module_e(df: pd.DataFrame) -> None:
     }).reset_index()
     _save(out, "05a_bomb_hold_overview.csv")
 
-    dist = df.groupby(["game_seq", "bomb_cnt"]).agg(records=("uid", "count")).reset_index()
+    dist = valid.groupby(["game_seq", "bomb_cnt"]).agg(records=("uid", "count")).reset_index()
     _save(dist, "05b_bomb_cnt_dist.csv")
 
-    role = df.groupby(["game_seq", "player_role"]).agg(
+    role = valid.groupby(["game_seq", "player_role"]).agg(
         user_count=("uid", "nunique"),
         avg_bomb_cnt=("bomb_cnt", "mean"),
         bomb_hold_rate=("has_bomb", "mean"),
@@ -202,7 +203,7 @@ def module_f(df: pd.DataFrame) -> None:
 
 # ---------- 模块 G：手牌结构 × 牌力 × 胜率 ----------
 def module_g(df: pd.DataFrame) -> None:
-    has_cards = df[df["hand_cards"].notna() & (df["hand_cards"] != "")].copy()
+    has_cards = df[df["king_status"].notna()].copy()
     if len(has_cards) == 0:
         print("  [G] no hand_cards data, skip")
         return
@@ -271,7 +272,7 @@ def main() -> None:
         np.where(df["card_id"] > 0, "B: 其他牌库配牌", "C: 随机/无牌库"))
     # 持有炸弹（四张同点 + 王炸）
     df["bomb_cnt"] = df["hand_cards"].map(count_held_bombs)
-    df["has_bomb"] = df["bomb_cnt"] >= 1
+    df["has_bomb"] = df["bomb_cnt"].ge(1).where(df["bomb_cnt"].notna())
     # 王情况（从 hand_cards 解析）
     df["king_status"] = df["hand_cards"].map(parse_king_status)
     print(f"[load] card_power P25/P50/P75 = {p25:.1f}/{p50:.1f}/{p75:.1f}")
