@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """首次经典初级房玩家前 3 局手牌分析 — 主编排。
 
-跑 sql/01_cohort_first3_detail.sql 分页拉前 3 局明细，本地 pandas 完成 6 模块聚合，
+跑 sql/01_cohort_first3_detail.sql 分页拉前 3 局明细，本地 pandas 完成 7 模块聚合，
 结果落 output/*.csv。
 
 模块：A cohort 基线 / B 局序概览 / C 牌力分布 / D 配牌机制 / E 持有炸弹 / F 牌力-胜负一致性。
-原框架第七章手牌结构因 hand_cards 数仓全历史缺失（已查证），改用 bomb_cnt/bomb_final
-的「持有炸弹分析」替代。
+持有炸弹由 hand_cards 的物理牌面计算，不使用旧 card_power JSON 字段。
 
 用法:
     py -3 -u ops/py/first-classic-beginner/run_analysis.py
@@ -20,6 +19,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # 让 import sr_exec 生效
 from sr_exec import StarRocksClient  # noqa: E402
+from hand_cards import count_held_bombs, parse_king_status  # noqa: E402
 
 OUTPUT = HERE / "output"
 OUTPUT.mkdir(exist_ok=True)
@@ -29,7 +29,7 @@ NUMERIC_COLS = [
     "result_id", "timecost", "room_base", "room_fee", "start_money", "end_money",
     "game_outcome_money", "magnification", "real_magnification", "shuffle_type",
     "card_id", "card_power", "card_power_final", "cost_time", "shuffle_times",
-    "user_attr_bout", "bomb_cnt", "bomb_final",
+    "user_attr_bout",
 ]
 
 
@@ -156,7 +156,6 @@ def module_e(df: pd.DataFrame) -> None:
         "user_count": g["uid"].nunique(),
         "bomb_hold_rate": g["has_bomb"].mean().round(4),
         "avg_bomb_cnt": g["bomb_cnt"].mean().round(3),
-        "avg_bomb_final": g["bomb_final"].mean().round(3),
     }).reset_index()
     _save(out, "05a_bomb_hold_overview.csv")
 
@@ -166,7 +165,6 @@ def module_e(df: pd.DataFrame) -> None:
     role = df.groupby(["game_seq", "player_role"]).agg(
         user_count=("uid", "nunique"),
         avg_bomb_cnt=("bomb_cnt", "mean"),
-        avg_bomb_final=("bomb_final", "mean"),
         bomb_hold_rate=("has_bomb", "mean"),
     ).round(3).reset_index()
     _save(role, "05c_bomb_by_role.csv")
@@ -200,37 +198,6 @@ def module_f(df: pd.DataFrame) -> None:
     _save(by_prot, "06c_cardpower_result_by_protect.csv")
     print("  [F] seq1 牌力桶 × 胜率:")
     print(agg[agg.game_seq == 1][["card_power_bucket", "user_count", "win_rate", "avg_outcome_money"]].to_string(index=False))
-
-
-# ---------- 手牌解析 ----------
-def tokenize_hand_cards(hand_cards: str) -> list[str]:
-    """Parse landlord hand card string into card tokens."""
-    if not isinstance(hand_cards, str) or not hand_cards.strip():
-        return []
-    tokens = []
-    idx = 0
-    while idx < len(hand_cards):
-        token = hand_cards[idx:idx + 2]
-        if token in {"sj", "bj"}:
-            tokens.append(token)
-            idx += 2
-        else:
-            tokens.append(hand_cards[idx])
-            idx += 1
-    return tokens
-
-
-def _parse_king_status(hand_cards):
-    """Classify hand_cards into 无王/单王/王炸."""
-    tokens = tokenize_hand_cards(hand_cards)
-    sj_cnt = tokens.count("sj")
-    bj_cnt = tokens.count("bj")
-    if sj_cnt >= 1 and bj_cnt >= 1:
-        return "王炸"
-    elif sj_cnt >= 1 or bj_cnt >= 1:
-        return "单王"
-    else:
-        return "无王"
 
 
 # ---------- 模块 G：手牌结构 × 牌力 × 胜率 ----------
@@ -302,10 +269,11 @@ def main() -> None:
     df["shuffle_group"] = np.where(
         df["shuffle_type"] == 201, "A: 新手保护配牌",
         np.where(df["card_id"] > 0, "B: 其他牌库配牌", "C: 随机/无牌库"))
-    # 持有炸弹标记
+    # 持有炸弹（四张同点 + 王炸）
+    df["bomb_cnt"] = df["hand_cards"].map(count_held_bombs)
     df["has_bomb"] = df["bomb_cnt"] >= 1
     # 王情况（从 hand_cards 解析）
-    df["king_status"] = df["hand_cards"].map(_parse_king_status)
+    df["king_status"] = df["hand_cards"].map(parse_king_status)
     print(f"[load] card_power P25/P50/P75 = {p25:.1f}/{p50:.1f}/{p75:.1f}")
 
     print("[A] cohort baseline");        module_a(df)

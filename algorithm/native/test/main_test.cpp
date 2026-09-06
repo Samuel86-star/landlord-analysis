@@ -178,6 +178,51 @@ void testHandScoring() {
     std::cout << "[PASS] testHandScoring" << std::endl;
 }
 
+void testIsolatedTripleDoesNotUseItselfAsPairWing() {
+    DefaultHandCardsScoringStrategy scorer;
+    DefaultComboExtractor extractor(scorer);
+    std::vector<Card> hand = {
+        {Rank::THREE, Suit::SPADE},
+        {Rank::THREE, Suit::HEART},
+        {Rank::THREE, Suit::CLUB}
+    };
+
+    auto combos = extractor.extractAllCombos(hand);
+
+    CHECK(combos.size() == 1);
+    CHECK(combos[0].type == ComboType::TRIPLE);
+    CHECK(combos[0].mainRanks == std::vector<Rank>{Rank::THREE});
+    CHECK(combos[0].length() == static_cast<int>(hand.size()));
+    std::cout << "[PASS] testIsolatedTripleDoesNotUseItselfAsPairWing" << std::endl;
+}
+
+void testStrongStraightStillComparesBombPreservingSplit() {
+    DefaultHandCardsScoringStrategy scorer;
+    DefaultComboExtractor extractor(scorer);
+    std::vector<Card> hand = {
+        {Rank::THREE, Suit::SPADE}, {Rank::FOUR, Suit::SPADE},
+        {Rank::FIVE, Suit::SPADE}, {Rank::SIX, Suit::SPADE}, {Rank::SEVEN, Suit::SPADE},
+        {Rank::EIGHT, Suit::SPADE}, {Rank::EIGHT, Suit::HEART},
+        {Rank::EIGHT, Suit::CLUB}, {Rank::EIGHT, Suit::DIAMOND},
+        {Rank::NINE, Suit::SPADE}, {Rank::TEN, Suit::SPADE}, {Rank::JACK, Suit::SPADE},
+        {Rank::QUEEN, Suit::SPADE}, {Rank::KING, Suit::SPADE}, {Rank::ACE, Suit::SPADE},
+        {Rank::TWO, Suit::SPADE}, {Rank::SMALL_JOKER, Suit::NONE}
+    };
+
+    auto combos = extractor.extractAllCombos(hand);
+    bool hasEightBomb = false;
+    int cardCount = 0;
+    for (const auto& combo : combos) {
+        cardCount += combo.length();
+        hasEightBomb = hasEightBomb || (combo.type == ComboType::BOMB
+            && combo.mainRanks == std::vector<Rank>{Rank::EIGHT});
+    }
+
+    CHECK(hasEightBomb);
+    CHECK(cardCount == static_cast<int>(hand.size()));
+    std::cout << "[PASS] testStrongStraightStillComparesBombPreservingSplit" << std::endl;
+}
+
 void testDealCards() {
     ShuffleDealStrategy strategy;
     auto shuffled = strategy.shuffle();
@@ -355,6 +400,8 @@ int main() {
     testComboFactories();
     testComboScoring();
     testHandScoring();
+    testIsolatedTripleDoesNotUseItselfAsPairWing();
+    testStrongStraightStillComparesBombPreservingSplit();
     testDealCards();
     testShuffleAndDeal();
     testShuffleAndDealWithReshuffle();

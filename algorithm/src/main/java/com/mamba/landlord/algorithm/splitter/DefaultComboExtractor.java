@@ -36,14 +36,6 @@ public class DefaultComboExtractor implements IComboExtractor {
             return DefaultSplitterFactory.extractAllCombos(handCards);
         }
         int[] count = HandCardUtils.buildRankCounts(handCards);
-        Boolean[] confidentOut = new Boolean[1];
-        boolean useStraight = DefaultSplitterFactory.chooseStrategyWithConfidence(count, confidentOut);
-
-        if (Boolean.TRUE.equals(confidentOut[0])) {
-            AbstractHandSplitter chosen = useStraight ? STRAIGHT_SPLITTER : PLANE_BOMB_SPLITTER;
-            return chosen.extractAllCombos(handCards, count);
-        }
-
         int[] countB = count.clone();
         List<Combo> combosA = PLANE_BOMB_SPLITTER.extractAllCombos(handCards, count);
         List<Combo> combosB = STRAIGHT_SPLITTER.extractAllCombos(handCards, countB);

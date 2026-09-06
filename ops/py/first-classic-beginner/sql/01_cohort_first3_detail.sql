@@ -1,11 +1,10 @@
 -- 01_cohort_first3_detail.sql
 -- 首次经典初级房玩家前 3 局明细导出（框架 2.1/2.2/3.1/3.2）
--- 口径：注册窗口 2026-06-18~24；首次经典对局(min_by game_datetime)房间在 4484/12074 且发生在 reg_date；
+-- 口径：注册窗口 2026-06-25~07-01；首次经典对局(min_by game_datetime)房间在 4484/12074 且发生在 reg_date；
 --      robot!=1, play_mode 1-6；窗口内按 game_datetime,resultguid 编序取前 3 局。
 -- 线性 CTE：reg_base -> classic_first -> cohort -> ranked -> SELECT（每个 CTE 只被下游引用一次，
 --   避免 StarRocks CTE 内联导致重复扫描大表 -> CloudBeaver 静默失败）。
--- 说明：hand_cards/bottom_cards 在数仓 extend_content 全历史 0 覆盖（已查证），故不取；
---      bomb_cnt/bomb_final（持有炸弹数，表文档未记录）从 card_power 节点现取；
+-- 说明：06-25 起 hand_cards 已有现行逗号分隔编码，持有炸弹由本地解析物理牌面；
 --      role 是 StarRocks 关键字，返回列名带反引号，改别名 player_role 规避。
 WITH reg_base AS (
     SELECT
@@ -14,7 +13,7 @@ WITH reg_base AS (
         reg.channel_category_name
     FROM tcy_temp.dws_dq_app_daily_reg reg
     WHERE reg.app_id = 1880053
-      AND reg.reg_date BETWEEN '2026-06-18' AND '2026-06-24'
+      AND reg.reg_date BETWEEN '2026-06-25' AND '2026-07-01'
 ),
 classic_first AS (
     SELECT
@@ -23,7 +22,7 @@ classic_first AS (
         MIN(game.game_datetime) AS first_game_time
     FROM tcy_temp.dws_ddz_daily_game game
     INNER JOIN reg_base reg ON reg.uid = game.uid
-    WHERE game.dt BETWEEN '2026-06-18' AND '2026-06-24'
+    WHERE game.dt BETWEEN '2026-06-25' AND '2026-07-01'
       AND game.robot != 1
       AND game.play_mode BETWEEN 1 AND 6
     GROUP BY game.uid
@@ -72,11 +71,10 @@ ranked AS (
         game.is_pass,
         game.shuffle_times,
         game.user_attr_bout,
-        IFNULL(get_json_int(game.extend_content, '$.card_power.bomb_cnt'), 0) AS bomb_cnt,
-        IFNULL(get_json_int(game.extend_content, '$.card_power.bomb_final'), 0) AS bomb_final
+        game.hand_cards
     FROM tcy_temp.dws_ddz_daily_game game
     INNER JOIN cohort ON cohort.uid = game.uid
-    WHERE game.dt BETWEEN '2026-06-18' AND '2026-06-24'
+    WHERE game.dt BETWEEN '2026-06-25' AND '2026-07-01'
       AND game.robot != 1
       AND game.play_mode BETWEEN 1 AND 6
 )
@@ -109,8 +107,7 @@ SELECT
     is_pass,
     shuffle_times,
     user_attr_bout,
-    bomb_cnt,
-    bomb_final
+    hand_cards
 FROM ranked
 WHERE game_seq <= 3
 ORDER BY uid, game_seq;

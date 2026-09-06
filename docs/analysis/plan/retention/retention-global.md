@@ -60,19 +60,19 @@ LEFT JOIN tcy_temp.dws_app_game_active a
 -- 次留（Day 1）
 ROUND(
     COUNT(DISTINCT CASE WHEN l.login_date = DATE_ADD(r.reg_date, INTERVAL 1 DAY) THEN r.uid END)
-    * 100.0 / COUNT(DISTINCT r.uid), 2
+    * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2
 ) AS login_day1
 
 -- 7 留（Day 7）
 ROUND(
-    COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 7 DAY) THEN r.uid END)
-    * 100.0 / COUNT(DISTINCT r.uid), 2
+    COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 6 DAY) THEN r.uid END)
+    * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2
 ) AS game_day7
 
 -- 30 留（Day 30）
 ROUND(
-    COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 30 DAY) THEN r.uid END)
-    * 100.0 / COUNT(DISTINCT r.uid), 2
+    COUNT(DISTINCT CASE WHEN a.dt = DATE_ADD(r.reg_date, INTERVAL 29 DAY) THEN r.uid END)
+    * 100.0 / NULLIF(COUNT(DISTINCT r.uid), 0), 2
 ) AS game_day30
 ```
 
@@ -140,7 +140,7 @@ date_bounds AS (
     -- 2. 全局活跃日期窗口：最早注册次日 ~ 最晚注册后 30 天
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 29 DAY) AS max_act_date
     FROM reg_base
 ),
 all_events_deduped AS (
@@ -179,18 +179,18 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 3  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d3,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 14 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d14,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 3  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d3,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 14 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d14,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d30,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 3  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d3,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 14 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d14,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 3  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d3,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 14 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d14,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d30
 FROM all_events_deduped
 GROUP BY channel
 ORDER BY reg_users DESC;
@@ -220,7 +220,7 @@ reg_bitmap AS (
 date_bounds AS (
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 29 DAY) AS max_act_date
     FROM reg_base
 ),
 login_bitmap AS (
@@ -261,14 +261,14 @@ SELECT
 FROM reg_bitmap rb
 LEFT JOIN login_bitmap gl1  ON gl1.login_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
 LEFT JOIN login_bitmap gl3  ON gl3.login_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY)
-LEFT JOIN login_bitmap gl7  ON gl7.login_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+LEFT JOIN login_bitmap gl7  ON gl7.login_date = DATE_ADD(rb.reg_date, INTERVAL 6 DAY)
 LEFT JOIN login_bitmap gl14 ON gl14.login_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY)
-LEFT JOIN login_bitmap gl30 ON gl30.login_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+LEFT JOIN login_bitmap gl30 ON gl30.login_date = DATE_ADD(rb.reg_date, INTERVAL 29 DAY)
 LEFT JOIN game_bitmap gg1   ON gg1.game_date = DATE_ADD(rb.reg_date, INTERVAL 1 DAY)
 LEFT JOIN game_bitmap gg3   ON gg3.game_date = DATE_ADD(rb.reg_date, INTERVAL 3 DAY)
-LEFT JOIN game_bitmap gg7   ON gg7.game_date = DATE_ADD(rb.reg_date, INTERVAL 7 DAY)
+LEFT JOIN game_bitmap gg7   ON gg7.game_date = DATE_ADD(rb.reg_date, INTERVAL 6 DAY)
 LEFT JOIN game_bitmap gg14  ON gg14.game_date = DATE_ADD(rb.reg_date, INTERVAL 14 DAY)
-LEFT JOIN game_bitmap gg30  ON gg30.game_date = DATE_ADD(rb.reg_date, INTERVAL 30 DAY)
+LEFT JOIN game_bitmap gg30  ON gg30.game_date = DATE_ADD(rb.reg_date, INTERVAL 29 DAY)
 GROUP BY rb.channel
 ORDER BY reg_users DESC;
 ```
@@ -310,7 +310,7 @@ date_bounds AS (
     -- 2. 动态计算活跃表的分区裁剪边界（1日留存最小值 ~ 30日留存最大值）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 29 DAY) AS max_act_date
     FROM reg_base
 ),
 all_events_deduped AS (
@@ -352,14 +352,14 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
 
     -- 登录留存率计算
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d30,
 
     -- 游戏留存率计算
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d30
 FROM all_events_deduped
 GROUP BY platform
 ORDER BY reg_users DESC;
@@ -390,7 +390,7 @@ date_bounds AS (
     -- 2. 动态计算活跃表的分区裁剪边界（最早注册次日 ~ 最晚注册后30天）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 29 DAY) AS max_act_date
     FROM reg_base
 ),
 all_events_deduped AS (
@@ -432,14 +432,14 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
 
     -- 登录留存率计算
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d30,
 
     -- 游戏留存率计算
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d30
 FROM all_events_deduped
 GROUP BY client_lang
 ORDER BY reg_users DESC;
@@ -512,8 +512,8 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
 
     -- 次留计算（得益于子查询去重，此处 distinct 几乎无压力）
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN is_game_d1 = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN is_game_d1 = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1
 FROM all_events_deduped
 GROUP BY reg_hour
 ORDER BY reg_hour;
@@ -558,7 +558,7 @@ date_bounds AS (
     -- 3. 动态计算活跃表的分区裁剪边界
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 29 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -596,17 +596,17 @@ all_events_deduped AS (
 SELECT
     game_count_group,
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN game_count ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 1) AS avg_game_count,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN game_count ELSE 0 END) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 1) AS avg_game_count,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d30,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d30
 FROM all_events_deduped
 GROUP BY game_count_group
 ORDER BY game_count_group;
@@ -645,7 +645,7 @@ date_bounds AS (
     -- 3. 动态计算活跃表的分区裁剪边界（因为只算到7留，最大边界只需+7天，极大缩减扫描量）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -682,15 +682,15 @@ SELECT
     win_rate_group,
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
     -- 锁定在注册流上计算平均局数，防止分母被摊薄
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN game_count ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 1) AS avg_games,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN game_count ELSE 0 END) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 1) AS avg_games,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7
 FROM all_events_deduped
 GROUP BY win_rate_group
 ORDER BY win_rate_group;
@@ -752,7 +752,7 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
     
     -- 次留计算
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1
 FROM all_events_deduped
 GROUP BY lose_streak_group
 ORDER BY lose_streak_group;
@@ -793,7 +793,7 @@ date_bounds AS (
     -- 3. 动态计算活跃表的分区裁剪边界（只看到7留，最大边界只需+7天，大幅降低IO扫描）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -831,14 +831,14 @@ SELECT
     money_group,
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
     -- 🌟 锁定在注册流上计算平均输赢差额，防止结果被外部流摊薄
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN total_diff_money ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0) AS avg_money_change,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN total_diff_money ELSE 0 END) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 0) AS avg_money_change,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1
 FROM all_events_deduped
 GROUP BY money_group
 ORDER BY money_group;
@@ -875,7 +875,7 @@ date_bounds AS (
     -- 3. 动态计算活跃表的分区裁剪边界（因为只算到7留，最大边界只需+7天，大幅降低IO扫描）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -912,15 +912,15 @@ SELECT
     bankrupt_group,
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
     -- 🌟 修正原 AVG 算法：锁定在注册流（is_reg = 1）上计算平均财富谷值，防止分母被外部流摊薄导致结果偏低
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN money_valley ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0) AS avg_money_valley,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN money_valley ELSE 0 END) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 0) AS avg_money_valley,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7
 FROM all_events_deduped
 GROUP BY bankrupt_group
 ORDER BY bankrupt_group;
@@ -990,7 +990,7 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 次留计算
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1
 FROM all_events_deduped
 GROUP BY high_multi_exp
 ORDER BY high_multi_exp;
@@ -1022,7 +1022,7 @@ date_bounds AS (
     -- 2. 动态计算活跃表的分区裁剪边界（因为只看7留，最大边界只需+7天，消除几百个分区的无用扫描）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -1060,12 +1060,12 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7
 FROM all_events_deduped
 GROUP BY login_freq_group
 ORDER BY login_freq_group;
@@ -1135,10 +1135,10 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 🌟 修正原 AVG 算法：锁定在注册流（is_reg = 1）上计算平均倍数，避免分母被次留流摊薄
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN raw_avg_multi ELSE 0 END) * 1.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 1) AS avg_multi,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN raw_avg_multi ELSE 0 END) * 1.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 1) AS avg_multi,
 
     -- 次留计算
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1
 FROM all_events_deduped
 GROUP BY multi_group
 ORDER BY multi_group;
@@ -1187,7 +1187,7 @@ date_bounds AS (
     -- 4. 动态计算活跃表的分区裁剪边界（最大边界只需 +7 天，精准控制 IO）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -1225,12 +1225,12 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7
 FROM all_events_deduped
 GROUP BY first_game_group
 ORDER BY first_game_group;
@@ -1296,10 +1296,10 @@ SELECT
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 🌟 修正原 AVG 算法：锁定在注册流（is_reg = 1）上计算平均地主比例，避免分母膨胀
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN landlord_ratio ELSE 0 END) / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS avg_landlord_ratio,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN landlord_ratio ELSE 0 END) / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS avg_landlord_ratio,
 
     -- 次留计算
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1
 FROM all_events_deduped
 GROUP BY role_preference
 ORDER BY role_preference;
@@ -1373,10 +1373,10 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 🌟 修正原 AVG 算法：锁定在注册基础流上算平均逃跑率，防止分母被次留活跃数据行摊薄失真
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN escape_rate ELSE 0 END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS avg_escape_rate,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN escape_rate ELSE 0 END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS avg_escape_rate,
 
     -- 次留计算
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1
 FROM all_events_deduped
 GROUP BY escape_group
 ORDER BY escape_group;
@@ -1426,7 +1426,7 @@ date_bounds AS (
     -- 4. 动态计算留存所需的分区裁剪边界
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -1465,15 +1465,15 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 锁定在注册基础流上计算平均底注，防止分母被摊薄失真
-    ROUND(SUM(CASE WHEN is_reg = 1 THEN raw_avg_room_base ELSE 0 END) / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0) AS avg_room_base,
+    ROUND(SUM(CASE WHEN is_reg = 1 THEN raw_avg_room_base ELSE 0 END) / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 0) AS avg_room_base,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7
 FROM all_events_deduped
 GROUP BY room_base_group
 ORDER BY room_base_group;
@@ -1549,7 +1549,7 @@ date_bounds AS (
     -- 5. 动态计算留存所需的分区裁剪边界（最大边界只需 +7 天，精准斩断冗余 IO）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_deduped AS (
@@ -1588,12 +1588,12 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 登录留存
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
 
     -- 游戏留存
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7
 FROM all_events_deduped
 GROUP BY risk_group
 ORDER BY risk_group;
@@ -1675,7 +1675,7 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 次留计算
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1
 FROM all_events_deduped
 GROUP BY first_game_risk
 ORDER BY first_game_risk;
@@ -1750,7 +1750,7 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS user_count,
 
     -- 次留计算
-    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1
+    ROUND(COUNT(DISTINCT CASE WHEN is_login_d1 = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1
 FROM all_events_deduped
 GROUP BY crash_risk_group
 ORDER BY crash_risk_group;
@@ -1779,7 +1779,7 @@ date_bounds AS (
     -- 2. 动态计算次留所需的分区裁剪边界（最大边界精准卡死在 +30 天，斩断后续无关历史大分区）
     SELECT
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+        DATE_ADD(MAX(reg_date), INTERVAL 29 DAY) AS max_act_date
     FROM reg_base_raw
 ),
 all_events_union AS (
@@ -1818,19 +1818,19 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END) AS reg_users,
 
     -- 1日留存与 Gap
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d1,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d1,
-    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 1 THEN uid END)) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS gap_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d1,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 1  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d1,
+    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 1 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 1 THEN uid END)) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS gap_d1,
 
     -- 7日留存与 Gap
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d7,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 7  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d7,
-    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 7 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 7 THEN uid END)) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS gap_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d7,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 6  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d7,
+    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 6 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 6 THEN uid END)) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS gap_d7,
 
     -- 30日留存与 Gap
-    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS login_d30,
-    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 30  THEN uid END) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS game_d30,
-    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 30 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 30 THEN uid END)) * 100.0 / COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 2) AS gap_d30
+    ROUND(COUNT(DISTINCT CASE WHEN login_days_diff = 29 THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS login_d30,
+    ROUND(COUNT(DISTINCT CASE WHEN game_days_diff = 29  THEN uid END) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS game_d30,
+    ROUND((COUNT(DISTINCT CASE WHEN login_days_diff = 29 THEN uid END) - COUNT(DISTINCT CASE WHEN game_days_diff = 29 THEN uid END)) * 100.0 / NULLIF(COUNT(DISTINCT CASE WHEN is_reg = 1 THEN uid END), 0), 2) AS gap_d30
 FROM all_events_union
 GROUP BY reg_date
 ORDER BY reg_date;

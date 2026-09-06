@@ -398,7 +398,7 @@ ORDER BY play_mode, multi_type;
 ```sql
 SELECT
     play_mode,
-    CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END AS bomb_type,
+    CASE WHEN bomb_bet > 1 THEN '有炸弹' ELSE '无炸弹' END AS bomb_type,
     COUNT(*) AS game_count,
     ROUND(AVG(magnification), 2) AS avg_magnification,
     ROUND(AVG(real_magnification), 2) AS avg_real_magnification,
@@ -408,7 +408,7 @@ WHERE game_id = 53
   AND dt BETWEEN '2026-02-10' AND '2026-02-15'
   AND robot != 1               -- 仅真人
   AND play_mode IN (1, 2, 3)
-GROUP BY play_mode, CASE WHEN bomb_bet > 0 THEN '有炸弹' ELSE '无炸弹' END;
+GROUP BY play_mode, CASE WHEN bomb_bet > 1 THEN '有炸弹' ELSE '无炸弹' END;
 ```
 
 ## 字段使用注意

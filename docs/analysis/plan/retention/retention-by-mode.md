@@ -51,7 +51,7 @@ END AS play_mode
 > date_bounds AS (
 >     SELECT
 >         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_act_date,
->         DATE_ADD(MAX(reg_date), INTERVAL 30 DAY) AS max_act_date
+>         DATE_ADD(MAX(reg_date), INTERVAL 29 DAY) AS max_act_date
 >     FROM reg_base
 > )
 > -- 然后在活跃 JOIN 上追加：
@@ -178,8 +178,8 @@ date_bounds AS (
         MAX(reg_date) AS max_reg_date,
         DATE_ADD(MIN(reg_date), INTERVAL 1 DAY) AS min_d1_date,
         DATE_ADD(MAX(reg_date), INTERVAL 1 DAY) AS max_d1_date,
-        DATE_ADD(MIN(reg_date), INTERVAL 7 DAY) AS min_d7_date,
-        DATE_ADD(MAX(reg_date), INTERVAL 7 DAY) AS max_d7_date
+        DATE_ADD(MIN(reg_date), INTERVAL 6 DAY) AS min_d7_date,
+        DATE_ADD(MAX(reg_date), INTERVAL 6 DAY) AS max_d7_date
     FROM reg_base_raw
 ),
 first_day_modes AS (
@@ -235,7 +235,7 @@ all_events_stream AS (
     UNION ALL
 
     -- 8. 垂直管道流第三层：7日(D7)同玩法活跃流
-    -- 🌟 自动修正：DATE_ADD(reg_date, 7)，强制开启 D+7 静态分区裁剪
+    -- 🌟 自动修正：DATE_ADD(reg_date, 6)，强制开启 D+6 静态分区裁剪
     SELECT
         ma.uid, ma.play_mode, 0 AS is_reg, 0 AS days_diff_1, 1 AS days_diff_7
     FROM tcy_temp.dws_app_gamemode_active ma
@@ -243,7 +243,7 @@ all_events_stream AS (
         ON ma.app_id = 1880053
        AND ma.uid = p.uid
        AND ma.play_mode = p.play_mode
-       AND ma.dt = DATE_ADD(p.reg_date, INTERVAL 7 DAY)
+       AND ma.dt = DATE_ADD(p.reg_date, INTERVAL 6 DAY)
     WHERE ma.dt BETWEEN (SELECT min_d7_date FROM date_bounds) AND (SELECT max_d7_date FROM date_bounds)
     GROUP BY ma.uid, ma.play_mode
 )
@@ -1187,7 +1187,7 @@ SELECT /*+ SET_VAR(new_planner_optimize_timeout=15000) */
     COUNT(DISTINCT s.uid) AS user_count,
 
     -- 分子 / 精准的首日留存去重总分母 = 绝对严谨的转移矩阵占比
-    ROUND(COUNT(DISTINCT s.uid) * 100.0 / b.base_users, 2) AS pct_of_reg_mode
+    ROUND(COUNT(DISTINCT s.uid) * 100.0 / NULLIF(b.base_users, 0), 2) AS pct_of_reg_mode
 FROM all_events_stream s
 INNER JOIN mode_base_count b ON s.reg_mode = b.reg_mode -- 挂载精准的独立分母
 GROUP BY s.reg_mode, s.ret_mode, b.base_users

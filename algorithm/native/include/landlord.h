@@ -745,22 +745,20 @@ protected:
             int idx = rankIndex(r);
             if (count[idx] < 3) continue;
 
+            count[idx] -= 3;
             auto pairs   = collectPairs(count);
             auto singles = collectSingles(count);
 
             if (!pairs.empty()) {
                 Rank p = pairs[0];
                 combos.push_back(Combo::tripleWithPair(r, p));
-                count[idx] -= 3;
                 count[rankIndex(p)] -= 2;
             } else if (!singles.empty()) {
                 Rank s = singles[0];
                 combos.push_back(Combo::tripleWithSingle(r, s));
-                count[idx] -= 3;
                 count[rankIndex(s)] -= 1;
             } else {
                 combos.push_back(Combo::triple(r));
-                count[idx] -= 3;
             }
         }
     }
@@ -1005,15 +1003,6 @@ public:
         }
 
         auto count = HandCardUtils::buildRankCounts(handCards);
-        bool confident = false;
-        bool useStraight = DefaultSplitterFactory::chooseStrategyWithConfidence(count, &confident);
-
-        if (confident) {
-            if (useStraight)
-                return DefaultSplitterFactory::straightSplitter().extractAllCombos(handCards, count);
-            return DefaultSplitterFactory::planeBombSplitter().extractAllCombos(handCards, count);
-        }
-
         auto countB = count;
         auto combosA = DefaultSplitterFactory::planeBombSplitter().extractAllCombos(handCards, count);
         auto combosB = DefaultSplitterFactory::straightSplitter().extractAllCombos(handCards, countB);

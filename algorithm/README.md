@@ -7,8 +7,8 @@
 | 项 | 值 |
 |---|---|
 | 源仓库 | https://github.com/Samuel86-star/landlord.git |
-| 快照 commit | `e4be61a` (`codex/dealing-agent-foundation`) |
-| 快照日期 | 2026-09-05 |
+| 快照 commit | `a4b53b9` (`main`) |
+| 快照日期 | 2026-09-06 |
 | 坐标 | `com.mamba.landlord:landlord-algorithm:0.0.1-SNAPSHOT` |
 | 技术栈 | Spring Boot 4.0.3 / Java 21 + C++（native） |
 | 对应方案 | [docs/tech/algorithm-snapshot-plan.md](../docs/tech/algorithm-snapshot-plan.md) |

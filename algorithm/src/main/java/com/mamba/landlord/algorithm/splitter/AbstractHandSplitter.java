@@ -21,9 +21,6 @@ public abstract class AbstractHandSplitter implements IHandSplitter {
     private static final List<Rank> STRAIGHT_RANKS = Rank.STRAIGHT_RANKS;
     private static final Rank[] ALL_RANKS = Rank.values();
 
-    /** 复用 findLongestConsecutiveSegment 的返回结果，避免每次 new int[2] */
-    private final int[] segmentResult = new int[2];
-
     /** 顺子最小长度 */
     private static final int MIN_STRAIGHT_LEN = 5;
     /** 连对最小长度 */
@@ -49,12 +46,12 @@ public abstract class AbstractHandSplitter implements IHandSplitter {
 
     /**
      * 在顺子区上扫描最长连续区间，其中每个点数至少有 minCardsPerRank 张。
-     * 结果写入实例字段 segmentResult 并返回其引用，避免每次分配；未找到时返回 null。
+     * 返回最长区间的起点和长度；未找到时返回 null。
      *
      * @param count           点数计数数组
      * @param minCardsPerRank 每个点数至少需要的张数（顺子=1，连对=2，飞机=3）
      * @param minLen          最小有效长度
-     * @return segmentResult（[startIdx, maxLen]），或 null 若不存在满足条件的区间
+     * @return [startIdx, maxLen]，或 null 若不存在满足条件的区间
      */
     protected int[] findLongestConsecutiveSegment(int[] count, int minCardsPerRank, int minLen) {
         int maxLen = 0;
@@ -77,9 +74,7 @@ public abstract class AbstractHandSplitter implements IHandSplitter {
         if (maxLen < minLen) {
             return null;
         }
-        segmentResult[0] = startIdx;
-        segmentResult[1] = maxLen;
-        return segmentResult;
+        return new int[]{startIdx, maxLen};
     }
 
     /**
@@ -231,22 +226,20 @@ public abstract class AbstractHandSplitter implements IHandSplitter {
             int idx = r.ordinal();
             if (count[idx] < 3) continue;
 
+            count[idx] -= 3;
             List<Rank> pairs = collectPairs(count);
             List<Rank> singles = collectSingles(count);
 
             if (pairs.size() >= 1) {
                 Rank p = pairs.get(0);
                 combos.add(Combo.tripleWithPair(r, p));
-                count[idx] -= 3;
                 count[p.ordinal()] -= 2;
             } else if (singles.size() >= 1) {
                 Rank s = singles.get(0);
                 combos.add(Combo.tripleWithSingle(r, s));
-                count[idx] -= 3;
                 count[s.ordinal()] -= 1;
             } else {
                 combos.add(Combo.triple(r));
-                count[idx] -= 3;
             }
         }
     }

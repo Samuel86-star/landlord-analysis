@@ -56,7 +56,7 @@ SELECT
     IFNULL(get_json_int(extend_content, '$.card_power.card_power_final'), 0) AS card_power_final,
     IFNULL(get_json_int(extend_content, '$.card_power.cost_time'), 0) AS cost_time,
     IFNULL(get_json_string(extend_content, '$.card_power.is_pass'), 'false') AS is_pass,
-    IFNULL(get_json_int(extend_content, '$.card_power.shuffle_times'), 0) AS shuffle_times,
+    IFNULL(get_json_int(extend_content, '$.card_power.shuffle_times'), -1) AS shuffle_times,
     IFNULL(CAST(regexp_extract(extend_content, 'bout[^0-9]*([0-9]+)', 1) AS INT), 0) AS user_attr_bout,
     IFNULL(CAST(regexp_extract(extend_content, 'ai_level[^0-9]*type[^0-9]*([0-9]+)', 1) AS INT), 0) AS ai_level_type,
     IFNULL(CAST(regexp_extract(extend_content, 'callflag[^0-9]*([0-9]+)', 1) AS INT), 0) AS ai_level_callflag,

@@ -61,6 +61,8 @@ algorithm/
 记录：来源 `github.com/Samuel86-star/landlord.git` · 快照版本 `<commit>` (`<source branch>`) @ `<同步日期>` · **只读副本，勿改** · 三大模块速览（scoring 牌力评分 / shuffle 发牌分布采样 / splitter 拆牌 + native）· 更新方法（按源仓 commit 区间增量同步）。
 
 > 2026-09-05 已从验证工作树 `codex/dealing-agent-foundation` 同步 `71599ad..e4be61a`；README 记录实际 source head。
+>
+> 2026-09-06 已从权威源仓 `main` 同步 `e4be61a..a4b53b9`：修复三带自吃、移除错误的高置信单路径短路，并消除 Java splitter 的共享可变连续段结果。
 
 ## 与 analysis 的衔接
 
