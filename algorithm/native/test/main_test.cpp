@@ -273,6 +273,35 @@ void testLongStraightStillPreservesTwoBomb() {
     std::cout << "[PASS] testLongStraightStillPreservesTwoBomb" << std::endl;
 }
 
+class QuadProbe : public AbstractHandSplitter {
+public:
+    using AbstractHandSplitter::extractAllCombos;
+
+    std::vector<Combo> extractAllCombos(const std::vector<Card>&,
+                                        std::array<int, RANK_COUNT>& count) override {
+        std::vector<Combo> combos;
+        extractQuadsWithWings(count, combos);
+        return combos;
+    }
+};
+
+void testQuadDoesNotUseItselfAsPairWings() {
+    std::vector<Card> hand = {
+        {Rank::THREE, Suit::SPADE}, {Rank::THREE, Suit::HEART},
+        {Rank::THREE, Suit::CLUB}, {Rank::THREE, Suit::DIAMOND},
+        {Rank::FOUR, Suit::SPADE}, {Rank::FOUR, Suit::HEART}
+    };
+
+    QuadProbe probe;
+    auto combos = probe.extractAllCombos(hand);
+    CHECK(combos.size() == 1);
+    CHECK(combos[0].type == ComboType::QUAD_WITH_TWO_SINGLES);
+    CHECK(combos[0].mainRanks == std::vector<Rank>{Rank::THREE});
+    CHECK(combos[0].wingRanks == std::vector<Rank>({Rank::FOUR, Rank::FOUR}));
+    CHECK(combos[0].length() == static_cast<int>(hand.size()));
+    std::cout << "[PASS] testQuadDoesNotUseItselfAsPairWings" << std::endl;
+}
+
 void testDealCards() {
     ShuffleDealStrategy strategy;
     auto shuffled = strategy.shuffle();
@@ -454,6 +483,7 @@ int main() {
     testStrongStraightStillComparesBombPreservingSplit();
     testTripleUsesOnlyAnotherRankAsPairWing();
     testLongStraightStillPreservesTwoBomb();
+    testQuadDoesNotUseItselfAsPairWings();
     testDealCards();
     testShuffleAndDeal();
     testShuffleAndDealWithReshuffle();

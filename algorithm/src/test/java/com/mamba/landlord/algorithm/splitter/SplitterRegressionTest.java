@@ -9,6 +9,7 @@ import com.mamba.landlord.core.model.Suit;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.ArrayList;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -77,6 +78,18 @@ class SplitterRegressionTest {
         assertEquals(hand.size(), combos.stream().mapToInt(Combo::length).sum());
     }
 
+    @Test
+    void quadDoesNotUseItselfAsPairWings() {
+        List<Card> hand = List.of(
+            new Card(Rank.THREE, Suit.SPADE), new Card(Rank.THREE, Suit.HEART),
+            new Card(Rank.THREE, Suit.CLUB), new Card(Rank.THREE, Suit.DIAMOND),
+            new Card(Rank.FOUR, Suit.SPADE), new Card(Rank.FOUR, Suit.HEART)
+        );
+
+        assertEquals(List.of(Combo.quadWithTwoSingles(Rank.THREE, Rank.FOUR, Rank.FOUR)),
+            new QuadProbe().extractAllCombos(hand));
+    }
+
     private static List<Card> tripleWithPair(Rank triple, Rank pair) {
         return List.of(
             new Card(triple, Suit.SPADE), new Card(triple, Suit.HEART), new Card(triple, Suit.CLUB),
@@ -86,5 +99,14 @@ class SplitterRegressionTest {
 
     private static Card card(Rank rank) {
         return new Card(rank, Suit.SPADE);
+    }
+
+    private static final class QuadProbe extends AbstractHandSplitter {
+        @Override
+        public List<Combo> extractAllCombos(List<Card> handCards, int[] rankCounts) {
+            List<Combo> combos = new ArrayList<>();
+            extractQuadsWithWings(rankCounts, combos);
+            return combos;
+        }
     }
 }

@@ -717,13 +717,13 @@ protected:
             int idx = rankIndex(r);
             if (count[idx] < 4) continue;
 
+            count[idx] -= 4;
             auto pairs   = collectPairs(count);
             auto singles = collectSingles(count);
 
             if (static_cast<int>(pairs.size()) >= 2) {
                 Rank p1 = pairs[0], p2 = pairs[1];
                 combos.push_back(Combo::quadWithTwoPairs(r, p1, p2));
-                count[idx] -= 4;
                 count[rankIndex(p1)] -= 2;
                 count[rankIndex(p2)] -= 2;
                 return true;
@@ -731,11 +731,11 @@ protected:
             if (static_cast<int>(singles.size()) >= 2) {
                 Rank s1 = singles[0], s2 = singles[1];
                 combos.push_back(Combo::quadWithTwoSingles(r, s1, s2));
-                count[idx] -= 4;
                 count[rankIndex(s1)] -= 1;
                 count[rankIndex(s2)] -= 1;
                 return true;
             }
+            count[idx] += 4;
         }
         return false;
     }

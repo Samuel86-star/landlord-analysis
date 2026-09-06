@@ -20,6 +20,7 @@
 | hand-aaa-33 | `AAA33` | `TRIPLE_WITH_PAIR(A,3)` |
 | hand-straight-bomb-8 | `34567 8888 9TJQKA 2 sj` | 保留 `BOMB(8)`，组合总长度等于 17 |
 | hand-straight-bomb-2 | `3456789TJQKA 2222 sj` | 保留 `BOMB(2)`，组合总长度等于 17 |
+| hand-3333-44 | `333344` | `QUAD_WITH_TWO_SINGLES(3,4,4)`，四张不得自作翼牌 |
 
 任何计分公式或整手拆牌规则变更必须在同一提交中更新 Java 和 C++ 两个测试套件及本表。
 

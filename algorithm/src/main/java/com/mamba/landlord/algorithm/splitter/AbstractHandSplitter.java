@@ -193,6 +193,7 @@ public abstract class AbstractHandSplitter implements IHandSplitter {
             int idx = r.ordinal();
             if (count[idx] < 4) continue;
 
+            count[idx] -= 4;
             List<Rank> pairs = collectPairs(count);
             List<Rank> singles = collectSingles(count);
 
@@ -200,7 +201,6 @@ public abstract class AbstractHandSplitter implements IHandSplitter {
                 Rank p1 = pairs.get(0);
                 Rank p2 = pairs.get(1);
                 combos.add(Combo.quadWithTwoPairs(r, p1, p2));
-                count[idx] -= 4;
                 count[p1.ordinal()] -= 2;
                 count[p2.ordinal()] -= 2;
                 return true;
@@ -209,11 +209,11 @@ public abstract class AbstractHandSplitter implements IHandSplitter {
                 Rank s1 = singles.get(0);
                 Rank s2 = singles.get(1);
                 combos.add(Combo.quadWithTwoSingles(r, s1, s2));
-                count[idx] -= 4;
                 count[s1.ordinal()] -= 1;
                 count[s2.ordinal()] -= 1;
                 return true;
             }
+            count[idx] += 4;
         }
         return false;
     }
