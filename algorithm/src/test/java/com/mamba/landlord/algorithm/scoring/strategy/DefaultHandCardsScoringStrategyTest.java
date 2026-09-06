@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -119,5 +120,19 @@ class DefaultHandCardsScoringStrategyTest {
         assertEquals(-35.0, score, 0.001,
             "持有四张8 应给 +5 控制加成，即使拆牌结果里没有 BOMB 组合");
     }
-}
 
+    @Test
+    @DisplayName("拆牌结果必须与整手牌的点数多重集一致")
+    void rejectsCombosThatDoNotPartitionHandCards() {
+        List<Card> hand = List.of(
+            new Card(Rank.ACE, Suit.SPADE),
+            new Card(Rank.ACE, Suit.HEART),
+            new Card(Rank.ACE, Suit.CLUB),
+            new Card(Rank.THREE, Suit.SPADE)
+        );
+
+        assertThrows(IllegalArgumentException.class,
+            () -> strategy.calcTotalHandScore(hand,
+                List.of(Combo.tripleWithSingle(Rank.ACE, Rank.FOUR))));
+    }
+}

@@ -32,6 +32,12 @@ class HandCardParserTest(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "invalid hand card"):
             hand_cards.tokenize_hand_cards("3,4,x")
 
+    def test_tolerant_metrics_mark_invalid_hand_for_skipping(self):
+        self.assertEqual(
+            hand_cards.try_parse_hand_metrics("3,4,x"),
+            (None, None, False),
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

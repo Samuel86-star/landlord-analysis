@@ -52,3 +52,11 @@ def parse_king_status(hand_cards: str | None) -> str | None:
     if has_small or has_big:
         return "单王"
     return "无王"
+
+
+def try_parse_hand_metrics(hand_cards: str | None) -> tuple[int | None, str | None, bool]:
+    """Return metrics plus validity so callers can skip bad rows without hiding them."""
+    try:
+        return count_held_bombs(hand_cards), parse_king_status(hand_cards), True
+    except ValueError:
+        return None, None, False

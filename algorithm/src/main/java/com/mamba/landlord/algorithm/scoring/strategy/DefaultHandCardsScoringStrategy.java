@@ -6,7 +6,9 @@ import com.mamba.landlord.core.model.Card;
 import com.mamba.landlord.core.model.Combo;
 import com.mamba.landlord.core.model.Rank;
 import com.mamba.landlord.core.properties.ScoringStrategyProperties;
+import com.mamba.landlord.algorithm.utils.HandCardUtils;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -51,6 +53,7 @@ public final class DefaultHandCardsScoringStrategy implements IHandCardsScoringS
             || combos == null || combos.isEmpty()) {
             return 0.0;
         }
+        validateComboPartition(handCards, combos);
         int n = combos.size();
         double comboSum = 0.0;
         for (Combo c : combos) {
@@ -60,6 +63,30 @@ public final class DefaultHandCardsScoringStrategy implements IHandCardsScoringS
         // 控制牌加成（含炸弹/王炸）基于全部手牌计算，与拆牌方式无关（PRD §4.1.3）
         int controlBonus = computeHandControlBonus(handCards);
         return comboSum - penalty + controlBonus;
+    }
+
+    private void validateComboPartition(List<Card> handCards, List<Combo> combos) {
+        int[] comboCounts = new int[Rank.values().length];
+        for (Combo combo : combos) {
+            int mainWeight;
+            int wingWeight;
+            switch (combo.type()) {
+                case SINGLE, STRAIGHT, ROCKET -> { mainWeight = 1; wingWeight = 0; }
+                case PAIR, CONSECUTIVE_PAIRS -> { mainWeight = 2; wingWeight = 0; }
+                case TRIPLE, PLANE -> { mainWeight = 3; wingWeight = 0; }
+                case TRIPLE_WITH_SINGLE, PLANE_WITH_SINGLES -> { mainWeight = 3; wingWeight = 1; }
+                case TRIPLE_WITH_PAIR, PLANE_WITH_PAIRS -> { mainWeight = 3; wingWeight = 2; }
+                case QUAD_WITH_TWO_SINGLES -> { mainWeight = 4; wingWeight = 1; }
+                case QUAD_WITH_TWO_PAIRS -> { mainWeight = 4; wingWeight = 2; }
+                case BOMB -> { mainWeight = 4; wingWeight = 0; }
+                default -> throw new IllegalArgumentException("Unsupported combo type");
+            }
+            combo.mainRanks().forEach(rank -> comboCounts[rank.ordinal()] += mainWeight);
+            combo.wingRanks().forEach(rank -> comboCounts[rank.ordinal()] += wingWeight);
+        }
+        if (!Arrays.equals(comboCounts, HandCardUtils.buildRankCounts(handCards))) {
+            throw new IllegalArgumentException("Combos must partition handCards");
+        }
     }
 
     /**

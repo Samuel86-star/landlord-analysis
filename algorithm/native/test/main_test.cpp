@@ -178,6 +178,23 @@ void testHandScoring() {
     std::cout << "[PASS] testHandScoring" << std::endl;
 }
 
+void testHandScoringRejectsMismatchedCombos() {
+    DefaultHandCardsScoringStrategy handScorer;
+    std::vector<Card> hand = {
+        {Rank::ACE, Suit::SPADE}, {Rank::ACE, Suit::HEART},
+        {Rank::ACE, Suit::CLUB}, {Rank::THREE, Suit::SPADE}
+    };
+    bool rejected = false;
+    try {
+        handScorer.calcTotalHandScore(
+            hand, {Combo::tripleWithSingle(Rank::ACE, Rank::FOUR)});
+    } catch (const std::invalid_argument&) {
+        rejected = true;
+    }
+    CHECK(rejected);
+    std::cout << "[PASS] testHandScoringRejectsMismatchedCombos" << std::endl;
+}
+
 void testIsolatedTripleDoesNotUseItselfAsPairWing() {
     DefaultHandCardsScoringStrategy scorer;
     DefaultComboExtractor extractor(scorer);
@@ -479,6 +496,7 @@ int main() {
     testComboFactories();
     testComboScoring();
     testHandScoring();
+    testHandScoringRejectsMismatchedCombos();
     testIsolatedTripleDoesNotUseItselfAsPairWing();
     testStrongStraightStillComparesBombPreservingSplit();
     testTripleUsesOnlyAnotherRankAsPairWing();

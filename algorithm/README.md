@@ -7,7 +7,7 @@
 | 项 | 值 |
 |---|---|
 | 源仓库 | https://github.com/Samuel86-star/landlord.git |
-| 快照 commit | `ff17552` (`main`) |
+| 快照 commit | `f2dbcf6` (`main`) |
 | 快照日期 | 2026-09-06 |
 | 坐标 | `com.mamba.landlord:landlord-algorithm:0.0.1-SNAPSHOT` |
 | 技术栈 | Spring Boot 4.0.3 / Java 21 + C++（native） |

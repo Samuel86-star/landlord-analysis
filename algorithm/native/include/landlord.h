@@ -16,6 +16,7 @@
 #include <fstream>
 #include <cstdlib>
 #include <cstdint>
+#include <stdexcept>
 
 namespace landlord {
 
@@ -492,6 +493,7 @@ public:
     inline double calcTotalHandScore(const std::vector<Card>& handCards,
                                      const std::vector<Combo>& combos) const {
         if (handCards.empty() || combos.empty()) return 0.0;
+        validateComboPartition(handCards, combos);
         int n = static_cast<int>(combos.size());
         double comboSum = 0.0;
         for (const auto& c : combos) {
@@ -505,6 +507,37 @@ public:
 
 private:
     DefaultComboScoringStrategy comboScorer_;
+
+    static void validateComboPartition(const std::vector<Card>& handCards,
+                                       const std::vector<Combo>& combos) {
+        std::array<int, RANK_COUNT> handCounts{};
+        std::array<int, RANK_COUNT> comboCounts{};
+        for (const auto& card : handCards) handCounts[rankIndex(card.rank)]++;
+        for (const auto& combo : combos) {
+            int mainWeight = 0, wingWeight = 0;
+            switch (combo.type) {
+                case ComboType::SINGLE:
+                case ComboType::STRAIGHT:
+                case ComboType::ROCKET: mainWeight = 1; break;
+                case ComboType::PAIR:
+                case ComboType::CONSECUTIVE_PAIRS: mainWeight = 2; break;
+                case ComboType::TRIPLE:
+                case ComboType::PLANE: mainWeight = 3; break;
+                case ComboType::TRIPLE_WITH_SINGLE:
+                case ComboType::PLANE_WITH_SINGLES: mainWeight = 3; wingWeight = 1; break;
+                case ComboType::TRIPLE_WITH_PAIR:
+                case ComboType::PLANE_WITH_PAIRS: mainWeight = 3; wingWeight = 2; break;
+                case ComboType::QUAD_WITH_TWO_SINGLES: mainWeight = 4; wingWeight = 1; break;
+                case ComboType::QUAD_WITH_TWO_PAIRS: mainWeight = 4; wingWeight = 2; break;
+                case ComboType::BOMB: mainWeight = 4; break;
+            }
+            for (Rank rank : combo.mainRanks) comboCounts[rankIndex(rank)] += mainWeight;
+            for (Rank rank : combo.wingRanks) comboCounts[rankIndex(rank)] += wingWeight;
+        }
+        if (handCounts != comboCounts) {
+            throw std::invalid_argument("Combos must partition handCards");
+        }
+    }
 
     // Control_Bonus：基于全部手牌计算，与拆牌方式无关（PRD §4.1.3）。
     // 大王/小王/双2 + 每个持有炸弹(张数>=4) + 持有王炸(大小王齐)。

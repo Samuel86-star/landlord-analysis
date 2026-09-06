@@ -19,7 +19,7 @@ import pandas as pd
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))  # 让 import sr_exec 生效
 from sr_exec import StarRocksClient  # noqa: E402
-from hand_cards import count_held_bombs, parse_king_status  # noqa: E402
+from hand_cards import try_parse_hand_metrics  # noqa: E402
 
 OUTPUT = HERE / "output"
 OUTPUT.mkdir(exist_ok=True)
@@ -270,11 +270,14 @@ def main() -> None:
     df["shuffle_group"] = np.where(
         df["shuffle_type"] == 201, "A: 新手保护配牌",
         np.where(df["card_id"] > 0, "B: 其他牌库配牌", "C: 随机/无牌库"))
-    # 持有炸弹（四张同点 + 王炸）
-    df["bomb_cnt"] = df["hand_cards"].map(count_held_bombs)
+    # 持有炸弹（四张同点 + 王炸）与王情况；非法牌面记录后排除。
+    hand_metrics = df["hand_cards"].map(try_parse_hand_metrics)
+    df["bomb_cnt"] = hand_metrics.map(lambda metrics: metrics[0])
     df["has_bomb"] = df["bomb_cnt"].ge(1).where(df["bomb_cnt"].notna())
-    # 王情况（从 hand_cards 解析）
-    df["king_status"] = df["hand_cards"].map(parse_king_status)
+    df["king_status"] = hand_metrics.map(lambda metrics: metrics[1])
+    invalid_hand_count = hand_metrics.map(lambda metrics: not metrics[2]).sum()
+    if invalid_hand_count:
+        print(f"[load] WARNING: invalid hand_cards rows = {invalid_hand_count}; excluded from modules E/G")
     print(f"[load] card_power P25/P50/P75 = {p25:.1f}/{p50:.1f}/{p75:.1f}")
 
     print("[A] cohort baseline");        module_a(df)
