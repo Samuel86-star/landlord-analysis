@@ -147,33 +147,32 @@ V_total = Σ V_combo - (N - 1) × 8 + Control_Bonus
 ### 使用方式
 
 运行测试 `ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution`。2026-09-06 使用种子
-`20260906` 与 `20260907` 各采样 10 万局；下列为种子 `20260906` 的输出。配置取两组 P5/P95 的保守上界：
+`20260906` 与 `20260907` 各采样 10 万局：
 
 ```bash
 ./mvnw -q -Pbenchmark -Dtest=ShuffleAndScoringBenchmarkTest#sampleBaselineDistribution \
   -Dlandlord.sampler.seed=20260906 -Dlandlord.sampler.rounds=100000 test
 ```
 
-```
-===== DealDistributionSampler 详细分布 =====
-minScore（最差一家）： P5=-66.0 P50=-34.0 P95=0.0   P99=13.0
-maxScore（最强一家）： P5=-18.0 P50=19.0  P95=75.0  P99=99.0
-spread（极差）      ： P5=14.0  P50=52.0  P95=111.0 P99=139.0
-potentialLandlord  ： P5=-3.0  P50=38.0  P95=95.0  P99=117.0
-landlordAdvantage  ： P5=14.5  P50=55.0  P95=113.5 P99=140.5
-maxSingles（单牌数）： P5=4.0   P50=6.0   P95=8.0   P99=9.0
-maxBombs（炸弹数） ： P5=0.0   P50=0.0   P95=1.0   P99=2.0
-============================================
-===== DealDistributionSampler 推荐阈值 =====
-# landlord.shuffle-strategy.lower-threshold=-66.0
-# landlord.shuffle-strategy.upper-threshold=75.0
-# landlord.shuffle-strategy.max-spread=112.0
-# landlord.shuffle-strategy.max-potential-landlord-score=95.0
-# landlord.shuffle-strategy.max-landlord-advantage=114.0
-# landlord.shuffle-strategy.max-singles-per-hand=8
-# landlord.shuffle-strategy.max-bombs-per-hand=2
-============================================
-```
+| 种子 | 指标 | P5 | P10 | P25 | P50 | P75 | P90 | P95 | P99 |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| 20260906 | minScore | -66 | -59 | -47 | -34 | -20 | -8 | 0 | 13 |
+| 20260906 | maxScore | -18 | -10 | 2 | 19 | 40 | 61 | 75 | 99 |
+| 20260906 | spread | 14 | 20 | 34 | 52 | 74 | 97 | 111 | 139 |
+| 20260906 | potentialLandlord | -3 | 5 | 19 | 38 | 61 | 81 | 95 | 117 |
+| 20260906 | landlordAdvantage | 15 | 22.5 | 37 | 55.5 | 76.6 | 99 | 113.5 | 141 |
+| 20260906 | maxSingles | 4 | 5 | 5 | 6 | 7 | 8 | 8 | 9 |
+| 20260906 | maxBombs | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 2 |
+| 20260907 | minScore | -66 | -59 | -47 | -34 | -20 | -8 | 0 | 13 |
+| 20260907 | maxScore | -18 | -10 | 2 | 20 | 40 | 62 | 75 | 100 |
+| 20260907 | spread | 14 | 20 | 34 | 52 | 75 | 97 | 112 | 139 |
+| 20260907 | potentialLandlord | -3 | 5 | 19 | 38 | 61 | 81 | 95 | 117 |
+| 20260907 | landlordAdvantage | 15 | 22.5 | 37 | 55.5 | 77 | 99.5 | 114 | 141.5 |
+| 20260907 | maxSingles | 4 | 5 | 5 | 6 | 7 | 8 | 8 | 9 |
+| 20260907 | maxBombs | 0 | 0 | 0 | 0 | 1 | 1 | 1 | 2 |
+
+配置按保守包络取值：lower 的 P5 取更负值，其余上限取两组目标分位的较大值，得到
+`lower=-66`、`upper=75`、`max-spread=112`、`potential=95`、`advantage=114`、`maxSingles=8`、`maxBombs=2`。
 
 ### 标定原则
 
