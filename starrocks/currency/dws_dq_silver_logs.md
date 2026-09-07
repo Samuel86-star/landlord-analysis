@@ -236,6 +236,8 @@ ORDER BY event_count DESC;
 
 ### 4. 分端银子变动对比
 
+> 本节仅演示字段聚合。正式的净消耗后台对账请使用 [游戏银子金流分析口径](../../docs/knowledge/game-currency-analysis.md)，其中包含机器人服务费和礼券兑换处理。
+
 ```sql
 -- 按平台对比银子变动特征（通过 group_id 动态判定分端）
 SELECT
@@ -243,7 +245,7 @@ SELECT
         WHEN group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
         WHEN group_id IN (8, 88) THEN 'iOS'
         WHEN group_id = 56 THEN '小游戏'
-        WHEN group_id NOT IN (55, 69, 0, 68) THEN 'PC'
+        WHEN group_id NOT IN (6, 66, 33, 44, 77, 99, 8, 88, 56, 55, 69, 0, 68) THEN 'PC'
     END AS platform,
     COUNT(DISTINCT uid) AS user_count,
     COUNT(*) AS event_count,

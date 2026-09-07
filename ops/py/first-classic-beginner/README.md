@@ -42,9 +42,9 @@ py/first-classic-beginner/
 
 ## 窗口与口径
 
-- 注册与对局窗口：`2026-06-25 ~ 2026-07-01`（7 日固定窗口）
-- Cohort：首次经典对局在 4484 / 12074（合并不拆分），且发生在 `reg_date` 当日
-- 过滤：`robot != 1`、`play_mode BETWEEN 1 AND 6`、局序 `ORDER BY game_datetime, resultguid`
+- `sql/01_cohort_first3_detail.sql` 是历史子集口径：先过滤玩法，再选择最早落在 4484/12074 的玩家；不能解释为注册后真实首局
+- `sql/03_registered_first3_detail_20260831_20260906.sql` 是修正口径：注册时间后最早的真人 53 游戏对局，不按玩法、房间或 `user_attr_bout` 预筛
+- 公共过滤：`robot != 1`，局序按 `game_datetime, resultguid` 排序；只有历史 SQL 额外过滤 `play_mode BETWEEN 1 AND 6`
 - 牌力分桶：前 3 局合并的 P25/P50/P75，不硬编码阈值
 
 ## 历史窗口重算

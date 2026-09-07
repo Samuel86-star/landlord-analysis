@@ -44,9 +44,11 @@
 
 写 SQL 前查 [SQL_STYLE.md](../../SQL_STYLE.md) 第八节：`multi_q4_*`、`is_game_active`、`reg_time`→`reg_datetime`、`game_datetime`→`start_datetime` 等，别凭记忆写。
 
-## 8. 测试号污染
+## 8. 机器人金流污染
 
-`zgda` + `group_id=1` 为内部测试号（极高人均局数、跨多房间分布）。分析真实用户时按 `app_code IN (真实集合)` 剔除，或加 `NOT (app_code='zgda' AND group_id=1)`。
+不能把 `zgda` + `group_id = 1` 整体视为测试号；该组合的其他 `channel_id` 中存在正常 PC 流量。
+
+银子金流与后台对账时，只排除 `group_id = 1 AND app_code = 'zgda' AND channel_id = 0`。2026-09-06 对局表验证该组合的服务费 UID 全部为 `robot = 1`。使用 [游戏银子金流分析口径](game-currency-analysis.md) 中的 NULL 安全条件，避免扩大过滤范围。
 
 ## 9. 字段有效性窗口（用到前先确认上线日）
 

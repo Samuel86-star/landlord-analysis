@@ -4,7 +4,7 @@
 >
 > 本库只写**已验证、可复用**的框架与口径；transient 数据（某渠道上线日期）标注"截至 YYYY-MM"。
 
-## 为什么会慢（本库要消除的 4 个耗时点）
+## 为什么会慢（本库要消除的耗时点）
 
 1. **标识符维度混淆**：`zgde/zgdx` 是 app_code 还是 channel_id？平台怎么看？→ [identifier-map.md](identifier-map.md)
 2. **不知道房间/玩法属于哪张表**：room_id 1124 在哪？→ [game-combat-analysis.md](game-combat-analysis.md) 的「房间定位法」
@@ -12,6 +12,7 @@
 4. **结果解读反复求证**：胜率 93% 正常吗？`robot=0` 说明没机器人吗？→ [data-gotchas.md](data-gotchas.md)
 5. **StarRocks 性能/运维排查**：查询慢、磁盘涨？→ [starrocks-ops.md](starrocks-ops.md)
 6. **发牌配置/炸弹/手数评估**：哪个配置好？harness 怎么跑？持有 vs 打出？→ [makedeal-simulation.md](makedeal-simulation.md)
+7. **银子金流口径反复对账**：净消耗怎么算？机器人服务费、礼券兑换是否计入？→ [game-currency-analysis.md](game-currency-analysis.md)
 
 ## 精准加载路由
 
@@ -22,6 +23,7 @@
 | app_code / group_id / channel_id / 平台 / 渠道 | [identifier-map.md](identifier-map.md) | 标识符维度区分（最易混） |
 | DAU / 日活 / 活跃 / 渗透 / 人群 / 注册 | [dau-active-cohort.md](dau-active-cohort.md) | DAU 与人群口径 + 模板 SQL |
 | 对局 / 房间 / 战绩 / 胜率 / game_id / room_id | [game-combat-analysis.md](game-combat-analysis.md) | 对局表矩阵 + 分析 recipe |
+| 净消耗 / 服务费 / 运营支出 / 充值 / 银子金流 | [game-currency-analysis.md](game-currency-analysis.md) | 后台口径 + 三端映射 + 机器人过滤 + 标准 SQL |
 | 解读结果 / 排查异常 / 反直觉 | [data-gotchas.md](data-gotchas.md) | robot、胜率、符号等陷阱 |
 | StarRocks 运维 / 性能 / 读写放大 | [starrocks-ops.md](starrocks-ops.md) | 读写放大排查 SQL + 调优锦囊 |
 | 发牌 / 做牌 / 炸弹 / 手数 / makedeal / harness | [makedeal-simulation.md](makedeal-simulation.md) | harness 真值 + 最优拆牌 + 严苛口径 + 对账线上 |

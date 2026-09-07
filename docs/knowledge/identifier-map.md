@@ -17,7 +17,7 @@
 
 | app_code | 客户端 | 平台（group_id） | 备注 |
 | -------- | ------ | ---------------- | ---- |
-| `zgda` | Cocos-Lua | 多平台 | `group_id=1` 为内部测试号（需剔除，见 [data-gotchas.md](data-gotchas.md) §8） |
+| `zgda` | Cocos-Lua | 多平台 | 银子金流中仅 `group_id=1 AND channel_id=0` 是已验证机器人流量，勿整体剔除 |
 | `zgdx` | Cocos-Creator | 安卓 + iOS（8,88） | — |
 | `zgde` | 新包体 | 56（非 iOS / 非标准安卓，平台待确认） | — |
 
@@ -29,7 +29,7 @@
 CASE
     WHEN group_id IN (8, 88) THEN 'iOS'
     WHEN group_id IN (6, 66, 33, 44, 77, 99) THEN 'Android'
-    ELSE CONCAT('other:', group_id)          -- 如 zgde=56、测试号=1
+    ELSE CONCAT('other:', group_id)          -- 如 zgde=56；group_id=1 需结合渠道判断
 END AS platform
 ```
 
