@@ -95,6 +95,14 @@ class StarRocksClientConfigTest(unittest.TestCase):
             client.login()
         self.assertNotIn("hidden response content", str(error.exception))
 
+    @patch.dict(os.environ, VALID_ENV, clear=True)
+    def test_login_null_data_is_reported_as_sanitized_failure(self):
+        client = StarRocksClient()
+        client.gql = Mock(side_effect=[{}, {"data": None, "errors": ["hidden"]}])
+        with self.assertRaisesRegex(RuntimeError, "^CloudBeaver login failed$") as error:
+            client.login()
+        self.assertNotIn("hidden", str(error.exception))
+
 
 class SqlValidationTest(unittest.TestCase):
     def test_select_with_leading_comments_is_allowed(self):

@@ -66,7 +66,11 @@ def _win_rate(s):
 # ---------- 模块 A：cohort 基线 ----------
 def module_a(df: pd.DataFrame) -> None:
     per_user = (
-        df.groupby(["uid", "reg_date", "first_room_id", "channel_category_name"], as_index=False)
+        df.groupby(
+            ["uid", "reg_date", "first_room_id", "channel_category_name"],
+            as_index=False,
+            dropna=False,
+        )
           .agg(max_seq=("game_seq", "max"))
     )
     n_total = per_user["uid"].nunique()
@@ -79,7 +83,8 @@ def module_a(df: pd.DataFrame) -> None:
         .groupby("reg_date").agg(user_count=("uid", "nunique")).reset_index()
     _save(dated, "01b_cohort_date.csv")
 
-    ch = per_user.groupby("channel_category_name").agg(user_count=("uid", "nunique")).reset_index()
+    ch = per_user.groupby("channel_category_name", dropna=False) \
+        .agg(user_count=("uid", "nunique")).reset_index()
     ch["user_pct"] = (ch["user_count"] / n_total * 100).round(2)
     _save(ch.sort_values("user_count", ascending=False), "01c_cohort_channel.csv")
 

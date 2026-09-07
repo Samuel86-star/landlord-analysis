@@ -14,6 +14,14 @@ class HandCardParserTest(unittest.TestCase):
             ["6", "q", "8", "7", "10", "sj", "bj"],
         )
 
+    def test_parses_current_format_with_trailing_separator(self):
+        self.assertEqual(
+            hand_cards.tokenize_hand_cards("6,q,8,7,10,sj,bj,"),
+            ["6", "q", "8", "7", "10", "sj", "bj"],
+        )
+        with self.assertRaisesRegex(ValueError, "invalid hand card"):
+            hand_cards.tokenize_hand_cards("6,q,,bj,")
+
     def test_parses_legacy_compact_format(self):
         self.assertEqual(
             hand_cards.tokenize_hand_cards("3456789TJQKA2sjbj"),

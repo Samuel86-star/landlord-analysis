@@ -19,7 +19,10 @@ def tokenize_hand_cards(hand_cards: str | None) -> list[str]:
     if not isinstance(hand_cards, str) or not hand_cards.strip():
         return []
     if "," in hand_cards:
-        return [_normalize(token) for token in hand_cards.split(",")]
+        tokens = hand_cards.split(",")
+        if not tokens[-1].strip():
+            tokens.pop()
+        return [_normalize(token) for token in tokens]
 
     cards = hand_cards.strip().lower()
     tokens = []

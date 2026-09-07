@@ -105,7 +105,7 @@ class StarRocksClient:
             """, {"p": "local", "c": {"user": self.username, "password": self.password_hash}})
         except Exception:
             raise RuntimeError("CloudBeaver login failed") from None
-        if res.get("data", {}).get("authInfo", {}).get("authStatus") != "SUCCESS":
+        if ((res.get("data") or {}).get("authInfo") or {}).get("authStatus") != "SUCCESS":
             raise RuntimeError("CloudBeaver login failed")
         return self
 

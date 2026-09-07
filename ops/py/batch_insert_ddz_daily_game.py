@@ -17,7 +17,7 @@ SELECT
     room_id, room_currency_lower, room_currency_upper,
     robot, role, chairno, result_id,
     CASE
-        WHEN room_id IN (742,420,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
+        WHEN room_id IN (742,420,1404,4484,12074,6314,11168,10336,16445) THEN 1 -- 经典
         WHEN room_id IN (421,22039,22040,22041,22042) THEN 2 -- 不洗牌
         WHEN room_id IN (13176,13177,13178) THEN 3 -- 癞子
         WHEN room_id = 11534 AND group_id IN (6,66,33,44,77,99,8,88,56) THEN 5 -- 比赛（APP/小游戏端）
