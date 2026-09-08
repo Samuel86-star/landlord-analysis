@@ -136,4 +136,4 @@ algorithm/native/extracted/split_test.exe   # vcvarsall+cl 编译 split_test.cpp
 
 `Combo`/`Card`/`Rank`/`ComboType` 类型与 `Combo` 静态工厂；`DefaultComboScoringStrategy::score` 做 Σscore；`STRAIGHT_RANKS`/`isStraightRank` 约束顺/连对/飞机只在 0..11；`HandCardUtils::buildRankCounts` 构造计数向量；`normalizeHandStrength`(sigmoid) 用于诱导/抗衡的归一化牌力。
 
-> 关联：[makedeal-simulation.md](makedeal-simulation.md)（口径/速查）、[`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md)（含算法证明节）、[../makedeal-strategies/742-420-reverse-analysis.md](../makedeal-strategies/742-420-reverse-analysis.md)（发牌源码逆向）。
+> 关联：[makedeal-simulation.md](makedeal-simulation.md)（口径/速查）、[`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md)（含算法证明节）、[../makedeal-strategies/742-420-reverse-analysis.md](../makedeal-strategies/742-420-reverse-analysis.md)（发牌源码逆向）。

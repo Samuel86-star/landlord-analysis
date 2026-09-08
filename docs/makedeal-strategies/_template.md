@@ -43,13 +43,13 @@ MakeDealType: 0       # 0=Type0(菜单做牌) / 1=Type1(CouPaiStrategy 拼牌)
 | 抗衡度 (P_mid+P_min)/P_max | | | 自然≈1.299 |
 | 牌力 V | | | |
 
-> 模拟器：`algorithm/native/extracted/harness.exe`（注入式候选，三家同策略），聚合用 `anchor_check.py`。
+> 模拟器：`algorithm/native/extracted/harness.exe`（注入式候选，三家同策略），聚合用 `tools/anchor_check.py`。
 > 线上口径：`dws_ddz_daily_game.bomb_cnt`（持有）/ `bomb_bet`（打出，注意 ≠ 持有）。
 
 ## 改造建议
 
 - 目标（经典低等级房）：炸弹维度**趋近纯随机**（单局炸率≈0.461、持有≈0.189）、手数顺、庄闲均衡有悬念。
-- 候选：参考 [`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md) 的 Type0/Type1 TOP20 选。
+- 候选：参考 [`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md) 的 Type0/Type1 TOP20 选。
 - 选定配置：
 
 ## 备注

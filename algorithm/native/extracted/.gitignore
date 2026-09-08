@@ -15,3 +15,4 @@ err.txt
 # sweep 指标缓存（再生性，改权重 sweep.py --rerank 即可重建）
 sweep_raw.json
 sweep_runs/
+# （无前导斜杠=匹配任意层级：缺省落 results/sweep_runs、runs/ 下实验产出同样被忽略）

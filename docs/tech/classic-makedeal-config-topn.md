@@ -1,7 +1,7 @@
 # 经典玩法发牌配置 TOP 速查（最优拆牌口径）
 
 > 一页速查：哪些发牌配置在**炸弹贴自然、手数顺、庄闲均衡有悬念**几条上最优。
-> **真值来源（2026-08 重构）**：`algorithm/native/extracted/harness.exe`（C++，发牌管线 1:1 复刻线上）+ **搜索式全局最优拆牌** `optimal_split.h`（min-combo → max-Σscore，非贪心）。完整 TOP20 表 + 可落地 JSON 见 [`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md)（决赛 N=20000）。
+> **真值来源（2026-08 重构）**：`algorithm/native/extracted/harness.exe`（C++，发牌管线 1:1 复刻线上）+ **搜索式全局最优拆牌** `optimal_split.h`（min-combo → max-Σscore，非贪心）。完整 TOP20 表 + 可落地 JSON 见 [`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md)（决赛 N=20000）。
 > 落地方案见 [`classic-makedeal-debomb-plan.md`](classic-makedeal-debomb-plan.md)。
 
 > ⚠️ 本文档早先版本（贪心 Python 模拟 `old2_type*_sim.py`、手数=t0拆、"Type0 control-flow 0.20 炸双优"等）**已整体作废**：贪心拆牌被证次优（1000 随机手 546/1000 比最优多手数），且 Type0 经最优拆牌+按局口径复核，**低等级房抱不动随机**（最佳单局炸率仍 0.60+）。本文为新口径重写。
@@ -67,5 +67,5 @@
 - **更高等级房 → Type0**：要更多炸弹/倍数/爽感时，Type0 的多炸从缺点变卖点；TOP1 `thr3 bmn14`（单局炸率 0.607）。
 - **要最少炸** → Type1 `no-pair`/`with-pair b13+`（持有炸可压到 ~0.14），但按"抱随机"理念会扣分（过低也扣）。
 
-> 完整 TOP20（Type1+Type0 各 20）、S_* 子分、可落地 JSON 见 [`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md)。
-> 改适应度权重后 `py -3 algorithm/native/extracted/sweep.py --rerank` 秒重排，无需重跑 harness。
+> 完整 TOP20（Type1+Type0 各 20）、S_* 子分、可落地 JSON 见 [`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md)。
+> 改适应度权重后 `py -3 algorithm/native/extracted/tools/sweep.py --rerank` 秒重排，无需重跑 harness。

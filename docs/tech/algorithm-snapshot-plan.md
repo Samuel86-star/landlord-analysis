@@ -34,7 +34,8 @@ algorithm/
 │   ├── include/landlord.h               C++ 实现（header-only；native/src 实际为空）
 │   ├── config/scoring.properties
 │   ├── test/  (main_test.cpp, sampler_test.cpp)
-│   ├── extracted/                        analysis 专用实验资产，同步时保留
+│   ├── extracted/                        analysis 专用实验资产（顶层源码 + tools/runs/results 四区），同步时保留
+│   ├── tools/                            洗牌随机性对照工具（shuffle_prng_compare*，2026-09-08 自 extracted/ 迁入）
 │   └── previous/                         线上代码参照副本，同步时保留
 └── docs/   评价标准 / 发牌平衡 PRD×2 / 拆牌决策规则 / 测试策略 / rules / prompt
 ```
@@ -93,5 +94,5 @@ algorithm/
 3. 对清单中的每个修改文件，把 `git -C <源仓> show <source_base>:<path>` 与 `algorithm/<path>` 比较：
    - 内容相同：只应用 `git -C <源仓> diff <source_base>..<source_head> -- <path>` 的最终差异。
    - 内容不同：同时审阅 analysis 相对 source base 的差异和源仓最终差异，只合入本次源仓 hunks，保留 analysis 专用实现与文档。
-4. 对清单中的新增文件显式添加；不修改或删除清单外文件。特别保留 `native/extracted/`、`native/previous/`、`shuffle_prng_compare*` 和其他 analysis 专用资产。
+4. 对清单中的新增文件显式添加；不修改或删除清单外文件。特别保留 `native/extracted/`、`native/tools/`（`shuffle_prng_compare*` 2026-09-08 起位于此）、`native/previous/` 和其他 analysis 专用资产。
 5. 更新 `algorithm/README.md` 的 commit/日期，运行 Java 默认测试、Release native 构建与 CTest，再检查 `git diff --check`、`git status --short` 和 `git diff --stat`。

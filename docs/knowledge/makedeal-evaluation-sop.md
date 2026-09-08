@@ -2,7 +2,7 @@
 
 > 适用范围：经典/不洗牌 Type1（控制发牌）配置评估与选型。真值来源 `algorithm/native/extracted/`（harness 1:1 verbatim + 搜索式最优拆牌，决赛 N≥20000）。
 > 关联：[makedeal-simulation.md](makedeal-simulation.md)（模拟方法学/对账）、[makedeal-optimal-split.md](makedeal-optimal-split.md)（最优拆牌算法）。
-> 配套代码：`algorithm/native/extracted/sweep.py`（指标+打分+扫描）、`ops/py/tmp/ddz_bid_*.sql`（线上反向校验）。
+> 配套代码：`algorithm/native/extracted/tools/sweep.py`（指标+打分+扫描）、`ops/py/tmp/ddz_bid_*.sql`（线上反向校验）。
 
 ---
 
@@ -193,7 +193,7 @@ A/B 揭示**两个独立轴**：
 ### 5.3 落地与复现
 
 - 配置 JSON：`algorithm/native/previous/makedeal.json`（`MakeDealStrategy.<name>`，可原样粘入生效）。
-- 重排：`py -3 -u algorithm/native/extracted/sweep.py --rerank --view real --compare`。
+- 重排：`py -3 -u algorithm/native/extracted/tools/sweep.py --rerank --view real --compare`。
 - 线上校验：`py -3 -u ops/py/sr_exec.py -f ops/py/tmp/ddz_bid_<grab|liuju|landlord_winrate|mag_stats|bomb_bet_dist>.sql`（old2 基线日 2026-07-30，已实测确认）。
 - 切点监控：$\Delta$、$S_{res}$、地主20炸、无人抢率四项联合，任一破带即复审。
 

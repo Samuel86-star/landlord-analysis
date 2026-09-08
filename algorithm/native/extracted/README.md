@@ -4,14 +4,20 @@
 逻辑 1:1 原样剥离，去掉网络/DB/CGameTable 上帝类依赖，编译为**独立可执行**，用于 100% 物理级精确的
 发牌概率统计。这是**线上发牌的唯一可信真值来源**（贪心拆牌的 Python 模拟只适合方向性探索）。
 
-## 文件
+## 文件（四区布局）
 
-| 文件 | 说明 |
-|---|---|
-| `harness.cpp` | 单文件模拟器：发牌逻辑逐字剥离 + 极简 JSON + 极简 Table/Player/Config stub + JSONL 输出 |
-| `stats.py` | 聚合 harness 产出的 `*.jsonl`，打印炸弹/手数/大牌/做牌类型分布（按真人/机器人拆分） |
-| `makedeal.json` | **不在此目录**——运行时 `--cfg ../previous/makedeal.json` 指向线上配置参照副本（`algorithm/native/previous/`，可改） |
-| `*.jsonl` | harness 运行产出（样本数据，已 gitignore，可再生） |
+| 位置 | 文件 | 说明 |
+|---|---|---|
+| 顶层 | `harness.cpp` | 单文件模拟器：发牌逻辑逐字剥离 + 极简 JSON + 极简 Table/Player/Config stub + JSONL 输出 |
+| 顶层 | `harness_optv2.cpp` | 研发 09-01 MakeDealHelper 优化版复刻（`gen_optv2_harness.py` 生成；A/B 证分布零影响） |
+| 顶层 | `gen_optv2_harness.py` | harness_optv2.cpp 生成器 |
+| 顶层 | `optimal_split.h` / `optimal_split_power.h` | 搜索式最优拆牌（指标期口径） |
+| 顶层 | `split_test.cpp` / `power_split_test.cpp` / `verify_split_vs_power.cpp` | 最优拆牌校验（后两者为 CMake 目标） |
+| `tools/` | `sweep.py` / `stats.py` / `anchor_check.py` | TOP20 扫描打分 / JSONL 聚合 / 单配置锚点聚合（长期工具链） |
+| `runs/` | `run_*.py` / `verify_*.py` ×12 | 历次实验与验证脚本，索引见 [runs/README.md](runs/README.md) |
+| `results/` | `top20_*.{json,md}` / `sweep_raw.json` / `makedeal_pre91.json` | TOP20 报告与可落地配置 / 指标缓存（`--rerank` 用） / pre-9.1 线上配置快照 |
+| — | `makedeal.json` | **不在此目录**——运行时 `--cfg ../previous/makedeal.json` 指向线上配置参照副本（`algorithm/native/previous/`，可改） |
+| — | `*.jsonl` | harness 运行产出（样本数据，已 gitignore，可再生；大样本外迁见文末说明） |
 
 ## 编译
 
@@ -59,15 +65,19 @@ g++ -std=c++14 -O2 harness.cpp -o harness
 局级：`gap_val`/`gap_bomb`(庄家−闲家均值，17 张口径)、`spread`(三座位牌力极差)、`bottom`(3 张底牌，不并入任何座位)。
 
 > 指标口径与统计方法见 [`docs/knowledge/makedeal-simulation.md`](../../../docs/knowledge/makedeal-simulation.md)。
-> 扫描/打分/TOP20 用 `sweep.py`，单配置聚合用 `anchor_check.py`，最优拆牌校验用 `split_test.cpp`。
+> 扫描/打分/TOP20 用 `tools/sweep.py`，单配置聚合用 `tools/anchor_check.py`，最优拆牌校验用 `split_test.cpp`。
 
 ## 聚合统计
 
 ```bash
-py -3 stats.py out_742_3.jsonl out_420_3.jsonl
+py -3 tools/stats.py out_742_3.jsonl out_420_3.jsonl
 # 或单文件
-py -3 stats.py out_742_3.jsonl
+py -3 tools/stats.py out_742_3.jsonl
 ```
+
+> **大样本外迁（2026-09-08）**：jsonl 样本默认目录改为 `results/sweep_runs`（自动创建、被忽略）；
+> 本机大数据统一放仓库外 `D:\analysis\sim-data\landlord-sim\sweep_runs\`（历史 20 份已迁入）。
+> 用法：`tools/sweep.py --runs-dir <目录>` 或设环境变量 `SWEEP_RUNS_DIR`。
 
 打印每组配置的真人/机器人炸弹均值与分布、手数、大牌、做牌类型分布、庄家为真人比率。
 

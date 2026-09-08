@@ -1,11 +1,11 @@
 # 发牌策略目录（按玩法 / 房间）
 
 > 每个房间一个文件，记录它的**发牌策略**（`makedeal.json` 里的配置）、现状指标、改造建议。
-> **真值来源（2026-08 重构）**：`algorithm/native/extracted/harness.exe`（C++，发牌/配牌/洗牌管线 1:1 复刻线上）+ **搜索式全局最优拆牌** `optimal_split.h`（min-combo → max-Σscore，非贪心）。TOP 排名见 [`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md)，可落地 JSON 见 `top20_configs.json`。
+> **真值来源（2026-08 重构）**：`algorithm/native/extracted/harness.exe`（C++，发牌/配牌/洗牌管线 1:1 复刻线上）+ **搜索式全局最优拆牌** `optimal_split.h`（min-combo → max-Σscore，非贪心）。TOP 排名见 [`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md)，可落地 JSON 见 `results/top20_configs.json`。
 > 源码逆向 [`./742-420-reverse-analysis.md`](./742-420-reverse-analysis.md)、代码质量审计 [`./makedeal-code-quality-audit.md`](./makedeal-code-quality-audit.md)。
 
 > ⚠️ 口径已统一（详见各房间文件）：炸弹=**持有**（物理四张/王炸）为主、拆牌炸弹为辅；手数=**人均最优手数**；首叫诱导/抗衡用归一化牌力 P=sigmoid(V/40)。
-> ⚠️ `docs/tech/classic-makedeal-config-topn.md`、`docs/tech/classic-makedeal-debomb-plan.md` 仍是**旧贪心 Python 模拟**口径（手数=t0拆、炸弹=贪心拆牌数），与本目录新口径不一致；TOP 排名以 `extracted/top20_report.md` 为准，待后续重写。
+> ⚠️ `docs/tech/classic-makedeal-config-topn.md`、`docs/tech/classic-makedeal-debomb-plan.md` 仍是**旧贪心 Python 模拟**口径（手数=t0拆、炸弹=贪心拆牌数），与本目录新口径不一致；TOP 排名以 `extracted/results/top20_report.md` 为准，待后续重写。
 
 ## 目录约定
 
@@ -37,7 +37,7 @@ docs/makedeal-strategies/
 | 11534 / 14238 / 15458 | `old2` | 0 | |
 
 > ⚠️ 以上 old2 房间均按"经典玩法"推断（`old2` 主要用于经典）；个别可能是其他玩法，按 `dq_game_room_config` 校正。
-> old2 现状（harness + 最优拆牌，N=20000）：**持有炸 0.42 / 单局炸率 0.70 / 人均手 5.93**（多炸，待降）；推荐改造见 [`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md)。
+> old2 现状（harness + 最优拆牌，N=20000）：**持有炸 0.42 / 单局炸率 0.70 / 人均手 5.93**（多炸，待降）；推荐改造见 [`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md)。
 
 ### 不洗牌（NoShuff，推断）
 
@@ -68,5 +68,5 @@ docs/makedeal-strategies/
        --type0 --bmn 12 --bigcards-to 2 --first-hc 5 --first-bomb 2 --first-big 4 \
        --other-hc 6 --other-bomb 2 --other-big 3 -n 20000 --seed 1 --reals 3
    ```
-   聚合统计：`algorithm/native/extracted/anchor_check.py <jsonl...>`。
-   全量 TOP20 扫描：`py -3 algorithm/native/extracted/sweep.py --coarse-n 3000 --final-n 20000 --base-n 20000`（改权重后加 `--rerank` 秒重排）。
+   聚合统计：`algorithm/native/extracted/tools/anchor_check.py <jsonl...>`。
+   全量 TOP20 扫描：`py -3 algorithm/native/extracted/tools/sweep.py --coarse-n 3000 --final-n 20000 --base-n 20000`（改权重后加 `--rerank` 秒重排）。

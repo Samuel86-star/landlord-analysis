@@ -24,8 +24,8 @@
 ### Task 1: 数据外迁 sweep_runs
 
 **Files:**
-- Move: `algorithm/native/extracted/sweep_runs/*.jsonl` ×19 → `D:\analysis\sim-data\landlord-sim\sweep_runs\`
-- Delete: 清空后的 `algorithm/native/extracted/sweep_runs\`
+- Move: `algorithm/native/extracted/sweep_runs/*.jsonl` ×20 → `D:\analysis\sim-data\landlord-sim\sweep_runs\`
+- Delete: 清空后的 `algorithm/native/extracted\sweep_runs\`
 
 **Interfaces:**
 - Consumes: 无
@@ -42,9 +42,9 @@ Remove-Item "algorithm\native\extracted\sweep_runs"
 - [ ] **Step 2: 验证数量与体积分毫不差**
 
 ```powershell
-(Get-ChildItem "D:\analysis\sim-data\landlord-sim\sweep_runs\*.jsonl").Count   # 期望 19
+(Get-ChildItem "D:\analysis\sim-data\landlord-sim\sweep_runs\*.jsonl").Count   # 期望 20
 "{0:N0} bytes" -f (Get-ChildItem "D:\analysis\sim-data\landlord-sim\sweep_runs\*.jsonl" | Measure-Object Length -Sum).Sum
-# 期望 ≈ 392,725,000 bytes（±1MB 内）
+# 期望 ≈ 413,440,793 bytes（±1MB 内）
 Test-Path "algorithm\native\extracted\sweep_runs"   # 期望 False
 ```
 
@@ -373,7 +373,7 @@ git status --short
 ```powershell
 git add -A algorithm/native/extracted algorithm/native/tools
 git add docs/knowledge/makedeal-simulation.md docs/knowledge/makedeal-evaluation-sop.md docs/makedeal-strategies/README.md docs/makedeal-strategies/classic/420.md docs/makedeal-strategies/classic/742.md docs/makedeal-strategies/_template.md docs/tech/algorithm-snapshot-plan.md
-git commit -m "refactor(native): extracted 归拢 tools/runs/results 四区，实验脚本纳管，390MB 样本外迁 sim-data"
+git commit -m "refactor(native): extracted 归拢 tools/runs/results 四区，实验脚本纳管，413MB 样本外迁 sim-data"
 ```
 
 - [ ] **Step 3: push 并回报**：`git push origin main`，向用户汇报验证闭环结果摘要

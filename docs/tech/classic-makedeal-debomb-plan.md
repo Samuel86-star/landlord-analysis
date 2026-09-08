@@ -1,7 +1,7 @@
 # 经典玩法发牌降炸/调体验 — 落地方案
 
 > 目标：经典玩法发牌**贴近真实、牌不烂、好打但不靠堆炸弹**；低等级房炸弹维度**趋近纯随机**，随房间等级升高才放大炸弹/倍数。
-> **真值来源（2026-08 重构）**：`algorithm/native/extracted/harness.exe`（C++，发牌管线 1:1 复刻线上）+ **搜索式全局最优拆牌** `optimal_split.h`（非贪心）。决赛 N=20000，三家同策略。完整 TOP20 见 [`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md)。
+> **真值来源（2026-08 重构）**：`algorithm/native/extracted/harness.exe`（C++，发牌管线 1:1 复刻线上）+ **搜索式全局最优拆牌** `optimal_split.h`（非贪心）。决赛 N=20000，三家同策略。完整 TOP20 见 [`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md)。
 > 日期：2026-08-03 初版 · 2026-08-06 最优拆牌口径重写（旧贪心 Python 模拟结论已作废）。
 
 > ⚠️ **关键更正**：旧版据贪心模拟得出"Type0 control-flow = 0.20 炸/5.84 手，全局最优"。经最优拆牌+按局口径复核，**Type0 在低等级房抱不动随机**（菜单硬含 `MatchBombCardType`，最佳单局炸率仍 0.60+，远超自然 0.461）。故：
@@ -61,7 +61,7 @@ old2 桌上 3+炸局占 **14%**（自然仅 1%），玩家反馈"炸弹多、不
 | `no-pair [4,5,3,6] b14 s17` | 0.425 | 5.92 | 1.426 | 0.895 |
 | `no-bomb [4,6,5,3,2] b11 s15` | 0.432 | 5.54 | 1.470 | 0.889 |
 
-> 在 742/420 现行 CouPai 基础上**加收对(2)+末位炸码(13)** 即得 TOP1，让炸弹分布更贴自然同时更顺。可落地 JSON 见 [`../../algorithm/native/extracted/top20_configs.json`](../../algorithm/native/extracted/top20_configs.json)。
+> 在 742/420 现行 CouPai 基础上**加收对(2)+末位炸码(13)** 即得 TOP1，让炸弹分布更贴自然同时更顺。可落地 JSON 见 [`../../algorithm/native/extracted/results/top20_configs.json`](../../algorithm/native/extracted/results/top20_configs.json)。
 
 ### 3.3 配置写法（`makedeal.json` → `MakeDealStrategy`）
 
@@ -170,8 +170,8 @@ algorithm/native/extracted/harness.exe --cfg algorithm/native/previous/makedeal.
     --other-hc 6 --other-bomb 2 --other-big 3 -n 20000 --seed 1 --reals 3
 ```
 
-聚合：`py -3 algorithm/native/extracted/anchor_check.py <jsonl...>`。
-全量 TOP20 扫描：`py -3 algorithm/native/extracted/sweep.py --coarse-n 3000 --final-n 20000 --base-n 20000`（改权重加 `--rerank` 秒重排）。
+聚合：`py -3 algorithm/native/extracted/tools/anchor_check.py <jsonl...>`。
+全量 TOP20 扫描：`py -3 algorithm/native/extracted/tools/sweep.py --coarse-n 3000 --final-n 20000 --base-n 20000`（改权重加 `--rerank` 秒重排）。
 线上：灰度后取 `dws_ddz_daily_game` 的 `bomb_cnt`（持有）/`bomb_bet`（打出，≠持有）分布对照（注意 `card_power` 在 2026-07 PRD 改版后有断档，见 memory `project_cardpower-formula-prd-change-2026-07`）。
 
 ---
@@ -179,6 +179,6 @@ algorithm/native/extracted/harness.exe --cfg algorithm/native/previous/makedeal.
 ## 九、附录
 
 - 模拟器（C++ 真值）：[`../../algorithm/native/extracted/`](../../algorithm/native/extracted/)（`harness.cpp` + `optimal_split.h` + `sweep.py`，README 有忠实度说明）。
-- 完整 TOP20：[`../../algorithm/native/extracted/top20_report.md`](../../algorithm/native/extracted/top20_report.md)。
+- 完整 TOP20：[`../../algorithm/native/extracted/results/top20_report.md`](../../algorithm/native/extracted/results/top20_report.md)。
 - 源码逆向：[`../makedeal-strategies/742-420-reverse-analysis.md`](../makedeal-strategies/742-420-reverse-analysis.md)；代码质量审计：[`../makedeal-strategies/makedeal-code-quality-audit.md`](../makedeal-strategies/makedeal-code-quality-audit.md)。
 - 相关 memory：`project_makedeal-debomb-plan-2026-08`、`project_cardpower-formula-prd-change-2026-07`、`feedback_avoid-narrative-data-interpretation`。

@@ -19,7 +19,7 @@
 | 长期工具链 | `sweep.py`、`stats.py`、`anchor_check.py` | 已跟踪 |
 | 一次性实验脚本 | **15 个**未跟踪 `_*.py`（`_gen`×1、`_run`×11、`_verify`×3） | 未纳管、无索引 |
 | 可再生产物 | `top20_*.{json,md}`×5、`sweep_raw.json`、`makedeal_pre91.json` | 结论产物与缓存混在源码间 |
-| 大体积数据 | `sweep_runs/*.jsonl`×19 ≈ **390MB**（已 gitignore，占本地盘） | 原始样本 |
+| 大体积数据 | `sweep_runs/*.jsonl`×20 ≈ **413MB**（已 gitignore，占本地盘） | 原始样本 |
 | 编译产物 | `*.exe`×3、`*.obj`×1、`__pycache__/` | 已 gitignore |
 
 另有 `native/` 根部散放 `shuffle_prng_compare.py` + `shuffle_prng_compare_README.md`。
@@ -105,7 +105,7 @@ D:\analysis\sim-data\landlord-sim\   # 仓库外数据区
 
 ## 五、数据外迁
 
-1. `extracted/sweep_runs/*.jsonl` ×19 → `D:\analysis\sim-data\landlord-sim\sweep_runs\`（纯文件移动，git 无感）。
+1. `extracted/sweep_runs/*.jsonl` ×20 → `D:\analysis\sim-data\landlord-sim\sweep_runs\`（纯文件移动，git 无感）。
 2. `sweep.py` 输出目录参数化（向后兼容）：
    - 新增 `--runs-dir <path>` 参数；优先级：命令行 > 环境变量 `SWEEP_RUNS_DIR` > 缺省 `extracted/results/sweep_runs/`（`.gitignore` 的 `sweep_runs/` 无前导斜杠，匹配任意层级，缺省目录仍被忽略）。
    - 本机大扫描用 `--runs-dir D:\analysis\sim-data\landlord-sim\sweep_runs` 或设环境变量；README 注明。

@@ -45,15 +45,15 @@ algorithm/native/extracted/harness.exe --cfg algorithm/native/previous/makedeal.
 # Type0：--type0 --bmn N --bigcards-to N --first-hc/bomb/big ... --other-hc/bomb/big ...
 
 # 聚合（持有炸/单局炸率/密度/手数/散牌/首叫/抗衡）
-py -3 algorithm/native/extracted/anchor_check.py a.jsonl b.jsonl
+py -3 algorithm/native/extracted/tools/anchor_check.py a.jsonl b.jsonl
 
 # 全量 TOP20 扫描（两阶段）
-py -3 algorithm/native/extracted/sweep.py --coarse-n 3000 --final-n 20000 --base-n 20000
-py -3 algorithm/native/extracted/sweep.py --rerank   # 改适应度权重后秒重排，免重跑
+py -3 algorithm/native/extracted/tools/sweep.py --coarse-n 3000 --final-n 20000 --base-n 20000
+py -3 algorithm/native/extracted/tools/sweep.py --rerank   # 改适应度权重后秒重排，免重跑
 ```
 
-- 适应度（基线=纯随机）：`.28·S_bomb(单局炸率抱随机)+.18·S_hand+.12·S_single+.20·S_susp(首叫+抗衡)+.10·S_div+.12·S_hit`，权重在 `sweep.py` 的 `W` dict。
-- 产物：`top20_report.md`（完整 TOP20 + 算法证明）、`top20_configs.json`（可落地 JSON）、`sweep_raw.json`（指标缓存）。
+- 适应度（基线=纯随机）：`.28·S_bomb(单局炸率抱随机)+.18·S_hand+.12·S_single+.20·S_susp(首叫+抗衡)+.10·S_div+.12·S_hit`，权重在 `tools/sweep.py` 的 `W` dict。
+- 产物（在 `extracted/results/`）：`top20_report.md`（完整 TOP20 + 算法证明）、`top20_configs.json`（可落地 JSON）、`sweep_raw.json`（指标缓存）。
 
 ### 实验留档
 
@@ -98,9 +98,9 @@ harness 加 `--landlord-bottom` 标志：每局取**牌力最强座作地主**�
 |---|---|
 | `algorithm/native/extracted/harness.cpp` | 发牌模拟器（1:1 verbatim），注入式候选 |
 | `algorithm/native/extracted/optimal_split.h` | 搜索式最优拆牌器（指标期用） |
-| `algorithm/native/extracted/sweep.py` | TOP20 扫描 + 打分 + 报告 |
-| `algorithm/native/extracted/anchor_check.py` | 锚点/单配置聚合 |
-| `algorithm/native/extracted/top20_report.md` | 完整 TOP20 + 算法证明（决策看这个） |
+| `algorithm/native/extracted/tools/sweep.py` | TOP20 扫描 + 打分 + 报告 |
+| `algorithm/native/extracted/tools/anchor_check.py` | 锚点/单配置聚合 |
+| `algorithm/native/extracted/results/top20_report.md` | 完整 TOP20 + 算法证明（决策看这个） |
 | `algorithm/native/previous/makedeal.json` | 线上配置参照副本（策略定义，可改） |
 | `docs/tech/classic-makedeal-config-topn.md` | TOP 速查（本库口径） |
 | `docs/tech/classic-makedeal-debomb-plan.md` | 降炸/调体验落地方案 |

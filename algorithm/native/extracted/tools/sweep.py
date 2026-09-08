@@ -20,11 +20,15 @@ from collections import Counter
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-HERE = Path(__file__).resolve().parent
-HARNESS = HERE / "harness.exe"
-CFG = HERE.parent / "previous" / "makedeal.json"
-RUNDIR = HERE / "sweep_runs"
-RAW = HERE / "sweep_raw.json"
+HERE = Path(__file__).resolve().parent      # extracted/tools/
+SIM = HERE.parent                            # extracted/（模拟器源码所在）
+RESULTS = SIM / "results"                    # 结论产物与缓存
+HARNESS = SIM / "harness.exe"
+CFG = SIM.parent / "previous" / "makedeal.json"
+RAW = RESULTS / "sweep_raw.json"
+# 大样本 jsonl 输出目录：环境变量 SWEEP_RUNS_DIR 优先（runs/ 脚本调 run_one 也生效），
+# 缺省 results/sweep_runs（.gitignore 模式覆盖）；命令行 --runs-dir 在 main() 覆盖此全局
+RUNDIR = Path(os.environ.get("SWEEP_RUNS_DIR") or (RESULTS / "sweep_runs"))
 SEED = 1
 
 def sigmoid(x):
@@ -397,6 +401,8 @@ def main():
     ap.add_argument("--coarse-n", type=int, default=3000)
     ap.add_argument("--final-n", type=int, default=20000)
     ap.add_argument("--base-n", type=int, default=20000)
+    ap.add_argument("--runs-dir", default=None,
+                    help="jsonl 样本输出目录；缺省用环境变量 SWEEP_RUNS_DIR，再缺省 results/sweep_runs")
     ap.add_argument("--rerank", action="store_true", help="只用 sweep_raw.json 重排，不重跑")
     ap.add_argument("--reparse", action="store_true", help="从 sweep_runs/*.jsonl 重算指标(含新字段)，刷新缓存，不重跑 harness")
     ap.add_argument("--view", choices=["std", "real"], default="std",
@@ -404,11 +410,14 @@ def main():
     ap.add_argument("--top", type=int, default=20)
     ap.add_argument("--compare", action="store_true", help="另出 top20_compare.md：每行同时给 std+real 指标+大牌/单牌/手数，含 new/new2")
     args = ap.parse_args()
+    global RUNDIR
+    if args.runs_dir:
+        RUNDIR = Path(args.runs_dir)
     view = args.view
     # 报告按视角分文件，避免互相覆盖：std→top20_report.md，real→top20_report_real.md
     suffix = "" if view == "std" else "_real"
-    REPORT = HERE / f"top20_report{suffix}.md"
-    OUTJSON = HERE / f"top20_configs{suffix}.json"
+    REPORT = RESULTS / f"top20_report{suffix}.md"
+    OUTJSON = RESULTS / f"top20_configs{suffix}.json"
 
     t1c = type1_candidates()
     t0c = type0_candidates()
@@ -558,8 +567,8 @@ def main():
         cmp.append("\n## 三、makedealType = 0 TOP20（real 视角）\n")
         cmp.append(md_compare_table("Type0 TOP20", top0r))
         cmp.append(COMPARE_DEFS)
-        open(HERE / "top20_compare.md", "w", encoding="utf-8").write("".join(cmp))
-        print(f"对照: {HERE / 'top20_compare.md'}", file=sys.stderr)
+        open(RESULTS / "top20_compare.md", "w", encoding="utf-8").write("".join(cmp))
+        print(f"对照: {RESULTS / 'top20_compare.md'}", file=sys.stderr)
 
     print(f"\n报告: {REPORT}", file=sys.stderr)
     print(f"配置: {OUTJSON}", file=sys.stderr)
