@@ -105,4 +105,4 @@ harness 加 `--landlord-bottom` 标志：每局取**牌力最强座作地主**�
 | `docs/tech/classic-makedeal-config-topn.md` | TOP 速查（本库口径） |
 | `docs/tech/classic-makedeal-debomb-plan.md` | 降炸/调体验落地方案 |
 
-> 关联：源码逆向 `docs/makedeal-strategies/742-420-reverse-analysis.md`、代码审计 `docs/makedeal-strategies/makedeal-code-quality-audit.md`、房间配置 `docs/makedeal-strategies/classic/<room>.md`。
+> 关联：源码逆向 `docs/makedeal-strategies/742-420-reverse-analysis.md`、代码审计 `docs/makedeal-strategies/makedeal-code-quality-audit.md`、房间配置 `docs/makedeal-strategies/classic/<room>.md`、目录结构（previous/extracted/src 血缘）见 [algorithm-directory-map.md](algorithm-directory-map.md)。
