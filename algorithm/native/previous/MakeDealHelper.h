@@ -105,9 +105,12 @@ public:
 CardGroupData get_GroupData(CardGroupType cgType, int MaxCard, int Count);
 
 CardGroupData SurCardsType(int arr[]);
-HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData);
 
-void GetBestCardType(HandCardInfo& clsHandCardData);
+//Shared search context (memo table + node budget), defined in MakeDealHelper.cpp
+struct HandSearchContext;
+HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData, HandSearchContext& ctx);
+
+void GetBestCardType(HandCardInfo& clsHandCardData, HandSearchContext& ctx);
 
 void SpliteCard(std::vector<int> arrHandCardList, std::vector<CardGroupData>& cardTypeArr);
 

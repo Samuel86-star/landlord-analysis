@@ -1,8 +1,10 @@
 #include "StdAfx.h"
 #include "MakeDealHelper.h"
 #include <ConfigManagerSys.h>
+#include <unordered_map>
+#include <mutex>
 
-using namespace std;
+//using namespace std;
 
 //手牌数据类
 
@@ -35,10 +37,10 @@ int HandCardInfo::getvaluebycardid(int cardid) {
 }
 
 //初始化 //手牌的初始化，主要用于根据获取的有花色手牌序列转换成无花色手牌序列，手牌序列排序， 计算出手牌个数。
-void HandCardInfo::Init(vector<int> CardIdArr) {
+void HandCardInfo::Init(std::vector<int> CardIdArr) {
     //根据花色手牌获取权值手牌
     memset(value_aHandCardList, 0, sizeof(value_aHandCardList));
-    for (vector<int>::iterator iter = CardIdArr.begin(); iter != CardIdArr.end(); iter++)
+    for (std::vector<int>::iterator iter = CardIdArr.begin(); iter != CardIdArr.end(); iter++)
     {
         value_aHandCardList[getvaluebycardid(*iter)]++;
     }
@@ -82,6 +84,103 @@ int MaxCard：决定大小的牌值
 int Count：牌数
 返回值：CardGroupData
 */
+// ---------------------------------------------------------------------------
+// GroupDataExp cache: get_GroupData() used to walk the json tree through the
+// locked config map several times per call, which made it the hottest inner
+// loop of the deal search. The terms only depend on the card group type, so
+// parse them once and refresh periodically to pick up config republishes.
+// ---------------------------------------------------------------------------
+struct GroupDataExpTerm
+{
+    double dC;
+    int nM;
+    int nD;
+    bool bIsPower;  // true: C * pow(MaxCard, M); false: C * log(MaxCard) / log(D)
+};
+
+static std::mutex s_csGroupDataExp;
+static std::vector<GroupDataExpTerm> s_arrGroupDataExp[cgKING_CARD + 1];
+static ULONGLONG s_ullGroupDataExpLoadTick = 0;
+static const ULONGLONG GROUPDATA_EXP_REFRESH_MS = 60 * 1000;
+
+// Caller must hold s_csGroupDataExp.
+static void LoadGroupDataExpCache()
+{
+    Json::Value expRoot = CConfigManagerSys::m_jsoncfgobjmgr[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"];
+    for (int nType = 0; nType <= cgKING_CARD; ++nType)
+    {
+        char szType[32] = { 0 };
+        sprintf(szType, "%d", nType);
+        const Json::Value& expItem = expRoot[szType];
+        std::vector<GroupDataExpTerm> arrTerms;
+        if (!expItem.isNull())
+        {
+            for (Json::ArrayIndex i = 0; i < expItem.size(); ++i)
+            {
+                GroupDataExpTerm term;
+                term.dC = expItem[i]["C"].asDouble();
+                term.bIsPower = expItem[i]["D"].isNull();
+                term.nM = expItem[i]["M"].asInt();
+                term.nD = expItem[i]["D"].asInt();
+                arrTerms.push_back(term);
+            }
+        }
+        s_arrGroupDataExp[nType].swap(arrTerms);
+    }
+    s_ullGroupDataExpLoadTick = GetTickCount64();
+}
+
+static int CalcGroupDataValue(CardGroupType cgType, int MaxCard)
+{
+    if (cgType < 0 || cgType > cgKING_CARD)
+    {
+        return 0;
+    }
+    std::lock_guard<std::mutex> guard(s_csGroupDataExp);
+    if (s_ullGroupDataExpLoadTick == 0 ||
+        GetTickCount64() - s_ullGroupDataExpLoadTick >= GROUPDATA_EXP_REFRESH_MS)
+    {
+        LoadGroupDataExpCache();
+    }
+    int nValue = 0;
+    const std::vector<GroupDataExpTerm>& arrTerms = s_arrGroupDataExp[cgType];
+    for (size_t i = 0; i < arrTerms.size(); ++i)
+    {
+        int nTermValue = arrTerms[i].bIsPower
+            ? (int)(arrTerms[i].dC * pow((double)MaxCard, (double)arrTerms[i].nM))
+            : (int)(arrTerms[i].dC * (log((double)MaxCard) / log((double)arrTerms[i].nD)));
+        nValue += nTermValue;
+    }
+    return nValue;
+}
+
+// ---------------------------------------------------------------------------
+// Search context shared by one SpliteCard run: a memo table keyed by the hand
+// layout (the search used to re-evaluate identical sub-hands exponentially
+// often) plus a node budget so a pathological hand can never spin forever.
+// ---------------------------------------------------------------------------
+static const int HAND_SEARCH_NODE_BUDGET = 100000;
+
+struct HandSearchContext
+{
+    std::unordered_map<unsigned long long, HandCardValue> memo;  // layout -> value
+    int nNodeBudget;  // remaining nodes, below zero means exhausted
+    bool bAborted;
+
+    explicit HandSearchContext(int nBudget) : nNodeBudget(nBudget), bAborted(false) {}
+};
+
+// Bijective base-5 key over the 18 rank counters (each 0..4).
+static unsigned long long HandLayoutKey(const int aHandCardList[18])
+{
+    unsigned long long ullKey = 0;
+    for (int i = 0; i < 18; ++i)
+    {
+        ullKey = ullKey * 5 + (unsigned long long)aHandCardList[i];
+    }
+    return ullKey;
+}
+
 CardGroupData get_GroupData(CardGroupType cgType, int MaxCard, int Count)
 {
 	CardGroupData uctCardGroupData;
@@ -89,47 +188,38 @@ CardGroupData get_GroupData(CardGroupType cgType, int MaxCard, int Count)
 	uctCardGroupData.cgType = cgType;
 	uctCardGroupData.nCount = Count;
 	uctCardGroupData.nMaxCard = MaxCard;
-	char szType[32] = { 0 };
-	sprintf(szType, "%d", cgType);
-	int nTmpValue = 0, nXianValue = 0;
-	int M = 0;
-	double C = 0;
-	int D = 0;
-	if (CConfigManagerSys::m_jsoncfgobjmgr[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"][szType].isNull()) {
-		//错误牌型
-		uctCardGroupData.nValue = 0;
-	}
-	else {
-		//错误牌型根据配置实时获取
-		for (size_t i = 0; i < CConfigManagerSys::m_jsoncfgobjmgr[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"][szType].size(); i++)
-		{
-			C = CConfigManagerSys::m_jsoncfgobjmgr[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"][szType][i]["C"].asDouble();
-			if (CConfigManagerSys::m_jsoncfgobjmgr[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"][szType][i]["D"].isNull())
-			{
-				M = CConfigManagerSys::m_jsoncfgobjmgr[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"][szType][i]["M"].asInt();
-				//说明是幂函数
-				nXianValue = (int)(C * pow(MaxCard, M));
-			}
-			else
-			{
-				D = CConfigManagerSys::m_jsoncfgobjmgr[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"][szType][i]["D"].asInt();
-				//说明是指数函数
-				nXianValue = (int)(C * (log(MaxCard) / log(D)));
-			}
-
-			nTmpValue += nXianValue;
-		}
-		uctCardGroupData.nValue = nTmpValue;
-	}
-
+	uctCardGroupData.nValue = CalcGroupDataValue(cgType, MaxCard);
     return uctCardGroupData;
 }//注意！！！以上价值定义是作者本人主观意愿，并非斗地主游戏最佳策略，请大家遵从自己的内心适当修改~~
 
 //计算手牌最大总价值。
-HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData)
+HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData, HandSearchContext& ctx)
 {
+    --ctx.nNodeBudget;
+    if (ctx.nNodeBudget < 0)
+    {
+        //Budget exhausted: stop the search and unwind with a worst-case value.
+        ctx.bAborted = true;
+        clsHandCardData.ClearPutCardList();
+        HandCardValue abortValue;
+        abortValue.SumValue = MinCardsValue;
+        abortValue.NeedRound = 20;
+        return abortValue;
+    }
+
     //首先清空出牌队列，因为剪枝时是不调用get_PutCardList的
     clsHandCardData.ClearPutCardList();
+
+    //Memoize by hand layout: identical sub-hands are re-evaluated exponentially
+    //often during the search, so a cached value prunes whole subtrees. The
+    //lookup sits after the clear above so every exit path (memo hit, prune,
+    //abort, full search) leaves value_nPutCardList reset for the caller.
+    unsigned long long ullKey = HandLayoutKey(clsHandCardData.value_aHandCardList);
+    std::unordered_map<unsigned long long, HandCardValue>::const_iterator itMemo = ctx.memo.find(ullKey);
+    if (itMemo != ctx.memo.end())
+    {
+        return itMemo->second;
+    }
 
     HandCardValue uctHandCardValue;
     //出完牌了，其实这种情况只限于手中剩下四带二且被动出牌的情况，因为四带二剪枝做了特殊处理。
@@ -137,6 +227,7 @@ HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData)
     {
         uctHandCardValue.SumValue = 0;
         uctHandCardValue.NeedRound = 0;
+        ctx.memo[ullKey] = uctHandCardValue;
         return uctHandCardValue;
     }
     //————以下为剪枝：判断是否可以一手出完牌
@@ -146,6 +237,7 @@ HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData)
     {
         uctHandCardValue.SumValue = uctCardGroupData.nValue;
         uctHandCardValue.NeedRound = 1;
+        ctx.memo[ullKey] = uctHandCardValue;
         return uctHandCardValue;
     }
 
@@ -153,11 +245,11 @@ HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData)
 
     /*取出一个最优牌型,放入 clsHandCardData.value_nPutCardList及clsHandCardData.uctPutCardType中，
     可使用get_PutCardList返回最优方案*/
-    GetBestCardType(clsHandCardData);
+    GetBestCardType(clsHandCardData, ctx);
 
     //要保存当前的clsHandCardData.value_nPutCardList及clsHandCardData.uctPutCardType用于回溯
     CardGroupData NowPutCardType = clsHandCardData.uctPutCardType;
-    vector<int> NowPutCardList = clsHandCardData.value_nPutCardList;
+    std::vector<int> NowPutCardList = clsHandCardData.value_nPutCardList;
 
     if (clsHandCardData.uctPutCardType.cgType == cgERROR)
     {
@@ -166,17 +258,17 @@ HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData)
 
     //////////////////////////////////////////////////////////////////////////
         //去掉手牌中的最优牌型
-    for (vector<int>::iterator iter = NowPutCardList.begin();
+    for (std::vector<int>::iterator iter = NowPutCardList.begin();
         iter != NowPutCardList.end(); iter++)
     {
         clsHandCardData.value_aHandCardList[*iter]--;
     }
     clsHandCardData.nHandCardCount -= NowPutCardType.nCount;
     //---回溯↑
-    HandCardValue tmp_SurValue = get_MaxHandCardValue(clsHandCardData);//递归剩余牌最大总价值
+    HandCardValue tmp_SurValue = get_MaxHandCardValue(clsHandCardData, ctx);//递归剩余牌最大总价值
 
     //再将最优牌型加入到手牌中，恢复手牌数据
-    for (vector<int>::iterator iter = NowPutCardList.begin();
+    for (std::vector<int>::iterator iter = NowPutCardList.begin();
         iter != NowPutCardList.end(); iter++)
     {
         clsHandCardData.value_aHandCardList[*iter]++;
@@ -187,6 +279,7 @@ HandCardValue get_MaxHandCardValue(HandCardInfo& clsHandCardData)
         //最优牌型牌值与剩下手牌的最大总牌值的和就是整手牌的最大手牌总牌值
     uctHandCardValue.SumValue = NowPutCardType.nValue + tmp_SurValue.SumValue;
     uctHandCardValue.NeedRound = tmp_SurValue.NeedRound + 1;
+    ctx.memo[ullKey] = uctHandCardValue;
 
     return uctHandCardValue;
 }
@@ -420,7 +513,7 @@ CardGroupData SurCardsType(int arr[])
 //取出一个最优牌型
 //1. 能直接一手牌出去，优先出。
 //2. 出一手牌使得接下来自己手牌价值最大化。
-void GetBestCardType(HandCardInfo& clsHandCardData)
+void GetBestCardType(HandCardInfo& clsHandCardData, HandSearchContext& ctx)
 {
     clsHandCardData.ClearPutCardList();
 
@@ -444,7 +537,9 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
     CardGroupData BestCardGroup;
 
     //次之处理当前价值最低的牌，现在不必再考虑这张牌可能被三牌带出等情况
-    for (int i = 3; i < 16; i++)
+    //Skip candidate evaluation once the node budget is exhausted; fall through
+    //to the cheap tail picks so the caller still gets a removable group.
+    for (int i = ctx.bAborted ? 16 : 3; i < 16; i++)
     {
         if (clsHandCardData.value_aHandCardList[i] != 0 && clsHandCardData.value_aHandCardList[i] != 4)
         {
@@ -453,7 +548,7 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
             {
                 clsHandCardData.value_aHandCardList[i]--;
                 clsHandCardData.nHandCardCount--;
-                HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData);
+                HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData, ctx);
                 clsHandCardData.value_aHandCardList[i]++;
                 clsHandCardData.nHandCardCount++;
                 if ((BestHandCardValue.SumValue - (BestHandCardValue.NeedRound * 7)) <= (tmpHandCardValue.SumValue - (tmpHandCardValue.NeedRound * 7)))
@@ -468,7 +563,7 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
                 //尝试打出一对牌，估算剩余手牌价值
                 clsHandCardData.value_aHandCardList[i] -= 2;
                 clsHandCardData.nHandCardCount -= 2;
-                HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData);
+                HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData, ctx);
                 clsHandCardData.value_aHandCardList[i] += 2;
                 clsHandCardData.nHandCardCount += 2;
 
@@ -484,7 +579,7 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
             {
                 clsHandCardData.value_aHandCardList[i] -= 3;
                 clsHandCardData.nHandCardCount -= 3;
-                HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData);
+                HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData, ctx);
                 clsHandCardData.value_aHandCardList[i] += 3;
                 clsHandCardData.nHandCardCount += 3;
 
@@ -512,7 +607,7 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
                             clsHandCardData.value_aHandCardList[k] --;
                         }
                         clsHandCardData.nHandCardCount -= prov;
-                        HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData);
+                        HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData, ctx);
                         for (int k = i; k <= j; k++) {
                             clsHandCardData.value_aHandCardList[k] ++;
                         }
@@ -544,7 +639,7 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
                             clsHandCardData.value_aHandCardList[k] -= 2;
                         }
                         clsHandCardData.nHandCardCount -= prov * 2;
-                        HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData);
+                        HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData, ctx);
                         for (int k = i; k <= j; k++) {
                             clsHandCardData.value_aHandCardList[k] += 2;
                         }
@@ -574,7 +669,7 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
                             clsHandCardData.value_aHandCardList[k] -= 3;
                         }
                         clsHandCardData.nHandCardCount -= prov * 3;
-                        HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData);
+                        HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData, ctx);
                         for (int k = i; k <= j; k++) {
                             clsHandCardData.value_aHandCardList[k] += 3;
                         }
@@ -680,7 +775,7 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
         //         clsHandCardData.value_aHandCardList[17] --;
         //         clsHandCardData.value_aHandCardList[16] --;
         //         clsHandCardData.nHandCardCount -= 2;
-        //         HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData);
+        //         HandCardValue tmpHandCardValue = get_MaxHandCardValue(clsHandCardData, ctx);
         //         clsHandCardData.value_aHandCardList[16] ++;
         //         clsHandCardData.value_aHandCardList[17] ++;
         //         clsHandCardData.nHandCardCount += 2;
@@ -690,12 +785,24 @@ void GetBestCardType(HandCardInfo& clsHandCardData)
         return;
     }
 
+    //Last resort: emit the lowest available single card so the caller always
+    //receives a removable group and SpliteCard can never loop forever.
+    for (int i = 3; i < 18; i++)
+    {
+        if (clsHandCardData.value_aHandCardList[i] > 0)
+        {
+            clsHandCardData.value_nPutCardList.push_back(i);
+            clsHandCardData.uctPutCardType = get_GroupData(cgSINGLE, i, 1);
+            return;
+        }
+    }
+
     //异常错误
     clsHandCardData.uctPutCardType = get_GroupData(cgERROR, 0, 0);
     return;
 
 }
-void SpliteCard(std::vector<int> arrHandCardList, vector<CardGroupData>& cardTypeArr)
+void SpliteCard(std::vector<int> arrHandCardList, std::vector<CardGroupData>& cardTypeArr)
 {
     HandCardInfo clsHandCardData;
     clsHandCardData.Init(arrHandCardList);
@@ -704,23 +811,38 @@ void SpliteCard(std::vector<int> arrHandCardList, vector<CardGroupData>& cardTyp
         return;
     }
     cardTypeArr.clear();
+    HandSearchContext ctx(HAND_SEARCH_NODE_BUDGET);
     while (1)
     {
         //先取一个最优牌型
-        GetBestCardType(clsHandCardData);
+        GetBestCardType(clsHandCardData, ctx);
         //要保存当前的clsHandCardData.value_nPutCardList及clsHandCardData.uctPutCardType用于回溯
         cardTypeArr.push_back(clsHandCardData.uctPutCardType);
         //去掉手牌中的最优牌型
-        for (vector<int>::iterator iter = clsHandCardData.value_nPutCardList.begin();
+        for (std::vector<int>::iterator iter = clsHandCardData.value_nPutCardList.begin();
             iter != clsHandCardData.value_nPutCardList.end(); iter++)
         {
             clsHandCardData.value_aHandCardList[*iter]--;
         }
+        int nCountBefore = clsHandCardData.nHandCardCount;
         clsHandCardData.nHandCardCount -= clsHandCardData.uctPutCardType.nCount;
-        if (clsHandCardData.nHandCardCount == 0)
+        if (clsHandCardData.nHandCardCount <= 0)
         {
             break;
         }
+        if (clsHandCardData.nHandCardCount >= nCountBefore)
+        {
+            //Defensive guard: the chosen group removed nothing, stop instead
+            //of spinning on the same hand forever.
+            printf("SpliteCard no progress, %d cards left\n", clsHandCardData.nHandCardCount);
+            break;
+        }
+    }
+
+    if (ctx.bAborted)
+    {
+        printf("SpliteCard aborted, node budget %d exhausted, %d cards left\n",
+            HAND_SEARCH_NODE_BUDGET, clsHandCardData.nHandCardCount);
     }
 
     int i = 0;
@@ -887,7 +1009,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                     for (size_t q = CardGroupDatas[i].nMaxCard + 1; q <= 14; q++)
                                     {
                                         bool bHasSuitSingle = false;//标识是否有组成更长三连的三条
-                                        for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                        for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                             if (iter->cgType == cgTHREE && iter->nMaxCard == q)
                                             {
                                                 //找到合适三条，从vector中删除该三条类型
@@ -926,7 +1048,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                     for (size_t q = CardGroupDatas[j].nMaxCard + 1; q <= 14; q++)
                                     {
                                         bool bHasSuitSingle = false;//标识是否有组成更长三连的三条
-                                        for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                        for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                             if (iter->cgType == cgTHREE && iter->nMaxCard == q)
                                             {
                                                 //找到合适三条，从vector中删除该三条类型
@@ -1023,7 +1145,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                         for (size_t q = j + 5; q <= 14; q++)
                         {
                             bool bHasSuitSingle = false;//标识是否有组成更长单连的单牌
-                            for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                            for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                 if (iter->cgType == cgSINGLE && iter->nMaxCard == q)
                                 {
                                     //找到合适单牌，从vector中删除该单牌
@@ -1077,7 +1199,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                 for (size_t q = 6; q <= 14; q++)
                                 {
                                     bool bHasSuitSingle = false;//标识是否有组成更长双连的对子
-                                    for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                    for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                         if (iter->cgType == cgDOUBLE && iter->nMaxCard == q)
                                         {
                                             //找到合适对子，从vector中删除该对子类型
@@ -1122,7 +1244,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                 for (size_t q = 6; q <= 14; q++)
                                 {
                                     bool bHasSuitSingle = false;//标识是否有组成更长双连的对子
-                                    for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                    for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                         if (iter->cgType == cgDOUBLE && iter->nMaxCard == q)
                                         {
                                             //找到合适对子，从vector中删除该对子类型
@@ -1164,7 +1286,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                 for (size_t q = 7; q <= 14; q++)
                                 {
                                     bool bHasSuitSingle = false;//标识是否有组成更长双连的对子
-                                    for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                    for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                         if (iter->cgType == cgDOUBLE && iter->nMaxCard == q)
                                         {
                                             //找到合适对子，从vector中删除该对子类型
@@ -1202,7 +1324,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, 13);
                             if (nTargetCardID != -1) {
                                 CardGroupDatas[i] = get_GroupData(cgDOUBLE_LINE, 14, 6);
-                                CardGroupDatas.erase(CardGroupDatas.begin() + max(tmpMaxValueMap[12], tmpMaxValueMap[14]));
+                                CardGroupDatas.erase(CardGroupDatas.begin() + std::max(tmpMaxValueMap[12], tmpMaxValueMap[14]));
                                 CardGroupDatas.erase(CardGroupDatas.begin() + min(tmpMaxValueMap[12], tmpMaxValueMap[14]));
                                 stRet.bRet = true;
                                 stRet.ComposeCardGroupType = get_GroupCardName(cgDOUBLE_LINE);
@@ -1221,7 +1343,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                 for (size_t q = 14; q <= 14; q++)
                                 {
                                     bool bHasSuitSingle = false;//标识是否有组成更长双连的对子
-                                    for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                    for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                         if (iter->cgType == cgDOUBLE && iter->nMaxCard == q)
                                         {
                                             //找到合适对子，从vector中删除该对子类型
@@ -1258,7 +1380,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                             int nTargetCardID = MakeDeal_RemainCardsHaveCard(RemainCards, 14);
                             if (nTargetCardID != -1) {
                                 CardGroupDatas[i] = get_GroupData(cgDOUBLE_LINE, 14, 6);
-                                CardGroupDatas.erase(CardGroupDatas.begin() + max(tmpMaxValueMap[12], tmpMaxValueMap[13]));
+                                CardGroupDatas.erase(CardGroupDatas.begin() + std::max(tmpMaxValueMap[12], tmpMaxValueMap[13]));
                                 CardGroupDatas.erase(CardGroupDatas.begin() + min(tmpMaxValueMap[12], tmpMaxValueMap[13]));
                                 stRet.bRet = true;
                                 stRet.ComposeCardGroupType = get_GroupCardName(cgDOUBLE_LINE);
@@ -1279,7 +1401,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                 for (size_t q = CardGroupDatas[i].nMaxCard + 1; q <= 14; q++)
                                 {
                                     bool bHasSuitSingle = false;//标识是否有组成更长双连的对子
-                                    for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                    for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                         if (iter->cgType == cgDOUBLE && iter->nMaxCard == q)
                                         {
                                             //找到合适对子，从vector中删除该对子类型
@@ -1320,7 +1442,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                 for (size_t q = CardGroupDatas[i].nMaxCard + 2 + 1; q <= 14; q++)
                                 {
                                     bool bHasSuitSingle = false;//标识是否有组成更长双连的对子
-                                    for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                    for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                         if (iter->cgType == cgDOUBLE && iter->nMaxCard == q)
                                         {
                                             //找到合适对子，从vector中删除该对子类型
@@ -1360,7 +1482,7 @@ ComposeCardResult MakeDeal_ComposeCard(
                                 for (size_t q = CardGroupDatas[i].nMaxCard + 1 + 1; q <= 14; q++)
                                 {
                                     bool bHasSuitSingle = false;//标识是否有组成更长双连的对子
-                                    for (vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
+                                    for (std::vector<CardGroupData>::iterator iter = CardGroupDatas.begin(); iter != CardGroupDatas.end(); iter++) {
                                         if (iter->cgType == cgDOUBLE && iter->nMaxCard == q)
                                         {
                                             //找到合适对子，从vector中删除该对子类型
@@ -1536,10 +1658,10 @@ string GetCardValuebyCardIndex(int cardindex) {
         ret = "A";
         break;
     case 14:
-        ret = "小王";
+        ret = "SJ";
         break;
     case 15:
-        ret = "大王";
+        ret = "BJ";
         break;
 
     default:

@@ -2,13 +2,14 @@
 	"MakeDeal":{
 			"11167":"old2",
 			"4483":"old2",
-			"4484":"old2",
+			"4484":"new5",
 			"1124":"old2",		
-			"420":"new2",
-			"742":"new",
-			"12074":"old2",
-			"6314":"old2",
-			"11168":"old2",
+			"420":"new5",
+			"1404":"new5",
+			"742":"new3",
+			"12074":"new5",
+			"6314":"new6",
+			"11168":"new6",
 			"10336":"old2",
 			"16445":"old2",
 			
@@ -120,6 +121,66 @@
 				"TargetRound":10,
 				"CouPaiStrategy":[[4,6,5,2,3]]
 		},
+		"new3":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6]]
+		},
+		"new4":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6],[4,5,3,6],[4,5,3,6,13]]
+		},
+		"new5":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6],[4,5,3,6,13]]
+		},
+		"new6":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6,13]]
+		},
 		"robot":{
 				"MakeDealType":1,
 				"BeginMakeNum":14,
@@ -137,8 +198,8 @@
 		},
 		"robot742":{
 				"MakeDealType":1,
-				"BeginMakeNum":11,
-				"BeginSelectBanker":15,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
 				"FirstChairHandCount":5,
 				"FirstChairBombCount":2,
 				"FirstChairBigCardsCount":5,
@@ -152,7 +213,7 @@
 		},
 		"robot420":{
 				"MakeDealType":1,
-				"BeginMakeNum":14,
+				"BeginMakeNum":13,
 				"BeginSelectBanker":17,
 				"FirstChairHandCount":5,
 				"FirstChairBombCount":2,
@@ -163,7 +224,82 @@
 				"BigCardsTo":4,
 				"TargetValue":999,
 				"TargetRound":10,
-				"CouPaiStrategy":[[4,6,5,2,3]]
+				"CouPaiStrategy":[[4,5,3,6],[4,5,3,6,13]]
+		},
+		"robot1404":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6],[4,5,3,6,13]]
+		},
+		"robot4484":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6],[4,5,3,6,13]]
+		},
+		"robot12074":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6],[4,5,3,6,13]]
+		},
+		"robot6314":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6,13]]
+		},
+		"robot11168":{
+				"MakeDealType":1,
+				"BeginMakeNum":13,
+				"BeginSelectBanker":17,
+				"FirstChairHandCount":5,
+				"FirstChairBombCount":2,
+				"FirstChairBigCardsCount":5,
+				"OtherChairHandCount":6,
+				"OtherChairBombCount":2,
+				"OtherChairBigCardsCount":4,
+				"BigCardsTo":4,
+				"TargetValue":999,
+				"TargetRound":10,
+				"CouPaiStrategy":[[4,5,3,6,13]]
 		},
 		"robot10336":{
 			"MakeDealType":0,
@@ -228,7 +364,7 @@
 				"CouPaiStrategy":[[13,4,3,6,5,2],[4,6,13,3,5,2],[13,3,4,6,5,2]]
 		},
 
-		"robot22042":{
+				"robot22042":{
 				"MakeDealType":1,
 				"BeginMakeNum":6,
 				"BeginSelectBanker":15,
@@ -385,27 +521,31 @@
 				"NewUserBout":5
 			},
 			"12074":{
-				"NewUserBout":3,
+				"NewUserBout":1,
 				"ManualMakeDealBout":1
 			},
 			"4484":{
-				"NewUserBout":3,
+				"NewUserBout":1,
 				"ManualMakeDealBout":1
 			},
 			"420":{
-				"NewUserBout":3,
+				"NewUserBout":1,
+				"ManualMakeDealBout":1
+			},
+			"1404":{
+				"NewUserBout":1,
 				"ManualMakeDealBout":1
 			},
 			"742":{
-				"NewUserBout":5,
+				"NewUserBout":1,
 				"ManualMakeDealBout":1
 			},
 			"22039":{
-				"NewUserBout":2,
+				"NewUserBout":1,
 				"ManualMakeDealBout":1
 			},
 			"421":{
-				"NewUserBout":2,
+				"NewUserBout":1,
 				"ManualMakeDealBout":1
 			},
 			"1124":{
@@ -796,6 +936,7 @@
 		
 		"roomids":{
 			"420":"v1",
+			"1404":"v1",
 			"742":"v1",
 			"4484":"v1",
 			"12074":"v1",
