@@ -70,9 +70,19 @@ harness.exe → JSONL 逐局样本 → tools/（sweep/anchor_check/stats）→ �
 | 误读 | 事实 |
 | ---- | ---- |
 | "`src/` 是 extracted 的 Java 版" | 两系无血缘：线上关键词（CouPaiStrategy/MakeDealByCfg/SvrXygRandomSort）在 `src/`、`include/`、`test/` **零命中**；代码断代（UWL/Windows 遗产 vs C++11/Java21）；发牌哲学相反（做牌 vs 随机+过滤） |
+| "源仓系是 extracted 的增强版（拆牌优化、牌力值）" | 无版本递进关系：源仓系不含做牌发牌管线。extracted 复刻"线上**怎么**发牌"（求真），源仓系设计"发牌**应该怎么**做"（候选方案，求好）；"拆牌/牌力"三处实现各归各，见下表 |
 | "previous 的 MakeDealHelper 从源仓系提炼" | 方向反了：previous 是线上遗产（old2 体系已跑数月），源仓 PRD 2026-02 才立项。真实关系 = **遗产 vs 重构候选**——若流动，方向是源仓系→线上（重构上线）；对照工具 `native/tools/shuffle_prng_compare.py`（遗产 `SvrXygRandomSort` vs 新法 MT19937+Fisher-Yates，还实锤了遗产 `srand(time(NULL))` 同秒跨桌同流缺陷） |
 | "native/test 是 extracted 的模拟测试" | `test/` 测 `landlord.h`（源仓系）；extracted 的模拟入口是它自己顶层的 `harness.exe`（另两个 CMake 目标 power_split_test/split_vs_power 编的是 extracted 顶层的拆牌对比 cpp，也与 native/test 无关） |
 | "previous 是整个服务器的拷贝" | 只拷了发牌相关 3 个 cpp + 配置；但 zgdatbl 一万行里发牌只占小块，其余是桌务逻辑 |
+
+### 拆牌/牌力的三个实现位置（易混，各归各）
+
+| 概念 | 线上系（previous/extracted） | 源仓系（src + landlord.h） | analysis 自有 |
+| ---- | ---- | ---- | ---- |
+| 拆牌 | `SpliteCard`/`GetBestCardType`/`get_MaxHandCardValue` 递归拆牌——做牌时逼近 TargetValue 用 | `splitter/`（IComboExtractor，飞机/炸弹/顺子优先）——评分前把手拆成组合 | `optimal_split.h` 搜索式全局最优（min-combo→max-Σscore）——**指标期口径**，真正的"拆牌优化"在这里 |
+| 牌力 | `get_GroupData`（makedeal.json GroupDataExp 公式）+ `CalHandCardValue`——做牌内部估值 | `calcTotalHandScore`（Java/C++ 双端同步）——**与数仓 card_power 的 PRD 同源**；harness 借它算首叫/抗衡指标 | —（指标直接借用左两家） |
+
+> harness 的**指标层** = landlord.h 评分 + optimal_split 最优拆牌（比线上递归拆牌更能反映牌面质量）——这是两系唯一"借用"关系，仅限指标计算，发牌管线本体无关。
 
 ## 五、变更记录
 
