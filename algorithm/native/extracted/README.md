@@ -8,13 +8,11 @@
 
 | 位置 | 文件 | 说明 |
 |---|---|---|
-| 顶层 | `harness.cpp` | 单文件模拟器：发牌逻辑逐字剥离 + 极简 JSON + 极简 Table/Player/Config stub + JSONL 输出 |
-| 顶层 | `harness_optv2.cpp` | 研发 09-01 MakeDealHelper 优化版复刻（`gen_optv2_harness.py` 生成；A/B 证分布零影响） |
-| 顶层 | `gen_optv2_harness.py` | harness_optv2.cpp 生成器 |
+| 顶层 | `harness.cpp` | 单文件模拟器：发牌逻辑逐字剥离 + 极简 JSON + 极简 Table/Player/Config stub + JSONL 输出。**对应线上现行版**（09-01 优化：GroupDataExp 缓存 + memo + 节点预算；2026-09-09 由 harness_optv2.cpp 并回单一化，与优化前版本 A/B 证逐行一致） |
 | 顶层 | `optimal_split.h` / `optimal_split_power.h` | 搜索式最优拆牌（指标期口径） |
 | 顶层 | `split_test.cpp` / `power_split_test.cpp` / `verify_split_vs_power.cpp` | 最优拆牌校验（后两者为 CMake 目标） |
 | `tools/` | `sweep.py` / `stats.py` / `anchor_check.py` | TOP20 扫描打分 / JSONL 聚合 / 单配置锚点聚合（长期工具链） |
-| `runs/` | `run_*.py` / `verify_*.py` ×12 | 历次实验与验证脚本，索引见 [runs/README.md](runs/README.md) |
+| `runs/` | `run_*.py` / `verify_*.py` ×10 | 历次实验与验证脚本，索引见 [runs/README.md](runs/README.md) |
 | `results/` | `top20_*.{json,md}` / `sweep_raw.json` / `makedeal_pre91.json` | TOP20 报告与可落地配置 / 指标缓存（`--rerank` 用） / pre-9.1 线上配置快照 |
 | — | `makedeal.json` | **不在此目录**——运行时 `--cfg ../previous/makedeal.json` 指向线上配置参照副本（`algorithm/native/previous/`，可改） |
 | — | `*.jsonl` | harness 运行产出（样本数据，已 gitignore，可再生；大样本外迁见文末说明） |

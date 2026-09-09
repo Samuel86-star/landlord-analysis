@@ -314,34 +314,71 @@ static inline int heldBombsFromCardids(const int* ids, int n) {
 }
 
 // =============================================================================
-// 5. get_GroupData（MakeDealHelper.cpp:85）—— 读 JSON GroupDataExp
+// 5. get_GroupData（研发优化版：静态缓存 + mutex，60s 刷新）
+//    行为与原版完全一致，仅性能优化。
 // =============================================================================
+#include <unordered_map>
+#include <mutex>
+
+struct GroupDataExpTerm {
+    double dC;
+    int nM;
+    int nD;
+    bool bIsPower;  // true: C * pow(MaxCard, M); false: C * log(MaxCard)/log(D)
+};
+
+static std::mutex s_csGroupDataExp;
+static std::vector<GroupDataExpTerm> s_arrGroupDataExp[cgKING_CARD + 1];
+static unsigned long long s_ullGroupDataExpLoadTick = 0;
+static const unsigned long long GROUPDATA_EXP_REFRESH_MS = 60 * 1000;
+
+// Caller must hold s_csGroupDataExp.
+static void LoadGroupDataExpCache() {
+    const JsonValue& expRoot = CFG_MGR[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"];
+    for (int nType = 0; nType <= cgKING_CARD; ++nType) {
+        char szType[32] = {0};
+        sprintf(szType, "%d", nType);
+        const JsonValue& expItem = expRoot[szType];
+        std::vector<GroupDataExpTerm> arrTerms;
+        if (!expItem.isNull()) {
+            for (size_t i = 0; i < expItem.size(); ++i) {
+                GroupDataExpTerm term;
+                term.dC = expItem[(int)i]["C"].asDouble();
+                term.bIsPower = expItem[(int)i]["D"].isNull();
+                term.nM = expItem[(int)i]["M"].asInt();
+                term.nD = expItem[(int)i]["D"].asInt();
+                arrTerms.push_back(term);
+            }
+        }
+        s_arrGroupDataExp[nType].swap(arrTerms);
+    }
+    s_ullGroupDataExpLoadTick = (unsigned long long)clock();
+}
+
+static int CalcGroupDataValue(int cgType, int MaxCard) {
+    if (cgType < 0 || cgType > cgKING_CARD) return 0;
+    std::lock_guard<std::mutex> guard(s_csGroupDataExp);
+    if (s_ullGroupDataExpLoadTick == 0 ||
+        (unsigned long long)clock() - s_ullGroupDataExpLoadTick >= GROUPDATA_EXP_REFRESH_MS) {
+        LoadGroupDataExpCache();
+    }
+    int nValue = 0;
+    const std::vector<GroupDataExpTerm>& arrTerms = s_arrGroupDataExp[cgType];
+    for (size_t i = 0; i < arrTerms.size(); ++i) {
+        int nTermValue = arrTerms[i].bIsPower
+            ? (int)(arrTerms[i].dC * pow((double)MaxCard, (double)arrTerms[i].nM))
+            : (int)(arrTerms[i].dC * (log((double)MaxCard) / log((double)arrTerms[i].nD)));
+        nValue += nTermValue;
+    }
+    return nValue;
+}
+
 static CardGroupData get_GroupData(CardGroupType cgType, int MaxCard, int Count) {
     CardGroupData uct;
     uct.cgType = cgType;
     uct.nCount = Count;
     uct.nMaxCard = MaxCard;
-    char szType[32] = {0};
-    sprintf(szType, "%d", cgType);
-    int nTmpValue = 0, nXianValue = 0, M = 0, D = 0;
-    double C = 0;
-    const JsonValue& exp = CFG_MGR[MAKEDEAL_CONFIG]["MakeDealCommonArgs"]["GroupDataExp"][szType];
-    if (exp.isNull()) {
-        uct.nValue = 0;
-    } else {
-        for (size_t i = 0; i < exp.size(); i++) {
-            C = exp[(int)i]["C"].asDouble();
-            if (exp[(int)i]["D"].isNull()) {
-                M = exp[(int)i]["M"].asInt();
-                nXianValue = (int)(C * pow((double)MaxCard, M));     // 幂函数
-            } else {
-                D = exp[(int)i]["D"].asInt();
-                nXianValue = (int)(C * (log((double)MaxCard) / log((double)D))); // 指数函数
-            }
-            nTmpValue += nXianValue;
-        }
-        uct.nValue = nTmpValue;
-    }
+    uct.nValue = CalcGroupDataValue(cgType, MaxCard);
     return uct;
 }
 static const char* get_GroupCardName(int GroupCardType) {
@@ -355,8 +392,30 @@ static const char* get_GroupCardName(int GroupCardType) {
 }
 
 // =============================================================================
-// 6. HandCardInfo + SpliteCard 系（MakeDealHelper.cpp:10-727）逐字
+// 6. HandCardInfo + SpliteCard 系——研发优化版（memo + node budget，对应 MakeDealHelper new/ 版本）
+//    原版 harness 用精简重写版；此处替换为线上 MakeDealHelper 优化后的版本。
+//    核心差异：get_MaxHandCardValue 加 memo 表 + 100000 节点预算，
+//    预算耗尽时 abort（返回最差值），GetBestCardType 跳过搜索直接走兜底。
 // =============================================================================
+
+static const int HAND_SEARCH_NODE_BUDGET = 100000;
+
+struct HandSearchContext {
+    std::unordered_map<unsigned long long, HandCardValue> memo;
+    int nNodeBudget;
+    bool bAborted;
+    explicit HandSearchContext(int nBudget) : nNodeBudget(nBudget), bAborted(false) {}
+};
+
+// Bijective base-5 key over the 18 rank counters (each 0..4).
+static unsigned long long HandLayoutKey(const int aHandCardList[18]) {
+    unsigned long long ullKey = 0;
+    for (int i = 0; i < 18; ++i) {
+        ullKey = ullKey * 5 + (unsigned long long)aHandCardList[i];
+    }
+    return ullKey;
+}
+
 class HandCardInfo {
 public:
     int value_aHandCardList[18];
@@ -375,7 +434,8 @@ public:
     }
 };
 
-static HandCardValue get_MaxHandCardValue(HandCardInfo& cls); // fwd
+static HandCardValue get_MaxHandCardValue(HandCardInfo& cls, HandSearchContext& ctx); // fwd
+
 static CardGroupData SurCardsType(int arr[]) {
     int nCount = 0;
     for (int i = 3; i < 18; i++) nCount += arr[i];
@@ -409,30 +469,54 @@ static CardGroupData SurCardsType(int arr[]) {
     ret.cgType = cgERROR;
     return ret;
 }
-static HandCardValue get_MaxHandCardValue(HandCardInfo& cls) {
+
+static HandCardValue get_MaxHandCardValue(HandCardInfo& cls, HandSearchContext& ctx) {
+    --ctx.nNodeBudget;
+    if (ctx.nNodeBudget < 0) {
+        // Budget exhausted: stop the search and unwind with a worst-case value.
+        ctx.bAborted = true;
+        cls.ClearPutCardList();
+        HandCardValue abortValue;
+        abortValue.SumValue = MinCardsValue;
+        abortValue.NeedRound = 20;
+        return abortValue;
+    }
+
     cls.ClearPutCardList();
+
+    // Memoize by hand layout: identical sub-hands are re-evaluated exponentially
+    // often during the search, so a cached value prunes whole subtrees.
+    unsigned long long ullKey = HandLayoutKey(cls.value_aHandCardList);
+    std::unordered_map<unsigned long long, HandCardValue>::const_iterator itMemo = ctx.memo.find(ullKey);
+    if (itMemo != ctx.memo.end()) {
+        return itMemo->second;
+    }
+
     HandCardValue uct;
-    if (cls.nHandCardCount == 0) { uct.SumValue = 0; uct.NeedRound = 0; return uct; }
+    if (cls.nHandCardCount == 0) { uct.SumValue = 0; uct.NeedRound = 0; ctx.memo[ullKey] = uct; return uct; }
     CardGroupData scd = SurCardsType(cls.value_aHandCardList);
     if (scd.cgType != cgERROR && scd.cgType != cgFOUR_TAKE_ONE && scd.cgType != cgFOUR_TAKE_TWO) {
-        uct.SumValue = scd.nValue; uct.NeedRound = 1; return uct;
+        uct.SumValue = scd.nValue; uct.NeedRound = 1; ctx.memo[ullKey] = uct; return uct;
     }
     // 取一个最优牌型后递归
-    extern void GetBestCardType(HandCardInfo&);
-    GetBestCardType(cls);
+    extern void GetBestCardType(HandCardInfo&, HandSearchContext&);
+    GetBestCardType(cls, ctx);
     CardGroupData NowPutCardType = cls.uctPutCardType;
     std::vector<int> NowPutCardList = cls.value_nPutCardList;
     for (size_t it = 0; it < NowPutCardList.size(); it++) cls.value_aHandCardList[NowPutCardList[it]]--;
     cls.nHandCardCount -= NowPutCardType.nCount;
-    HandCardValue tmp = get_MaxHandCardValue(cls);
+    HandCardValue tmp = get_MaxHandCardValue(cls, ctx);
     for (size_t it = 0; it < NowPutCardList.size(); it++) cls.value_aHandCardList[NowPutCardList[it]]++;
     cls.nHandCardCount += NowPutCardType.nCount;
     uct.SumValue = NowPutCardType.nValue + tmp.SumValue;
     uct.NeedRound = tmp.NeedRound + 1;
+    ctx.memo[ullKey] = uct;
     return uct;
 }
+
 static inline long long _score(const HandCardValue& hv) { return (long long)hv.SumValue - (long long)hv.NeedRound * 7; }
-void GetBestCardType(HandCardInfo& cls) {
+
+void GetBestCardType(HandCardInfo& cls, HandSearchContext& ctx) {
     cls.ClearPutCardList();
     CardGroupData scd = SurCardsType(cls.value_aHandCardList);
     if (scd.cgType != cgERROR && scd.cgType != cgFOUR_TAKE_ONE && scd.cgType != cgFOUR_TAKE_TWO) {
@@ -443,28 +527,31 @@ void GetBestCardType(HandCardInfo& cls) {
     HandCardValue Best; Best.NeedRound = 20; Best.SumValue = MinCardsValue; Best.NeedRound += 1;
     CardGroupData BestGroup;
     int* L = cls.value_aHandCardList;
-    for (int i = 3; i < 16; i++) {
+
+    // Skip candidate evaluation once the node budget is exhausted; fall through
+    // to the cheap tail picks so the caller still gets a removable group.
+    for (int i = ctx.bAborted ? 16 : 3; i < 16; i++) {
         if (L[i] != 0 && L[i] != 4) {
-            if (L[i] == 1) { L[i]--; cls.nHandCardCount--; HandCardValue tmp = get_MaxHandCardValue(cls); L[i]++; cls.nHandCardCount++;
+            if (L[i] == 1) { L[i]--; cls.nHandCardCount--; HandCardValue tmp = get_MaxHandCardValue(cls, ctx); L[i]++; cls.nHandCardCount++;
                 if (_score(Best) <= _score(tmp)) { Best = tmp; BestGroup = get_GroupData(cgSINGLE, i, 1); } }
-            if (L[i] == 2) { L[i]-=2; cls.nHandCardCount-=2; HandCardValue tmp = get_MaxHandCardValue(cls); L[i]+=2; cls.nHandCardCount+=2;
+            if (L[i] == 2) { L[i]-=2; cls.nHandCardCount-=2; HandCardValue tmp = get_MaxHandCardValue(cls, ctx); L[i]+=2; cls.nHandCardCount+=2;
                 if (_score(Best) <= _score(tmp)) { Best = tmp; BestGroup = get_GroupData(cgDOUBLE, i, 2); } }
-            if (L[i] == 3) { L[i]-=3; cls.nHandCardCount-=3; HandCardValue tmp = get_MaxHandCardValue(cls); L[i]+=3; cls.nHandCardCount+=3;
+            if (L[i] == 3) { L[i]-=3; cls.nHandCardCount-=3; HandCardValue tmp = get_MaxHandCardValue(cls, ctx); L[i]+=3; cls.nHandCardCount+=3;
                 if (_score(Best) <= _score(tmp)) { Best = tmp; BestGroup = get_GroupData(cgTHREE, i, 3); } }
             if (L[i] > 0) { int prov = 0;
                 for (int j = i; j < 15; j++) { if (L[j] > 0) prov++; else break;
                     if (prov >= 5) { for (int k = i; k <= j; k++) L[k]--; cls.nHandCardCount -= prov;
-                        HandCardValue tmp = get_MaxHandCardValue(cls); for (int k = i; k <= j; k++) L[k]++; cls.nHandCardCount += prov;
+                        HandCardValue tmp = get_MaxHandCardValue(cls, ctx); for (int k = i; k <= j; k++) L[k]++; cls.nHandCardCount += prov;
                         if (_score(Best) <= _score(tmp)) { Best = tmp; BestGroup = get_GroupData(cgSINGLE_LINE, j, prov); } } } }
             if (L[i] > 1) { int prov = 0;
                 for (int j = i; j < 15; j++) { if (L[j] > 1) prov++; else break;
                     if (prov >= 3) { for (int k = i; k <= j; k++) L[k]-=2; cls.nHandCardCount -= prov*2;
-                        HandCardValue tmp = get_MaxHandCardValue(cls); for (int k = i; k <= j; k++) L[k]+=2; cls.nHandCardCount += prov*2;
+                        HandCardValue tmp = get_MaxHandCardValue(cls, ctx); for (int k = i; k <= j; k++) L[k]+=2; cls.nHandCardCount += prov*2;
                         if (_score(Best) <= _score(tmp)) { Best = tmp; BestGroup = get_GroupData(cgDOUBLE_LINE, j, prov*2); } } } }
             if (L[i] > 2) { int prov = 0;
                 for (int j = i; j < 15; j++) { if (L[j] > 2) prov++; else break;
                     if (prov >= 2) { for (int k = i; k <= j; k++) L[k]-=3; cls.nHandCardCount -= prov*3;
-                        HandCardValue tmp = get_MaxHandCardValue(cls); for (int k = i; k <= j; k++) L[k]+=3; cls.nHandCardCount += prov*3;
+                        HandCardValue tmp = get_MaxHandCardValue(cls, ctx); for (int k = i; k <= j; k++) L[k]+=3; cls.nHandCardCount += prov*3;
                         if (_score(Best) <= _score(tmp)) { Best = tmp; BestGroup = get_GroupData(cgTHREE_LINE, j, prov*3); } } } }
             if (BestGroup.cgType == cgERROR) {}
             else if (BestGroup.cgType == cgSINGLE) { cls.value_nPutCardList.push_back(BestGroup.nMaxCard); cls.uctPutCardType = BestGroup; }
@@ -480,20 +567,47 @@ void GetBestCardType(HandCardInfo& cls) {
     if (cls.value_aHandCardList[16] == 0 && cls.value_aHandCardList[17] == 1) { cls.value_nPutCardList.push_back(17); cls.uctPutCardType = get_GroupData(cgSINGLE, 17, 1); return; }
     for (int i = 3; i < 16; i++) if (cls.value_aHandCardList[i] == 4) { for (int t=0;t<4;t++) cls.value_nPutCardList.push_back(i); cls.uctPutCardType = get_GroupData(cgBOMB_CARD, i, 4); return; }
     if (cls.value_aHandCardList[17] > 0 && cls.value_aHandCardList[16] > 0) { cls.value_nPutCardList.push_back(17); cls.value_nPutCardList.push_back(16); cls.uctPutCardType = get_GroupData(cgKING_CARD, 17, 2); return; }
+
+    // Last resort: emit the lowest available single card so the caller always
+    // receives a removable group and SpliteCard can never loop forever.
+    for (int i = 3; i < 18; i++) {
+        if (cls.value_aHandCardList[i] > 0) {
+            cls.value_nPutCardList.push_back(i);
+            cls.uctPutCardType = get_GroupData(cgSINGLE, i, 1);
+            return;
+        }
+    }
+
     cls.uctPutCardType = get_GroupData(cgERROR, 0, 0);
 }
+
 void SpliteCard(std::vector<int> arrHandCardList, std::vector<CardGroupData>& cardTypeArr) {
     HandCardInfo cls; cls.Init(arrHandCardList);
     if (cls.nHandCardCount <= 0) return;
     cardTypeArr.clear();
+    HandSearchContext ctx(HAND_SEARCH_NODE_BUDGET);
     while (1) {
-        GetBestCardType(cls);
+        GetBestCardType(cls, ctx);
         cardTypeArr.push_back(cls.uctPutCardType);
         for (size_t it = 0; it < cls.value_nPutCardList.size(); it++) cls.value_aHandCardList[cls.value_nPutCardList[it]]--;
+        int nCountBefore = cls.nHandCardCount;
         cls.nHandCardCount -= cls.uctPutCardType.nCount;
-        if (cls.nHandCardCount == 0) break;
+        if (cls.nHandCardCount <= 0) break;
+        if (cls.nHandCardCount >= nCountBefore) {
+            // Defensive guard: the chosen group removed nothing, stop instead
+            // of spinning on the same hand forever.
+            printf("SpliteCard no progress, %d cards left\n", cls.nHandCardCount);
+            break;
+        }
+    }
+    if (ctx.bAborted) {
+        printf("SpliteCard aborted, node budget %d exhausted, %d cards left\n",
+            HAND_SEARCH_NODE_BUDGET, cls.nHandCardCount);
     }
 }
+
+// CalHandCardValue（原 harness.cpp 第 6 节自带，未被研发改动，原样保留）
+// 牌型数 nHandCount：三张/飞机可带的单/对不计入；nHandCardAveValue = 牌型价值和
 void CalHandCardValue(std::vector<CardGroupData>& CardGroupDatas, int& nHandCount, int& nHandCardAveValue) {
     sort(CardGroupDatas.begin(), CardGroupDatas.end(), [](CardGroupData a, CardGroupData b){ return a.nValue > b.nValue ? true : false; });
     int nLesserCount = 0; int nHandCardTotalValue = 0;
@@ -510,7 +624,6 @@ void CalHandCardValue(std::vector<CardGroupData>& CardGroupDatas, int& nHandCoun
     nHandCardAveValue = nHandCardTotalValue;
 }
 
-// =============================================================================
 // 7. Type1 拼牌 MakeDeal_ComposeCard（MakeDealHelper.cpp:730-1475）逐字
 // =============================================================================
 static int MakeDeal_RemainCardsHaveCard(std::vector<int>& RemainCards, int nCardValue) {

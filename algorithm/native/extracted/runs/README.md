@@ -4,9 +4,7 @@
 
 | 脚本 | 用途 | 结论去向 |
 |---|---|---|
-| `run_optv2_ab.py` | 原版 vs 优化版 harness 同 seed A/B（逐行 diff + 指标对比） | docs/analysis/result/new4-4484-12074-human-advantage-0901-report.md |
-| `run_new4.py` | new4 配置理论分布（b13s17 nopair 与 +bombcode 2:1 混合，读样本 jsonl） | 同上 |
-| `run_new4_both.py` | new4：原版 harness vs harness_optv2 各自实跑 | 同上 |
+| `run_new4.py` | new4 配置理论分布（b13s17 nopair 与 +bombcode 2:1 混合，读样本 jsonl） | docs/analysis/result/new4-4484-12074-human-advantage-0901-report.md |
 | `run_new4_seats.py` | new4 座位视角（--reals 3 全真人，两种子） | 同上 |
 | `run_new4_strat_seats.py` | new4 策略×座位交叉 | 同上 |
 | `run_era_sim.py` | pre-9.1 vs post-9.1 配置时代模拟（输入 `../results/makedeal_pre91.json`，git show 取 HEAD 版对照） | 9.1 突变归因分析 |
@@ -17,5 +15,7 @@
 | `verify_extreme_hands.py` | 极端手牌边界验证 | 拆牌边界结论 |
 
 运行方式：在 runs/ 内 `py -3 -u <脚本>`（harness 在上一级、makedeal.json 在上两级 previous/、工具链在 ../tools/，路径已配好）。
+
+> **2026-09-09 harness 单一化**：`harness_optv2.cpp`（研发 09-01 优化版复刻）已并回 `harness.cpp` 并重编译验证（500 局同 seed 逐行一致），双版本 A/B 脚本 `run_optv2_ab.py`/`run_new4_both.py` 与生成器 `gen_optv2_harness.py` 随之移除；A/B 结论存档于 0901 报告，历史版本可从 git 找回。
 
 > 样本 jsonl 已外迁：默认 `../results/sweep_runs`，本机大数据在 `D:\analysis\sim-data\landlord-sim\sweep_runs`（`run_new4.py` 等读样本的脚本设 `SWEEP_RUNS_DIR` 指向它）。
