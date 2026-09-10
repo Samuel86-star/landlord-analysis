@@ -18,11 +18,13 @@
 
 ## A 组：文档纠错（diff 可直接应用）
 
-在**源仓根目录**执行（`-p2` 剥掉 `algorithm/` 前缀对齐源仓路径）：
+独立 patch 文件：[algorithm-snapshot-upstream-fixes.diff](algorithm-snapshot-upstream-fixes.diff)（git 原生输出，无 BOM，`algorithm/docs/` 路径）。在**源仓（Mac）根目录**执行（`-p2` 剥掉 `algorithm/` 前缀对齐源仓路径）：
 
 ```bash
-git apply -p2 a-group-docs.diff
+git apply -p2 algorithm-snapshot-upstream-fixes.diff
 ```
+
+> patch 基线 = 快照 `f2dbcf6` 时的 docs（即 analysis 仓 9a84ab4 修改前状态）。若 Mac 库在 f2dbcf6 之后又改过这三份文档导致打不上，按下方内嵌 diff 手动合入。
 
 diff 内容（三文件合计；即 analysis 仓 9a84ab4 中 `algorithm/docs/` 部分）：
 
@@ -98,6 +100,17 @@ diff --git a/docs/testing-strategy-and-commands.md b/docs/testing-strategy-and-c
 
 > 注：A2 引用的测试类名若 B2 执行了改名（`DefaultSplitterFactoryTest`），文档行同步改名。
 
+## 源仓拓扑与落地方位（2026-09-10 探明）
+
+| 位置 | 状态 |
+|---|---|
+| **Mac** `/Users/maerun/Projects/landlord` | **权威源仓**（`docs/plan/2026-09-04-dealing-algorithm-agent-foundation.md:52` 记载）。其 main 已推进到快照基准 `f2dbcf6`（含 2026-09-06 同步的 `e4be61a..a4b53b9` 批次：三带自吃修复、移除高置信单路径短路、SplitterRegressionTest、product-prd 大改、landlord.h 变更）——**这批提交从未推上 GitHub** |
+| GitHub `Samuel86-star/landlord` main | 停在 `e4be61a`（落后权威库一批提交，无其他分支）。本机 SSH 身份即 Samuel86-star |
+| Windows `D:\Coding\landlord` | 2026-09-10 新鲜克隆（GitHub 态），仅作对照/查历史，**勿在此直接落地** |
+| Windows `D:\Coding\landlord-algorithm` | 无 `.git` 的旧工程残骸（布局也不同：顶层 `src/`+`test/`+`CMakeLists.txt`），与源仓无关，勿用 |
+
+**结论：A/B 组修复应在 Mac 权威库执行并连同积压提交一并 push 到 GitHub**；若从 Windows 直接推 GitHub 会与权威库分叉。GitHub 落后本身也是一个待办：建议 Mac 侧 `git push origin main` 先清欠账。
+
 ## B 组：代码侧清理（源仓执行）
 
 ### B1. AbstractHandSplitter.java Javadoc 旧类名（约 15 行处）
@@ -139,7 +152,7 @@ git rm docs/prompt.md
 
 ## 落地后
 
-1. 源仓合入并验证（`mvn test` 全绿；`grep -rn "FirstSplitAlgorithm\|SplitterAlgorithmFactory" docs/ src/` 零命中——git 历史除外）。
+1. 源仓（Mac）合入并验证（`mvn test` 全绿；`grep -rn "FirstSplitAlgorithm\|SplitterAlgorithmFactory" docs/ src/` 零命中——git 历史除外），连同**积压的 `a4b53b9..f2dbcf6` 提交一并 push 到 GitHub**（顺带清掉 GitHub 落后欠账）。
 2. 记录 source base/head，按 [algorithm-snapshot-plan.md](algorithm-snapshot-plan.md) §更新方法 增量同步回本仓 `algorithm/`。
 3. A 组文件届时与本仓 9a84ab4 的例外修复**内容收敛**（同步时按"内容不同只合入源仓 hunks"处理，结果应一致或仅余源仓新增内容）；B 组随同步首次进入快照。
 4. 同步完成后本文件 A/B 组状态更新为"已落地"，或在快照 README 记录后归档本文件。
