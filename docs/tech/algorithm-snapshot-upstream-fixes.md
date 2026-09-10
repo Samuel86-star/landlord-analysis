@@ -97,7 +97,7 @@ index dd3899f..03d23fc 100644
        - **开启过滤且配置最大重洗次数**：验证 `reshuffleCnt` 始终在 \[0, maxReshuffleTimes] 范围内，防止实现错误导致无限重洗或超出上限。
 
 +- **拆牌（splitter / split）**
-+  - **`DefaultSplitterFactoryTest`**（原名 `SplitterAlgorithmFactoryTest`，随包迁移同步改名）
++  - **`DefaultSplitterFactoryTest`**
 +    - 对 `DefaultSplitterFactory.chooseStrategy(int[])` 的单元测试，逐条覆盖 [split-strategy-decision-rules.md](split-strategy-decision-rules.md) 第三节的决策规则及边界值（顺子区为 Rank 0~11，即 3~A）。
 +  - **`SplitterRegressionTest`**
 +    - 经 `DefaultComboExtractor`（注入评分，双路径取优）的拆牌回归：孤立三张不作自身对翼、强顺子下仍保留炸弹、三带一的对翼须来自其他点数、双炸弹保留、四带二不得以自身对翼带牌等。
