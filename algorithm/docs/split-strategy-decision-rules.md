@@ -1,6 +1,6 @@
 # 拆牌策略决策规则（顺子连对优先 vs 飞机炸弹优先）
 
-根据手牌点数分布，在「顺子/连对优先」与「飞机/炸弹优先（贪心）」之间自动选择一种策略，只跑一套拆牌，在保证质量的前提下减少计算。
+根据手牌点数分布，在「顺子/连对优先」与「飞机/炸弹优先（贪心）」之间自动选择策略。发牌评分主路径为**双路径取优**（两套都跑、取高分，不经过本文规则，见第五节）；本文决策规则用于**单路径**场景，并给出「何时单路径足够安全」的置信度判断。
 
 ---
 
@@ -59,7 +59,7 @@
 
 7. **默认**
    - 条件：以上均不满足。
-   - 决策：**飞机/炸弹优先（贪心）**。与 `PlaneBombFirstSplitAlgorithm` 行为一致，保证下限。
+   - 决策：**飞机/炸弹优先（贪心）**。与 `PlaneBombPrioritizedSplitter` 行为一致，保证下限。
 
 ---
 
@@ -77,7 +77,16 @@
 
 ## 五、与实现的对应关系
 
-- **顺子/连对优先** → 使用 `StraightFirstSplitAlgorithm.split(hand)`（先顺子、连对，再三张/对子/单牌，最后炸弹）。
-- **飞机/炸弹优先（贪心）** → 使用 `PlaneBombFirstSplitAlgorithm.split(hand)`（王炸→炸弹→飞机→四带二→顺子→连对→三带→对子→单）。
+- **顺子/连对优先** → `StraightPrioritizedSplitter.extractAllCombos(hand, count)`（先顺子、连对，再三张/对子/单牌，最后炸弹）。
+- **飞机/炸弹优先（贪心）** → `PlaneBombPrioritizedSplitter.extractAllCombos(hand, count)`（王炸→炸弹→飞机→四带二→顺子→连对→三带→对子→单）。
 
-实现上由 `SplitterAlgorithmFactory` 根据 `HandCardUtils.buildRankCountsFromHand(hand)` 得到 `count`，在顺子区上计算特征并按第三节顺序判断，再通过 `getSplitter(hand)` 返回对应算法，`split(hand)` 只执行该算法的一套拆牌。
+实现上由 `DefaultSplitterFactory` 根据 `HandCardUtils.buildRankCounts(handCards)` 得到 `count`，在顺子区上计算特征并按第三节顺序判断，再通过 `getSplitter(count)` 返回对应算法，`extractAllCombos(handCards)` 只执行该算法的一套拆牌。
+
+### 单路径与双路径的分工
+
+| 路径 | 入口 | 行为 |
+|------|------|------|
+| **双路径取优**（发牌评分主路径） | `DefaultComboExtractor`（注入 `IHandCardsScoringStrategy`；`AbstractShuffleDealStrategy` 默认构造即如此装配） | 两套拆牌各算一遍总分，取分高者，**不经过本文决策规则**（另见 [deal-balancing-prd.md](deal-balancing-prd.md) §2.2） |
+| **单路径**（本文规则的用武之地） | `DefaultSplitterFactory.extractAllCombos` / `getSplitter` | 按第三节规则只跑一套；`DefaultComboExtractor` 未注入评分策略时退化为该路径 |
+
+- **置信度**：`DefaultSplitterFactory.chooseStrategyWithConfidence` 额外输出是否「高置信度」——仅第三节规则 1 / 规则 2 命中时为 true，此时单路径结果可视为与双路径取优一致；其余情况建议走双路径。

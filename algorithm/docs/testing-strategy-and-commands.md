@@ -30,6 +30,21 @@
       - **关闭过滤**：`enabled=false`，验证行为等价于默认策略，不发生重洗（`reshuffled=false`、`reshuffleCnt=0`）。
       - **开启过滤且配置最大重洗次数**：验证 `reshuffleCnt` 始终在 \[0, maxReshuffleTimes] 范围内，防止实现错误导致无限重洗或超出上限。
 
+- **拆牌（splitter / split）**
+  - **`SplitterAlgorithmFactoryTest`**
+    - 对 `DefaultSplitterFactory.chooseStrategy(int[])` 的单元测试，逐条覆盖 [split-strategy-decision-rules.md](split-strategy-decision-rules.md) 第三节的决策规则及边界值（顺子区为 Rank 0~11，即 3~A）。
+  - **`SplitterRegressionTest`**
+    - 经 `DefaultComboExtractor`（注入评分，双路径取优）的拆牌回归：孤立三张不作自身对翼、强顺子下仍保留炸弹、三带一的对翼须来自其他点数、双炸弹保留、四带二不得以自身对翼带牌等。
+    - 对应 [cross-language-regression-vectors.md](cross-language-regression-vectors.md) 的双种子校准证据。
+
+- **边界与领域模型（boundary / model）**
+  - **`BoundaryBugTest`**
+    - 覆盖 null / 空集合 / 非法索引 / 非法配置等场景：ComboScoring、HandScoring、HandCardUtils、DefaultSplitterFactory、DefaultComboExtractor、DealData、dealCards、ScoringStrategyProperties，以及 `ehsScale=0` 时发牌流程不产生 NaN。
+  - **`ComboTest`**
+    - `Combo` 领域模型工厂方法的构造与判定。
+  - **`LandlordAlgorithmApplicationTests`**
+    - Spring 上下文加载冒烟测试（`contextLoads`）。
+
 - **HTTP 控制层（controller）**
   - **`ShuffleAndDealControllerTest`**
     - 直接调用 `ShuffleAndDealController.shuffleAndDeal()`。

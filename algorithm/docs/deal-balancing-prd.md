@@ -209,6 +209,8 @@ landlord.shuffle-strategy.threshold-relax-step=0.15
 landlord.shuffle-strategy.version=dealing_filter_v2
 ```
 
+> **注意**：上块为**推荐配置形态**（§三各表「推荐值」的汇总）。当前仓库 `src/main/resources/application.properties` 实际只启用维度一/二（`lower-threshold=-66`、`upper-threshold=75`、`max-spread=112`），维度三/四/五暂以下列值关闭：`max-potential-landlord-score=Infinity`、`max-landlord-advantage=Infinity`、`max-singles-per-hand=0`、`max-bombs-per-hand=0`。灰度开启各维度时按上块推荐值调整。
+
 ---
 
 ## 七、关键类说明

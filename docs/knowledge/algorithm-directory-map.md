@@ -93,3 +93,4 @@ harness.exe → JSONL 逐局样本 → tools/（sweep/anchor_check/stats）→ �
 | 2026-09-06 | 远程改为只读快照模式，源仓系纳入（f2dbcf6） |
 | 2026-09-08 | previous 同步线上 09-01 优化版 + makedeal.json new3~new6 铺开态（454b611）；extracted 归拢 tools/runs/results 四区（568921c） |
 | 2026-09-09 | harness 单一化：harness_optv2.cpp 并回 harness.cpp（6b8b6e0，500 局同 seed 逐行验证一致） |
+| 2026-09-10 | 算法快照 `docs/` 文档纠错（拆牌决策规则旧类名/单双路径架构、测试覆盖清单补 5 项、PRD §六配置现值标注）——**只读区例外修改，同名修复须回源仓 Samuel86-star/landlord 落地**；代码侧遗留（`AbstractHandSplitter.java:15` Javadoc 旧类名、`SplitterAlgorithmFactoryTest` 包名 split→splitter、prompt.md 清理）一并留源仓处理 |
