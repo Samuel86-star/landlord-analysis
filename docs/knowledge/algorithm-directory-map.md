@@ -94,4 +94,5 @@ harness.exe → JSONL 逐局样本 → tools/（sweep/anchor_check/stats）→ �
 | 2026-09-08 | previous 同步线上 09-01 优化版 + makedeal.json new3~new6 铺开态（454b611）；extracted 归拢 tools/runs/results 四区（568921c） |
 | 2026-09-09 | harness 单一化：harness_optv2.cpp 并回 harness.cpp（6b8b6e0，500 局同 seed 逐行验证一致） |
 | 2026-09-10 | 算法快照 `docs/` 文档纠错（拆牌决策规则旧类名/单双路径架构、测试覆盖清单补 5 项、PRD §六配置现值标注）——**只读区例外修改，同名修复须回源仓 Samuel86-star/landlord 落地**；代码侧遗留（`AbstractHandSplitter.java:15` Javadoc 旧类名、`SplitterAlgorithmFactoryTest` 包名 split→splitter、prompt.md 清理）一并留源仓处理 |
-| 2026-09-10 | 源仓待落地修改包整理成文：[algorithm-snapshot-upstream-fixes.md](../tech/algorithm-snapshot-upstream-fixes.md)（A 组 3 份文档 diff 可 `git apply -p2` 直用 + B 组 3 项代码侧清理操作说明） |
+| 2026-09-10 | 源仓待落地修改包整理成文：[algorithm-snapshot-upstream-fixes.md](../tech/algorithm-snapshot-upstream-fixes.md)（A 组 3 份文档 diff 可 `git apply -p2` 直用 + B 组代码侧清理操作说明） |
+| 2026-09-10 | 修改包经外部复审 4 条全采纳后修订（9d05210）：置信度标记≠单双路径等价（a4b53b9 已移除错误短路，反例 strongStraightStillComparesBombPreservingSplit）、拆牌向量归属 cross-language 表（双种子标定属 deal-balancing-prd）、测试类改名转必做、验证前移+补 Native CTest；衍生新增 B4（DefaultSplitterFactory Javadoc 同源错误）。Mac 侧执行指引：[../handoff/2026-09-10-landlord-source-repo-fixes.md](../handoff/2026-09-10-landlord-source-repo-fixes.md) |
