@@ -55,3 +55,9 @@
 - 无 scorer 工厂的单路径按约定保留为降级路径。
 - 四带二 helper 在当前生产拆牌顺序中仍是死代码，但自吃隐患已消除，暂不重构。
 - 项目基础设施 Skill 明确不创建；CI 工作流在团队确认平台、成本、密钥边界和触发规则前暂不创建。
+
+## 2026-09-08 推进补记
+
+- 文档状态已同步；实施进度见[推进计划](../plan/2026-09-08-unfinished-items-implementation.md)。
+- [历史回填验收包](../analysis/result/2026-09-08-historical-backfill-validation.md)已完成真实只读基线：七日462,732条源重洗次数提取缺失但未落 -1；炸弹桶需重算2026-03-01至09-01共185日，9月2日至6日已一致。已修复allgame脚本的跨app源过滤，尚未执行人工写入。
+- 用户确认 `makedeal.json` 与 `zgdatbl.cpp` 对应线上配置/发牌源码，初始化读取键不匹配已证实；`/api/shuffle` 是研究测试接口，保留当前契约。房间10803历史映射及有效期仍待补齐，详见[事实记录](../analysis/result/2026-09-08-online-contract-verification.md)。
