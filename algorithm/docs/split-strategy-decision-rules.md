@@ -1,6 +1,6 @@
 # 拆牌策略决策规则（顺子连对优先 vs 飞机炸弹优先）
 
-根据手牌点数分布，在「顺子/连对优先」与「飞机/炸弹优先（贪心）」之间自动选择策略。发牌评分主路径为**双路径取优**（两套都跑、取高分，不经过本文规则，见第五节）；本文决策规则用于**单路径**场景，并给出「何时单路径足够安全」的置信度判断。
+根据手牌点数分布，在「顺子/连对优先」与「飞机/炸弹优先（贪心）」之间自动选择策略。发牌评分主路径为**双路径取优**（两套都跑、取高分，不经过本文规则，见第五节）；本文决策规则用于**单路径**场景，并附历史遗留的「置信度」标记（注意：高置信**不代表**单路径与双路径等价，见第五节末注记）。
 
 ---
 
@@ -89,4 +89,4 @@
 | **双路径取优**（发牌评分主路径） | `DefaultComboExtractor`（注入 `IHandCardsScoringStrategy`；`AbstractShuffleDealStrategy` 默认构造即如此装配） | 两套拆牌各算一遍总分，取分高者，**不经过本文决策规则**（另见 [deal-balancing-prd.md](deal-balancing-prd.md) §2.2） |
 | **单路径**（本文规则的用武之地） | `DefaultSplitterFactory.extractAllCombos` / `getSplitter` | 按第三节规则只跑一套；`DefaultComboExtractor` 未注入评分策略时退化为该路径 |
 
-- **置信度**：`DefaultSplitterFactory.chooseStrategyWithConfidence` 额外输出是否「高置信度」——仅第三节规则 1 / 规则 2 命中时为 true，此时单路径结果可视为与双路径取优一致；其余情况建议走双路径。
+- **置信度**：`DefaultSplitterFactory.chooseStrategyWithConfidence` 额外输出是否「高置信度」（仅第三节规则 1 / 规则 2 命中时为 true）。该标记是**历史启发式残留**：曾有实现据此短路为单路径，因结论错误已移除；发牌评分主路径**始终双路径取优，不读取该标记**。「高置信 ⇒ 单路径与双路径等价」**不成立**——反例见 `SplitterRegressionTest.strongStraightStillComparesBombPreservingSplit`（`34567 8888 9TJQKA 2 sj` 命中规则 1 高置信，单路径拆法即丢 `BOMB(8)`，仍须比较双路径）。

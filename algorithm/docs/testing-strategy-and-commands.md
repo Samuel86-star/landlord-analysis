@@ -31,11 +31,11 @@
       - **开启过滤且配置最大重洗次数**：验证 `reshuffleCnt` 始终在 \[0, maxReshuffleTimes] 范围内，防止实现错误导致无限重洗或超出上限。
 
 - **拆牌（splitter / split）**
-  - **`SplitterAlgorithmFactoryTest`**
+  - **`DefaultSplitterFactoryTest`**（原名 `SplitterAlgorithmFactoryTest`，随包迁移同步改名）
     - 对 `DefaultSplitterFactory.chooseStrategy(int[])` 的单元测试，逐条覆盖 [split-strategy-decision-rules.md](split-strategy-decision-rules.md) 第三节的决策规则及边界值（顺子区为 Rank 0~11，即 3~A）。
   - **`SplitterRegressionTest`**
     - 经 `DefaultComboExtractor`（注入评分，双路径取优）的拆牌回归：孤立三张不作自身对翼、强顺子下仍保留炸弹、三带一的对翼须来自其他点数、双炸弹保留、四带二不得以自身对翼带牌等。
-    - 对应 [cross-language-regression-vectors.md](cross-language-regression-vectors.md) 的双种子校准证据。
+    - 整手拆牌用例与 [cross-language-regression-vectors.md](cross-language-regression-vectors.md) §整手拆牌向量 一致（如 `hand-straight-bomb-8` / `hand-straight-bomb-2`）；随机发牌的跨语言一致性不在该表范围内（双种子标定属 [deal-balancing-prd.md](deal-balancing-prd.md)）。
 
 - **边界与领域模型（boundary / model）**
   - **`BoundaryBugTest`**
