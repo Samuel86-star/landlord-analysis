@@ -1,0 +1,145 @@
+# algorithm 源仓待落地修改包（landlord-algorithm）
+
+> 来源：2026-09-09/10 对快照 `algorithm/docs/` 的代码级审计（对照 `src/`、`application.properties`、`pom.xml`、`CMakeLists.txt`、测试源码）。
+> 用途：以下修改**必须在源仓 [Samuel86-star/landlord](https://github.com/Samuel86-star/landlord.git) 落地**，本仓快照只读（治理见 [algorithm-snapshot-plan.md](algorithm-snapshot-plan.md)、[algorithm/README.md](../../algorithm/README.md)）。源仓合入后按快照同步流程带回本仓。
+>
+> 快照基准：`f2dbcf6`（2026-09-06）。若源仓文件已前进，patch 打不上时按各项"操作说明"手动执行。
+
+## 总览
+
+| # | 类型 | 文件 | 内容 | 快照侧状态 |
+|---|---|---|---|---|
+| A1 | 文档纠错 | `docs/split-strategy-decision-rules.md` | 旧类名/方法名 → 现行；单/双路径分工补全 | 已例外修复（analysis 9a84ab4），待源仓同名落地 |
+| A2 | 文档纠错 | `docs/testing-strategy-and-commands.md` | 覆盖清单补 5 个现存测试 | 同上 |
+| A3 | 文档纠错 | `docs/deal-balancing-prd.md` | §六标注推荐值 ≠ 现行配置 | 同上 |
+| B1 | 注释纠错 | `src/main/java/com/mamba/landlord/algorithm/splitter/AbstractHandSplitter.java` | Javadoc 旧类名 | 未动（代码区） |
+| B2 | 测试整理 | `src/test/java/com/mamba/landlord/algorithm/split/SplitterAlgorithmFactoryTest.java` | 包 `split` → `splitter` 迁移 | 未动（代码区） |
+| B3 | 文件清理 | `docs/prompt.md` | 删除（1 行 AI 指令，非文档） | 未动 |
+
+## A 组：文档纠错（diff 可直接应用）
+
+在**源仓根目录**执行（`-p2` 剥掉 `algorithm/` 前缀对齐源仓路径）：
+
+```bash
+git apply -p2 a-group-docs.diff
+```
+
+diff 内容（三文件合计；即 analysis 仓 9a84ab4 中 `algorithm/docs/` 部分）：
+
+```diff
+diff --git a/docs/deal-balancing-prd.md b/docs/deal-balancing-prd.md
+@@ -209,6 +209,8 @@ landlord.shuffle-strategy.threshold-relax-step=0.15
+ landlord.shuffle-strategy.version=dealing_filter_v2
+ ```
+
++> **注意**：上块为**推荐配置形态**（§三各表「推荐值」的汇总）。当前仓库 `src/main/resources/application.properties` 实际只启用维度一/二（`lower-threshold=-66`、`upper-threshold=75`、`max-spread=112`），维度三/四/五暂以下列值关闭：`max-potential-landlord-score=Infinity`、`max-landlord-advantage=Infinity`、`max-singles-per-hand=0`、`max-bombs-per-hand=0`。灰度开启各维度时按上块推荐值调整。
+
+---
+
+diff --git a/docs/split-strategy-decision-rules.md b/docs/split-strategy-decision-rules.md
+@@ -1,6 +1,6 @@
+ # 拆牌策略决策规则（顺子连对优先 vs 飞机炸弹优先）
+
+-根据手牌点数分布，在「顺子/连对优先」与「飞机/炸弹优先（贪心）」之间自动选择一种策略，只跑一套拆牌，在保证质量的前提下减少计算。
++根据手牌点数分布，在「顺子/连对优先」与「飞机/炸弹优先（贪心）」之间自动选择策略。发牌评分主路径为**双路径取优**（两套都跑、取高分，不经过本文规则，见第五节）；本文决策规则用于**单路径**场景，并给出「何时单路径足够安全」的置信度判断。
+
+---
+
+@@ -59,7 +59,7 @@
+
+ 7. **默认**
+    - 条件：以上均不满足。
+-   - 决策：**飞机/炸弹优先（贪心）**。与 `PlaneBombFirstSplitAlgorithm` 行为一致，保证下限。
++   - 决策：**飞机/炸弹优先（贪心）**。与 `PlaneBombPrioritizedSplitter` 行为一致，保证下限。
+
+---
+
+@@ -77,7 +77,16 @@
+
+ ## 五、与实现的对应关系
+
+-- **顺子/连对优先** → 使用 `StraightFirstSplitAlgorithm.split(hand)`（先顺子、连对，再三张/对子/单牌，最后炸弹）。
+-- **飞机/炸弹优先（贪心）** → 使用 `PlaneBombFirstSplitAlgorithm.split(hand)`（王炸→炸弹→飞机→四带二→顺子→连对→三带→对子→单）。
++- **顺子/连对优先** → `StraightPrioritizedSplitter.extractAllCombos(hand, count)`（先顺子、连对，再三张/对子/单牌，最后炸弹）。
++- **飞机/炸弹优先（贪心）** → `PlaneBombPrioritizedSplitter.extractAllCombos(hand, count)`（王炸→炸弹→飞机→四带二→顺子→连对→三带→对子→单）。
+
+-实现上由 `SplitterAlgorithmFactory` 根据 `HandCardUtils.buildRankCountsFromHand(hand)` 得到 `count`，在顺子区上计算特征并按第三节顺序判断，再通过 `getSplitter(hand)` 返回对应算法，`split(hand)` 只执行该算法的一套拆牌。
++实现上由 `DefaultSplitterFactory` 根据 `HandCardUtils.buildRankCounts(handCards)` 得到 `count`，在顺子区上计算特征并按第三节顺序判断，再通过 `getSplitter(count)` 返回对应算法，`extractAllCombos(handCards)` 只执行该算法的一套拆牌。
++
++### 单路径与双路径的分工
++
++| 路径 | 入口 | 行为 |
++|------|------|------|
++| **双路径取优**（发牌评分主路径） | `DefaultComboExtractor`（注入 `IHandCardsScoringStrategy`；`AbstractShuffleDealStrategy` 默认构造即如此装配） | 两套拆牌各算一遍总分，取分高者，**不经过本文决策规则**（另见 [deal-balancing-prd.md](deal-balancing-prd.md) §2.2） |
++| **单路径**（本文规则的用武之地） | `DefaultSplitterFactory.extractAllCombos` / `getSplitter` | 按第三节规则只跑一套；`DefaultComboExtractor` 未注入评分策略时退化为该路径 |
++
++- **置信度**：`DefaultSplitterFactory.chooseStrategyWithConfidence` 额外输出是否「高置信度」——仅第三节规则 1 / 规则 2 命中时为 true，此时单路径结果可视为与双路径取优一致；其余情况建议走双路径。
+
+diff --git a/docs/testing-strategy-and-commands.md b/docs/testing-strategy-and-commands.md
+@@ -30,6 +30,21 @@
+       - **关闭过滤**：`enabled=false`，验证行为等价于默认策略，不发生重洗（`reshuffled=false`、`reshuffleCnt=0`）。
+       - **开启过滤且配置最大重洗次数**：验证 `reshuffleCnt` 始终在 \[0, maxReshuffleTimes] 范围内，防止实现错误导致无限重洗或超出上限。
+
++- **拆牌（splitter / split）**
++  - **`SplitterAlgorithmFactoryTest`**
++    - 对 `DefaultSplitterFactory.chooseStrategy(int[])` 的单元测试，逐条覆盖 [split-strategy-decision-rules.md](split-strategy-decision-rules.md) 第三节的决策规则及边界值（顺子区为 Rank 0~11，即 3~A）。
++  - **`SplitterRegressionTest`**
++    - 经 `DefaultComboExtractor`（注入评分，双路径取优）的拆牌回归：孤立三张不作自身对翼、强顺子下仍保留炸弹、三带一的对翼须来自其他点数、双炸弹保留、四带二不得以自身对翼带牌等。
++    - 对应 [cross-language-regression-vectors.md](cross-language-regression-vectors.md) 的双种子校准证据。
++
++- **边界与领域模型（boundary / model）**
++  - **`BoundaryBugTest`**
++    - 覆盖 null / 空集合 / 非法索引 / 非法配置等场景：ComboScoring、HandScoring、HandCardUtils、DefaultSplitterFactory、DefaultComboExtractor、DealData、dealCards、ScoringStrategyProperties，以及 `ehsScale=0` 时发牌流程不产生 NaN。
++  - **`ComboTest`**
++    - `Combo` 领域模型工厂方法的构造与判定。
++  - **`LandlordAlgorithmApplicationTests`**
++    - Spring 上下文加载冒烟测试（`contextLoads`）。
+```
+
+> 注：A2 引用的测试类名若 B2 执行了改名（`DefaultSplitterFactoryTest`），文档行同步改名。
+
+## B 组：代码侧清理（源仓执行）
+
+### B1. AbstractHandSplitter.java Javadoc 旧类名（约 15 行处）
+
+```java
+// 改前
+ * 不包含任何“优先级/策略”逻辑。具体的拆牌策略类（如 PlaneBombFirstSplitAlgorithm、StraightFirstSplitAlgorithm 等），
+// 改后
+ * 不包含任何“优先级/策略”逻辑。具体的拆牌策略类（如 PlaneBombPrioritizedSplitter、StraightPrioritizedSplitter 等），
+```
+
+注释级修改，零行为影响。
+
+### B2. SplitterAlgorithmFactoryTest 包迁移（`split` → `splitter`）
+
+已核实全仓**无任何代码引用**该测试类与 `algorithm.split.` 包（无 import、无 pom/surefire 包级配置），迁移自包含：
+
+```bash
+git mv src/test/java/com/mamba/landlord/algorithm/split/SplitterAlgorithmFactoryTest.java \
+       src/test/java/com/mamba/landlord/algorithm/splitter/SplitterAlgorithmFactoryTest.java
+```
+
+文件内两处修改：
+
+1. `package com.mamba.landlord.algorithm.split;` → `package com.mamba.landlord.algorithm.splitter;`
+2. 删除第 3 行 `import com.mamba.landlord.algorithm.splitter.DefaultSplitterFactory;`（迁移后同包，import 冗余）
+
+可选（建议）：类名 `SplitterAlgorithmFactoryTest` 是旧工厂名遗留，与被测类 `DefaultSplitterFactory` 不一致，顺手改名 `DefaultSplitterFactoryTest`（需同步 A2 文档中的类名行）。
+
+验证：`mvn test -Dtest='Splitter*Test'`（或改名后 `-Dtest='DefaultSplitterFactoryTest'`）。
+
+### B3. 删除 docs/prompt.md
+
+```bash
+git rm docs/prompt.md
+```
+
+内容仅 1 行英文 AI 指令（"Run the benchmarks. Identify the worst performing cases..."），无文档价值。
+
+## 落地后
+
+1. 源仓合入并验证（`mvn test` 全绿；`grep -rn "FirstSplitAlgorithm\|SplitterAlgorithmFactory" docs/ src/` 零命中——git 历史除外）。
+2. 记录 source base/head，按 [algorithm-snapshot-plan.md](algorithm-snapshot-plan.md) §更新方法 增量同步回本仓 `algorithm/`。
+3. A 组文件届时与本仓 9a84ab4 的例外修复**内容收敛**（同步时按"内容不同只合入源仓 hunks"处理，结果应一致或仅余源仓新增内容）；B 组随同步首次进入快照。
+4. 同步完成后本文件 A/B 组状态更新为"已落地"，或在快照 README 记录后归档本文件。
