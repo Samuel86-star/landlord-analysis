@@ -21,6 +21,7 @@ WITH ddz_modes AS (
         ROW_NUMBER() OVER (PARTITION BY uid, play_mode ORDER BY game_datetime DESC) AS rank_desc
     FROM tcy_temp.dws_ddz_daily_game
     WHERE game_id = 53
+      AND app_id = {app_id}
       AND dt = '{dt}'
       AND robot != 1
       AND group_id IN (6, 66, 8, 88, 33, 44, 77, 99)
