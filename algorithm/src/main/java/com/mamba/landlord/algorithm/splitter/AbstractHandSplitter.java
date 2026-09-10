@@ -12,7 +12,7 @@ import java.util.List;
  * 牌型识别与基础计数的抽象基类。
  * <p>
  * 职责：围绕 {@link Rank} 计数（使用 rank 下标的数组）提供通用的牌型识别能力，
- * 不包含任何“优先级/策略”逻辑。具体的拆牌策略类（如 PlaneBombFirstSplitAlgorithm、StraightFirstSplitAlgorithm 等），
+ * 不包含任何“优先级/策略”逻辑。具体的拆牌策略类（如 PlaneBombPrioritizedSplitter、StraightPrioritizedSplitter 等），
  * 由 {@link DefaultSplitterFactory} 根据手牌分布选择使用。
  * 只需继承本类并按照自己的优先级组合这些基础方法即可。
  */

@@ -1,5 +1,7 @@
 # algorithm 源仓待落地修改包（landlord-algorithm）
 
+> **已完成并停用**：修改包已落地至原源仓 `b729ef0`，并合并回 `landlord-analysis/algorithm/`。当前直接在本仓维护算法模块。
+
 > 来源：2026-09-09/10 对快照 `algorithm/docs/` 的代码级审计（对照 `src/`、`application.properties`、`pom.xml`、`CMakeLists.txt`、测试源码）。
 > 用途：以下修改**必须在源仓 [Samuel86-star/landlord](https://github.com/Samuel86-star/landlord.git) 落地**，本仓快照只读（治理见 [algorithm-snapshot-plan.md](algorithm-snapshot-plan.md)、[algorithm/README.md](../../algorithm/README.md)）。源仓合入后按快照同步流程带回本仓。
 > **Mac 侧执行指引**：[../handoff/2026-09-10-landlord-source-repo-fixes.md](../handoff/2026-09-10-landlord-source-repo-fixes.md)（自包含步骤 0~7，验证前置、单次推送）。

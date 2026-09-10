@@ -1,5 +1,7 @@
 # Handoff：landlord 源仓落地文档纠错 + 四项清理（Mac 侧执行）
 
+> **已完成并停用**：源仓修复已提交为 `b729ef0` 并推送；算法随后合并到 `landlord-analysis/algorithm/`。本指引仅保留历史，不再执行。
+
 > 写给：Mac 上的操作者（人或 Claude）。
 > 来源：Windows 侧 2026-09-09/10 对 `landlord-analysis` 仓 `algorithm/docs/` 快照的代码级审计，已在本仓（landlord-analysis）完成文档修复与修改包，**剩余动作须在权威源仓执行**。2026-09-10 外部复审 4 条意见已采纳并入本指引（详见修改包文档"复审修订记录"）。
 > 详细背景与逐项说明：`docs/tech/algorithm-snapshot-upstream-fixes.md`（本仓）。

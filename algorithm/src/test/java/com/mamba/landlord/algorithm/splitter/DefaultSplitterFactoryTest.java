@@ -1,6 +1,5 @@
-package com.mamba.landlord.algorithm.split;
+package com.mamba.landlord.algorithm.splitter;
 
-import com.mamba.landlord.algorithm.splitter.DefaultSplitterFactory;
 import com.mamba.landlord.core.model.Rank;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -14,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * 对 {@link DefaultSplitterFactory#chooseStrategy(int[])} 的单元测试，
  * 覆盖各条决策规则及边界值。顺子区为 Rank 0~11（3~A），count 下标为 Rank.ordinal()。
  */
-class SplitterAlgorithmFactoryTest {
+class DefaultSplitterFactoryTest {
 
     private DefaultSplitterFactory factory;
 

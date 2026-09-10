@@ -1,16 +1,16 @@
-# algorithm/ 目录全景（线上系 vs 源仓系）
+# algorithm/ 目录全景（线上系 vs 新算法系）
 
 > 回答"previous / extracted / src / native/test / include 各是什么、什么关系"。接手 algorithm/ 相关工作前先读这篇；模拟口径与工具用法详见 [makedeal-simulation.md](makedeal-simulation.md)。
 > 本文事实均经代码级核查（2026-09-09）。
 
 ## 一、一句话定位：两套独立血统
 
-| | 线上系 | 源仓系 |
+| | 线上系 | 新算法系 |
 | ---- | ---- | ---- |
 | 回答的问题 | 线上**现在**怎么发牌、会产生什么分布 | 新算法（拆牌/评分/发牌过滤）**怎么设计** |
 | 语言 | C++ | Java（`src/`）+ C++ 孪生（`native/include/landlord.h`） |
 | 目录 | `native/previous/`、`native/extracted/`、`native/tools/` | `src/`、`native/include/`、`native/test/`、`native/config/`、`pom.xml`、`docs/` |
-| 治理 | **analysis 自有资产，可改**（previous 改动=线上同步意图，commit 注明） | **landlord-algorithm 源仓只读快照**（f2dbcf6，改须回源仓） |
+| 治理 | **本仓自有资产，可改**（previous 改动=线上同步意图，commit 注明） | **本仓权威算法模块，可直接修改并验证** |
 | 发牌哲学 | **做牌**：配置驱动凑牌型（CouPaiStrategy 逼近 TargetValue） | **随机+过滤**：均匀洗牌→评分→极端局重洗（PRD 2026-02） |
 
 两系唯一交点：`extracted/harness.cpp` 借用 `include/landlord.h` 的规范拆牌器+评分**算指标**（仅指标层，发牌管线不含它）。
@@ -54,7 +54,7 @@ harness.exe → JSONL 逐局样本 → tools/（sweep/anchor_check/stats）→ �
 
 同一洗牌算法 → **概率分布忠实**（具体某局不可复现：种子源与线上不同）。已对齐线上实测：742 `new` 持有炸 0.137 ↔ 线上打出 `bomb_bet` 单家 ≈0.13（持有略高于打出，自洽）。
 
-## 三、源仓系：landlord-algorithm 只读快照
+## 三、新算法系：landlord-algorithm 模块
 
 | 目录 | 内容 |
 | ---- | ---- |
@@ -63,21 +63,21 @@ harness.exe → JSONL 逐局样本 → tools/（sweep/anchor_check/stats）→ �
 | `native/test/` | 测的是 `landlord.h`：`main_test.cpp` 单测、`sampler_test.cpp` 采样入口；配置用 `native/config/scoring.properties`——**与 makedeal.json、extracted 均无关** |
 | `algorithm/docs/` | PRD（发牌均衡过滤系统 2026-02）、评价标准、拆牌决策规则、测试策略 |
 
-治理：快照 commit `f2dbcf6`（2026-09-06）；`src/`、`include/`、`test/`、`pom.xml`、`algorithm/docs/`、`native/CMakeLists.txt` **只读**，改须回源仓 Samuel86-star/landlord，同步流程见 [algorithm/README.md](../../algorithm/README.md) 与 [docs/tech/algorithm-snapshot-plan.md](../tech/algorithm-snapshot-plan.md)。
+治理：`src/`、`include/`、`test/`、`pom.xml`、`algorithm/docs/`、`native/CMakeLists.txt` 均由 `landlord-analysis` 直接维护。原独立仓库最终提交为 `b729ef0`，已停止作为修改入口；当前规则见 [algorithm/README.md](../../algorithm/README.md)。
 
 ## 四、常见误读澄清（均已代码级核查）
 
 | 误读 | 事实 |
 | ---- | ---- |
 | "`src/` 是 extracted 的 Java 版" | 两系无血缘：线上关键词（CouPaiStrategy/MakeDealByCfg/SvrXygRandomSort）在 `src/`、`include/`、`test/` **零命中**；代码断代（UWL/Windows 遗产 vs C++11/Java21）；发牌哲学相反（做牌 vs 随机+过滤） |
-| "源仓系是 extracted 的增强版（拆牌优化、牌力值）" | 无版本递进关系：源仓系不含做牌发牌管线。extracted 复刻"线上**怎么**发牌"（求真），源仓系设计"发牌**应该怎么**做"（候选方案，求好）；"拆牌/牌力"三处实现各归各，见下表 |
-| "previous 的 MakeDealHelper 从源仓系提炼" | 方向反了：previous 是线上遗产（old2 体系已跑数月），源仓 PRD 2026-02 才立项。真实关系 = **遗产 vs 重构候选**——若流动，方向是源仓系→线上（重构上线）；对照工具 `native/tools/shuffle_prng_compare.py`（遗产 `SvrXygRandomSort` vs 新法 MT19937+Fisher-Yates，还实锤了遗产 `srand(time(NULL))` 同秒跨桌同流缺陷） |
-| "native/test 是 extracted 的模拟测试" | `test/` 测 `landlord.h`（源仓系）；extracted 的模拟入口是它自己顶层的 `harness.exe`（另两个 CMake 目标 power_split_test/split_vs_power 编的是 extracted 顶层的拆牌对比 cpp，也与 native/test 无关） |
+| "新算法系是 extracted 的增强版（拆牌优化、牌力值）" | 无版本递进关系：新算法系不含做牌发牌管线。extracted 复刻"线上**怎么**发牌"（求真），新算法系设计"发牌**应该怎么**做"（候选方案，求好）；"拆牌/牌力"三处实现各归各，见下表 |
+| "previous 的 MakeDealHelper 从新算法系提炼" | 方向反了：previous 是线上遗产（old2 体系已跑数月），新算法 PRD 2026-02 才立项。真实关系 = **遗产 vs 重构候选**——若流动，方向是新算法系→线上（重构上线）；对照工具 `native/tools/shuffle_prng_compare.py`（遗产 `SvrXygRandomSort` vs 新法 MT19937+Fisher-Yates，还实锤了遗产 `srand(time(NULL))` 同秒跨桌同流缺陷） |
+| "native/test 是 extracted 的模拟测试" | `test/` 测 `landlord.h`（新算法系）；extracted 的模拟入口是它自己顶层的 `harness.exe`（另两个 CMake 目标 power_split_test/split_vs_power 编的是 extracted 顶层的拆牌对比 cpp，也与 native/test 无关） |
 | "previous 是整个服务器的拷贝" | 只拷了发牌相关 3 个 cpp + 配置；但 zgdatbl 一万行里发牌只占小块，其余是桌务逻辑 |
 
 ### 拆牌/牌力的三个实现位置（易混，各归各）
 
-| 概念 | 线上系（previous/extracted） | 源仓系（src + landlord.h） | analysis 自有 |
+| 概念 | 线上系（previous/extracted） | 新算法系（src + landlord.h） | analysis 实验扩展 |
 | ---- | ---- | ---- | ---- |
 | 拆牌 | `SpliteCard`/`GetBestCardType`/`get_MaxHandCardValue` 递归拆牌——做牌时逼近 TargetValue 用 | `splitter/`（IComboExtractor，飞机/炸弹/顺子优先）——评分前把手拆成组合 | `optimal_split.h` 搜索式全局最优（min-combo→max-Σscore）——**指标期口径**，真正的"拆牌优化"在这里 |
 | 牌力 | `get_GroupData`（makedeal.json GroupDataExp 公式）+ `CalHandCardValue`——做牌内部估值 | `calcTotalHandScore`（Java/C++ 双端同步）——**与数仓 card_power 的 PRD 同源**；harness 借它算首叫/抗衡指标 | —（指标直接借用左两家） |
@@ -90,9 +90,10 @@ harness.exe → JSONL 逐局样本 → tools/（sweep/anchor_check/stats）→ �
 | ---- | ---- |
 | 2026-08-03 | previous 线上 old2 发牌代码副本入库（22a147b） |
 | 2026-08-06 | algorithm/ 整体解禁可改（6511da3） |
-| 2026-09-06 | 远程改为只读快照模式，源仓系纳入（f2dbcf6） |
+| 2026-09-06 | 原独立算法仓以只读快照方式纳入（f2dbcf6） |
 | 2026-09-08 | previous 同步线上 09-01 优化版 + makedeal.json new3~new6 铺开态（454b611）；extracted 归拢 tools/runs/results 四区（568921c） |
 | 2026-09-09 | harness 单一化：harness_optv2.cpp 并回 harness.cpp（6b8b6e0，500 局同 seed 逐行验证一致） |
 | 2026-09-10 | 算法快照 `docs/` 文档纠错（拆牌决策规则旧类名/单双路径架构、测试覆盖清单补 5 项、PRD §六配置现值标注）——**只读区例外修改，同名修复须回源仓 Samuel86-star/landlord 落地**；代码侧遗留（`AbstractHandSplitter.java:15` Javadoc 旧类名、`SplitterAlgorithmFactoryTest` 包名 split→splitter、prompt.md 清理）一并留源仓处理 |
 | 2026-09-10 | 源仓待落地修改包整理成文：[algorithm-snapshot-upstream-fixes.md](../tech/algorithm-snapshot-upstream-fixes.md)（A 组 3 份文档 diff 可 `git apply -p2` 直用 + B 组代码侧清理操作说明） |
 | 2026-09-10 | 修改包经外部复审 4 条全采纳后修订（9d05210）：置信度标记≠单双路径等价（a4b53b9 已移除错误短路，反例 strongStraightStillComparesBombPreservingSplit）、拆牌向量归属 cross-language 表（双种子标定属 deal-balancing-prd）、测试类改名转必做、验证前移+补 Native CTest；衍生新增 B4（DefaultSplitterFactory Javadoc 同源错误）。Mac 侧执行指引：[../handoff/2026-09-10-landlord-source-repo-fixes.md](../handoff/2026-09-10-landlord-source-repo-fixes.md) |
+| 2026-09-10 | 原源仓修复落地至 `b729ef0`；随后切换为单仓治理，`algorithm/` 成为本仓权威模块，独立仓仅保留历史 |

@@ -1,5 +1,7 @@
 # native/extracted 目录归拢 — 实施计划
 
+> **历史计划**：文中的双仓与只读快照约束已于 2026-09-10 停用；当前直接维护本仓 `algorithm/`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 把 `algorithm/native/extracted/` 五类混放归拢为 源码顶层/tools/runs/results 四区，390MB 数据外迁，实验脚本纳管（方案 B）。

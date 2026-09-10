@@ -1,36 +1,33 @@
-# landlord-algorithm（只读快照副本）
+# landlord-algorithm 模块
 
-> ⚠️ **只读**：本目录是 [landlord-algorithm](https://github.com/Samuel86-star/landlord.git) 的只读快照，归 landlord-analysis 参考用，**请勿在此修改**。任何改动请回到源仓库。
+`algorithm/` 是 `landlord-analysis` 仓库直接维护的算法模块，也是 Java/C++ 新算法实现的唯一权威位置。
 
-## 快照信息
+## 模块信息
 
 | 项 | 值 |
-|---|---|
-| 源仓库 | https://github.com/Samuel86-star/landlord.git |
-| 快照 commit | `f2dbcf6` (`main`) |
-| 快照日期 | 2026-09-06 |
+| ---- | ---- |
+| 权威仓库 | [Samuel86-star/landlord-analysis](https://github.com/Samuel86-star/landlord-analysis) |
+| 模块路径 | `algorithm/` |
 | 坐标 | `com.mamba.landlord:landlord-algorithm:0.0.1-SNAPSHOT` |
-| 技术栈 | Spring Boot 4.0.3 / Java 21 + C++（native） |
-| 对应方案 | [docs/tech/algorithm-snapshot-plan.md](../docs/tech/algorithm-snapshot-plan.md) |
+| 技术栈 | Spring Boot 4.0.3 / Java 21 + C++ |
+| 历史来源 | 原 `Samuel86-star/landlord` 仓库，最终提交 `b729ef0` |
 
-## 这是什么
+## 目录
 
-斗地主**算法实现**（发牌 / 拆牌 / 评分模拟），与 landlord-analysis（真实数据分析）互补：本目录提供算法逻辑依据，analysis 的房间设计（不洗牌 / cap / 底分）可据此校准。
+- `src/`：Java 评分、拆牌、发牌与领域模型。
+- `native/include/`、`native/test/`、`native/config/`：C++ 孪生实现及验证。
+- `native/previous/`：线上代码参照副本，修改须记录同步来源和影响。
+- `native/extracted/`、`native/tools/`：线上发牌还原、实验和分析工具。
+- `docs/`：算法规则、PRD 与测试说明。
 
-## 模块速览
+## 修改与验证
 
-- **scoring/** — 牌力评分：牌型评分（`IComboScoringStrategy`）+ 手牌评分（`IHandCardsScoringStrategy`）；手牌强度已支持外部配置（`2c49dd3`）。
-- **shuffle/** — 发牌 / 洗牌分布采样（`DealDistributionSampler`、各 `IDealStrategy`）。
-- **splitter/** — 拆牌：飞机 / 炸弹 / 顺子优先拆解器。
-- **core/model/** — Card / Combo / Deck / Rank / Suit 等领域模型。
-- **native/** — C++ 高性能采样器（header-only `include/landlord.h` + `test/`）。
-- **docs/** — 评价标准、发牌平衡 PRD、拆牌决策规则、测试策略、rules。
+算法代码直接在本仓修改。涉及 Java/C++ 共用规则时同步更新两端及共享回归向量；涉及 `native/previous/` 时保留线上版本依据。
 
-## 构建与验证
+在仓库根目录运行完整离线验证：
 
-- 本仓只允许通过根目录 `python3 ops/py/verify_offline.py` 验证快照；生成物已加入忽略规则。
-- 算法实现修改仍必须在权威源仓完成，验证后按 commit 差异同步到本目录。
+```bash
+python3 ops/py/verify_offline.py
+```
 
-## 更新方法
-
-源仓库演进后：在 landlord-algorithm 提交并记录 source base/head → 按 commit 差异清单增量合入本目录并保留 analysis 专用资产 → 更新上方「快照 commit / 日期」→ 验证后在 analysis 提交。完整步骤见 [docs/tech/algorithm-snapshot-plan.md](../docs/tech/algorithm-snapshot-plan.md)。
+仓库合并记录与回退依据见[算法仓库治理记录](../docs/tech/algorithm-snapshot-plan.md)。

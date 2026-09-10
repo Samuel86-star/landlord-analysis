@@ -1,1 +1,0 @@
-Run the benchmarks. Identify the worst performing cases. Use some profiling tools to identify the root cause and fix it.

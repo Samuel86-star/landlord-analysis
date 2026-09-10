@@ -78,7 +78,7 @@ public class DefaultSplitterFactory {
 
     /**
      * 同 {@link #chooseStrategy}，额外返回是否「高置信度」。
-     * 高置信度时（前两条规则命中）可安全使用单路径，否则建议双路径取优。
+     * 该标记为历史启发式残留：生产评分主路径始终双路径取优、不据此短路；高置信不代表单路径与双路径结果等价。
      *
      * @param handCardsCnt 各点数的张数
      * @param confidentOut 输出：是否高置信度，可为 null

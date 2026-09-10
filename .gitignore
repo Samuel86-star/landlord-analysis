@@ -23,7 +23,7 @@ ops/py/logs/
 # 分析产出（每次跑会重生成，CSV 在 output/，不提交）
 ops/py/first-classic-beginner/output/
 
-# algorithm 只读快照：防止在 analysis 内构建产生的产物误提交
+# algorithm 模块构建产物
 algorithm/target/
 algorithm/native/build*/
 algorithm/native/sampler
