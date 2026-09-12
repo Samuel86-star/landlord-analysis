@@ -40,6 +40,4 @@ algorithm/          # 本仓权威算法模块 + docs（Java/C++；previous/ 为
 
 ## Git 操作
 
-- **CLI 环境**可直接 `git commit`/`git push`（SSH 直连）
-- **cowork 沙箱环境**拒绝执行 Git 操作，提示用户切到 CLI
-- 不确定时先 `git remote -v` 验证
+- Git 操作按用户授权、实际工具权限和仓库状态判断，不以 CLI/cowork 名称决定。只读检查可直接执行；提交、推送须有当前任务授权，并核对变更范围、分支和远端，保护用户已有改动。`git remote -v` 仅用于核对远端，不证明写权限或推送能力。遇到权限阻断时遵循平台审批机制，不绕过限制。
