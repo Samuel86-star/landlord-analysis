@@ -42,7 +42,7 @@ END AS platform
 | game_id | 玩法 | DWS 分析表（优先） | raw 源表（fallback） | 上游源 |
 | ------- | ---- | ------------------ | -------------------- | ------ |
 | 53 | 三人斗地主（ddz） | `tcy_temp.dws_ddz_daily_game` | `ddz_daily_game_raw` | Hive `fact_game_combatgains` |
-| 521 | 疯狂斗地主（crazyddz） | `tcy_temp.dws_crazyddz_daily_game` | `crazyddz_daily_game_raw` | SR 内表 `dwd_game_combatgains_si` |
+| 521 | 疯狂斗地主（crazyddz） | `tcy_temp.dws_crazyddz_daily_game` | `crazyddz_daily_game_raw` | SR 内表 [`dwd_game_combatgains_si`](../../starrocks/game/dwd_game_combatgains_si.md) |
 | 105 | 四人斗地主（srddz） | `tcy_temp.dws_srddz_daily_game` | `srddz_daily_game_raw` | SR 内表，仅 room 927/928/930 |
 
 > 识别口诀：`crazy/疯狂/510K`→521；`sr/四斗/srddz`→105；`ddz/三人`→53。53 上游来自 Hive，521/105 来自 SR 内表，**别查错源**。详见 [CLAUDE.md](../../CLAUDE.md) 游戏 ID 映射表。

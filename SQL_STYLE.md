@@ -127,6 +127,32 @@ LEFT JOIN game_active ga ON ... AND ga.dt BETWEEN r.min_reg AND r.max_reg
 
 > 经验：标量子查询放在 `WHERE` 里**是安全的**，只有放在 `LEFT JOIN ... ON` 里才会炸。写 LEFT JOIN 时优先用 CROSS JOIN 上浮边界。
 
+### 4.3 ⚠️ StarRocks CTE（含 JOIN）+ OR 谓词静默返回空结果
+
+2026-09-16 观测（根因未定位，规避优先）：CTE 内部有 `LEFT JOIN` 维表、同查询的 WHERE 带 `IN (...) OR ...` 组合谓词（无论放在 CTE 内层还是外层）时，查询**不报错但返回 0 行**。同样的 OR 条件平铺成单层查询（不套 CTE）结果正常；去掉 OR 改纯 IN 列表也正常。
+
+```sql
+-- ❌ 返回 0 行：CTE 含 JOIN + WHERE 带 OR
+WITH pc AS (
+    SELECT g.dt, g.room_id, c.room_level, g.room_fee
+    FROM tcy_temp.dws_ddz_daily_game g
+    LEFT JOIN tcy_temp.dq_game_room_config c
+        ON g.game_id = c.game_id AND g.room_id = c.room_id
+    WHERE g.dt BETWEEN '2026-06-01' AND '2026-09-15'
+      AND (g.room_id IN (420, 742) OR g.room_id BETWEEN 13100 AND 13300)   -- OR 是触发条件
+)
+SELECT ... FROM pc GROUP BY ...;
+
+-- ✅ 平铺单层 + 纯 IN 列表（BETWEEN 区间手工展开进列表）
+SELECT CAST(DATE_TRUNC('week', dt) AS DATE) AS wk, room_id, COUNT(*)
+FROM tcy_temp.dws_ddz_daily_game
+WHERE dt BETWEEN '2026-06-01' AND '2026-09-15'
+  AND room_id IN (420, 421, 742, ..., 13175, 13176, 13177, 13178)
+GROUP BY 1, 2;
+```
+
+> 经验：CTE+JOIN 查询结果疑似异常偏小时，先拿同样的过滤条件在原表上 `COUNT(*)` 验证命中行数再排查（本次同条件原表命中 3,000 万行）。案例见 [PC 净消耗报告 §九](docs/analysis/result/pc-net-consumption-decline-report.md)。
+
 ---
 
 ## 五、占比类指标：独立 Broadcast 分母表
